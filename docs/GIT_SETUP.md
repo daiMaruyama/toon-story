@@ -236,6 +236,26 @@ Merge made by the 'ort' strategy.
 
 ### ブランチを切り替えたら Content を確認する
 
+確認は親側から 1 コマンド。
+
+```bash
+git submodule status
+```
+
+```
+ 1fe4a6e1fd82192f7fe5e087ba873972ff3eff46 Content (heads/main)
+↑                                                  ↑
+先頭スペース = 親の記録と一致            heads/main = ブランチに乗っている
+```
+
+| 見え方 | 意味 |
+| --- | --- |
+| 先頭が半角スペース | 親の記録と一致。正常 |
+| 先頭が `+` | 親の記録とズレている |
+| 先頭が `-` | 未初期化。`git submodule update --init --recursive` |
+| 末尾が `(heads/main)` | `main` に乗っている。正常 |
+| 末尾がハッシュ | **detached HEAD**。下の対処へ |
+
 gitlink が異なるブランチへ切り替えると、Content が **detached HEAD** になる:
 
 ```
