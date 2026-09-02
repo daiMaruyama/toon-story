@@ -46,7 +46,20 @@ git submodule update --init --recursive
 
 ## 2. 初回だけ必ずやる設定
 
-clone したディレクトリの中で実行する。**この 5 行をやらないと事故る。**
+clone する**前**に 1 回（マシンごと）、clone した後に 5 行（clone ごと）。
+
+### clone する前に（マシンごとに 1 回）
+
+```bash
+git config --global core.longpaths true
+```
+
+Windows の既定ではパスが 260 文字を超えると失敗する。UE はアセット名とフォルダが深くなりやすく、
+プロジェクトを深い場所（`Documents/GitHub/...` など）に置くと届きうる。現状このリポジトリの最長パスは
+94 文字なので今すぐ問題になるわけではないが、アセットが増えてから踏むと `Filename too long` で
+clone が途中で止まるので、先に入れておく。
+
+### clone した後に（clone ごとに毎回）
 
 ```bash
 git config push.recurseSubmodules on-demand
@@ -64,7 +77,7 @@ git -C Content checkout main
 | `diff.submodule log` | `git diff` で Content の変更がコミットログとして読める |
 | `git -C Content checkout main` | submodule は既定で **detached HEAD** になる。そのままアセットをコミットするとどのブランチにも乗らず迷子になるので、`main` に乗せておく |
 
-これらは clone ごとのローカル設定なので、**環境を作り直すたびに実行する**。
+下の 5 行は clone ごとのローカル設定なので、**環境を作り直すたびに実行する**。`core.longpaths` はマシン全体の設定なので 1 回でよい。
 
 ---
 
@@ -239,6 +252,10 @@ git -C Content checkout main
 
 gitlink が同じブランチ間の切り替え（`git checkout -b` の直後など）では detach しないので、毎回起きるわけではない。だから余計に忘れやすい。
 
+**副作用を理解しておくこと。** `git -C Content checkout main` は Content を「親が記録しているコミット」ではなく「Content の main の先端」へ動かす。つまり**古い親ブランチに切り替えてからこれを実行すると、親が記録しているアセットの状態と、実際に手元にあるアセットがズレる**。ビルドは通るのに参照が合わない、という分かりにくい壊れ方をしうる。
+
+運用としては `main` 一本で正しいので手順は変えなくてよいが、**「親ブランチを切り替えても、Content は常に最新の main になる。過去のアセット状態には戻らない」**と覚えておく。ある時点のアセットを正確に再現したいときは `git -C Content checkout main` をせず、`git submodule update` で親の記録どおりに戻す。
+
 ### Pull Request で見えないもの
 
 Content の変更は gitlink 1 行の差分（`Content @ 21c94cc → 4df8a25`）としか表示されない。**アセットの中身は PR 上でレビューできない。** submodule の構造的な限界なので、アセットのレビューが必要ならエディタ上で見せ合う。
@@ -278,7 +295,7 @@ submodule を正式サポートしている。Commit ツールウィンドウで
 | 症状 | 原因と対処 |
 | --- | --- |
 | `Content/` が空。エディタが起動しない | `git submodule update --init --recursive`。それでも空なら `toon-story-content` へのアクセス権が無い |
-| `Fetched in submodule path 'Content', but it did not contain <sha>` | 誰かが Content を push せずに親を push した。その人に Content の push を依頼する |
+| 他の人の環境で `fatal: reference is not a tree` / `Fetched in submodule path 'Content', but it did not contain <sha>` が出た | 誰かが Content を push せずに親を push した。**submodule 運用で一番起きる事故。** その人が `git -C Content push` すれば直る |
 | Content で「HEAD detached」と出る | `git -C Content checkout main && git -C Content pull` |
 | Content でコミットしたのに GitHub に出ない | detached HEAD でコミットした。`git -C Content log` で SHA を控え、`git -C Content checkout main` してから `git -C Content cherry-pick <sha>` |
 | エディタが「アセットが見つからない」と言う | Content が古い。エディタを閉じて `git pull` |
