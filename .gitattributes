@@ -1,0 +1,47 @@
+# =============================================================================
+# toon-story 親リポジトリ (Public) の属性設定
+#
+# アセット本体は Content/ 側の .gitattributes が管理する。
+# ここが効くのは「Content/ の外に置かれるバイナリ」— 主にプラグイン同梱アセット。
+#
+# 既定は Git LFS を使わない構成 (binary = -diff -merge -text)。
+# GitHub では LFS の方が無料枠が厳しく (ストレージ 1GB / 帯域 1GB 月)、
+# clone のたびに帯域を消費するため、100MB 超のファイルが無いなら通常の git の方が安全。
+# LFS が必要な場合は Setup-ContentSubmodule.ps1 が自動で filter=lfs へ書き換える。
+# =============================================================================
+
+# --- 既定: git に自動判定させる ------------------------------------------------
+* text=auto
+
+# --- Unreal のバイナリアセット (Content/ 外に出たもの) --------------------------
+*.uasset  binary
+*.umap    binary
+
+# --- その他バイナリ ------------------------------------------------------------
+*.ico     binary
+*.png     binary
+*.tga     binary
+*.ttf     binary
+*.otf     binary
+*.pdb     binary
+
+# --- テキストとして扱う (改行は LF に正規化) -----------------------------------
+*.cpp      text eol=lf
+*.h        text eol=lf
+*.hpp      text eol=lf
+*.cs       text eol=lf
+*.ini      text eol=lf
+*.uproject text eol=lf
+*.uplugin  text eol=lf
+*.md       text eol=lf
+*.txt      text eol=lf
+
+# --- Windows 前提のスクリプトは CRLF のまま ------------------------------------
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# --- GitHub の言語統計から除外 (就活で見せるとき C++ 比率を正しく出すため) ------
+Config/**   linguist-generated=true
+*.uasset    linguist-generated=true
+*.umap      linguist-generated=true
