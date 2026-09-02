@@ -1,0 +1,65 @@
+# Unreal Engine
+
+Binaries/
+Intermediate/
+Saved/
+DerivedDataCache/
+
+Build/*
+!Build/*/
+Build/*/**
+!Build/*/PakBlacklist*.txt
+!Build/**/*.ico
+
+# Plugin content
+Plugins/**/Content/
+# !Plugins/YourPlugin/Content/
+
+# IDE
+.vs/
+.vscode/
+.idea/
+.vsconfig
+*.xcodeproj
+*.xcworkspace
+*.sln
+*.slnx
+*.suo
+*.opensdf
+*.sdf
+*.VC.db
+*.VC.opendb
+
+# Build output
+*.slo
+*.lo
+*.o
+*.obj
+*.gch
+*.pch
+*.mod
+*.lai
+*.la
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+*.exe
+*.out
+*.app
+*.ipa
+*.pdb
+*.idb
+*.ilk
+
+# Cache / logs
+*.tmp
+*.log
+.ue4dependencies
+.ushaderprecache
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
