@@ -16,6 +16,13 @@ UE5 / C++ で開発中の対戦アクション（PvP）。
 
 ```
 Source/     ゲームロジック (C++)
+  ToonStory/
+    Core/         GameMode / GameState / PlayerController / GameInstance
+    Character/    キャラクター本体、移動、入力
+    Combat/       攻撃、ダメージ、当たり判定
+    UI/           HUD、ウィジェット
+    Data/         DataAsset / DataTable
+    Variant_*/    UE テンプレート由来
 Config/     エンジン・プロジェクト設定
 Content/    アセット（別リポジトリを submodule として接続）
 docs/       開発ドキュメント
