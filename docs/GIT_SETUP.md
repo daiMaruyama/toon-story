@@ -168,11 +168,84 @@ git submodule update --init --recursive
 - `Plugins/**/Content/` は `.gitignore` で除外してある。プラグインが同梱するアセットは追跡しない方針のため。**自作プラグインのアセットを追跡したくなったら**、ルートの `.gitignore` にある `# !Plugins/YourPlugin/Content/` の行を、プラグイン名を入れて有効化する
 - `Saved/` `Intermediate/` `Binaries/` `DerivedDataCache/` はコミットしない（`.gitignore` 済み）
 - `.uasset` / `.umap` は**マージできない**。同じアセットを 2 人が同時に編集すると、どちらかを捨てるしかない。着手前に声をかけ合う
-- Content 側を push せずに親を push しない（設定を入れていれば自動で守られる）
+- **`Content` ではブランチを切らない。`main` 一本で運用する**（理由は「7. ブランチ運用」）
 
 ---
 
-## 7. GUI クライアントで使う場合
+## 7. ブランチ運用
+
+### 基本
+
+- `main` は**常にビルドが通る状態**を保つ。壊れたものを push しない
+- 作業は必ず feature ブランチを切る
+- feature ブランチは **1〜3 日で消す**。長生きさせるほどアセットを巻き添えにするリスクが上がる
+- **`Content`（submodule）ではブランチを切らない。`main` 一本で運用する**
+
+### ブランチ名
+
+```
+feature/<YYYYMMDD>_<PascalCase の内容>
+```
+
+例:
+
+```
+feature/20260903_DashMove
+feature/20260905_DamageSystem
+feature/20260910_LockOnCamera
+```
+
+日付は着手日。時系列で並ぶので、消し忘れたブランチが一目で分かる。
+
+```bash
+git checkout main
+git pull
+git checkout -b feature/20260903_DashMove
+# …作業…
+git push -u origin feature/20260903_DashMove
+```
+
+GitHub で Pull Request を出す。3 人なら誰か 1 人が見て merge で十分。merge 後はブランチを削除する。
+
+### なぜ Content でブランチを切らないのか
+
+親がどのブランチにいても、アセットのコミットは常に Content の `main` に積まれる。その結果 Content の履歴が一直線に保たれ、**親をマージするとき gitlink が自動解決される**:
+
+```
+$ git merge feature/20260903_DashMove
+Note: Fast-forwarding submodule Content to 4df8a25
+Merge made by the 'ort' strategy.
+```
+
+2 人が別のブランチで別のアセットを追加していても、コンフリクトせず両方残る。
+
+逆に Content でブランチを切ると履歴が分岐し、gitlink がコンフリクトする。`.uasset` はマージできないので、手作業でどちらかを捨てるしかなくなる。**Content は `main` 一本。**
+
+### ブランチを切り替えたら Content を確認する
+
+gitlink が異なるブランチへ切り替えると、Content が **detached HEAD** になる:
+
+```
+$ git checkout main
+$ git -C Content status
+HEAD detached at 6a7267d
+```
+
+この状態でアセットをコミットすると、どのブランチにも乗らず迷子になる。**アセットを触る前に必ず:**
+
+```bash
+git -C Content checkout main
+```
+
+gitlink が同じブランチ間の切り替え（`git checkout -b` の直後など）では detach しないので、毎回起きるわけではない。だから余計に忘れやすい。
+
+### Pull Request で見えないもの
+
+Content の変更は gitlink 1 行の差分（`Content @ 21c94cc → 4df8a25`）としか表示されない。**アセットの中身は PR 上でレビューできない。** submodule の構造的な限界なので、アセットのレビューが必要ならエディタ上で見せ合う。
+
+---
+
+## 8. GUI クライアントで使う場合
 
 CLI でなくても構わないが、**submodule を扱えるクライアントを選ぶこと。**
 
@@ -200,7 +273,7 @@ submodule を正式サポートしている。Commit ツールウィンドウで
 
 ---
 
-## 8. トラブルシュート
+## 9. トラブルシュート
 
 | 症状 | 原因と対処 |
 | --- | --- |
