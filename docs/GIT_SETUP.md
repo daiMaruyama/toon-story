@@ -282,7 +282,8 @@ submodule を正式サポートしている。Commit ツールウィンドウで
 | Content で「HEAD detached」と出る | `git -C Content checkout main && git -C Content pull` |
 | Content でコミットしたのに GitHub に出ない | detached HEAD でコミットした。`git -C Content log` で SHA を控え、`git -C Content checkout main` してから `git -C Content cherry-pick <sha>` |
 | エディタが「アセットが見つからない」と言う | Content が古い。エディタを閉じて `git pull` |
-| 初回起動で「The following modules are missing or built with a different engine version: VisualStudioTools / VisualStudioBlueprintDebuggerHelper」と出る | 正常。`Binaries/` は Git 管理外なので、clone 後の初回だけコンパイルが必要。**Yes** を押す（1〜3分）。失敗したらエディタを閉じて Visual Studio から `Development Editor` / `Win64` でビルドする |
+| 初回起動で「The following modules are missing or built with a different engine version」と出る | 正常。`Binaries/` は Git 管理外なので、clone 後の初回だけコンパイルが必要。**Yes** を押す。失敗したらエディタを閉じて Visual Studio から `Development Editor` / `Win64` でビルドする |
+| `Plugins/VisualStudioTools/` が勝手に増える | Visual Studio の UE 連携が入れてくる。`.gitignore` 済みなのでコミットされない。使わないならフォルダごと削除してよい。`ToonStory.uproject` に行が追加されていたら、それはコミットしない |
 | ビルドは通るがエディタでクラッシュ | `Binaries/` `Intermediate/` を削除して project files を再生成 |
 | `.sln` が Git の変更に出てくる | 出ないはず。出るなら `.gitignore` が効いていない。`git rm --cached ToonStory.sln` |
 | 画像を追加したのに `git status` に出ない | `Content/` の外に置いている。`Content/` の下に移動する。`docs/images/` だけは例外的に追跡される |

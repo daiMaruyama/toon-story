@@ -15,6 +15,9 @@ Build/*/**
 Plugins/**/Content/
 # !Plugins/YourPlugin/Content/
 
+# Visual Studio integration plugin (install locally if you want it)
+Plugins/VisualStudioTools/
+
 # Images and raw art (only docs/ and plugin icons are tracked)
 *.png
 *.jpg
