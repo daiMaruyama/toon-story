@@ -15,6 +15,24 @@ Build/*/**
 Plugins/**/Content/
 # !Plugins/YourPlugin/Content/
 
+# Images and raw art (only docs/ and plugin icons are tracked)
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.tif
+*.tiff
+*.tga
+*.exr
+*.psd
+*.psb
+*.ai
+*.clip
+*.blend
+!docs/**
+!Plugins/**/Resources/*.png
+
 # IDE
 .vs/
 .vscode/

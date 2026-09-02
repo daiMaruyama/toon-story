@@ -152,6 +152,9 @@ git submodule update --init --recursive
 ## 6. ルール
 
 - **アセットは必ず `Content/` の下に置く。** `Source/` やプロジェクト直下に画像やモデルを置かない（アセットは Content 側で一元管理する）
+- **画像・動画・元データも、すべて `Content/` の下に置く。** `Content/` 配下はファイルの種類を問わず private 側のリポジトリに入る。UE は `Content/` 内の非アセットファイルを無視するので、`.psd` や参考画像を置いてもエディタには影響しない（動画は UE の作法どおり `Content/Movies/` に生ファイルのまま置く）
+- **`Content/` の外に置いた画像は追跡されない。** 画像は Content 側で一元管理するため、ルートの `.gitignore` で `.png` `.jpg` `.psd` などを除外してある
+- **README 用のスクリーンショットや GIF は `docs/images/` に置く。** 画像を追跡してよいのはここだけ（`.gitignore` で例外指定している）
 - `Plugins/**/Content/` は `.gitignore` で除外してある。プラグインが同梱するアセットは追跡しない方針のため。**自作プラグインのアセットを追跡したくなったら**、ルートの `.gitignore` にある `# !Plugins/YourPlugin/Content/` の行を、プラグイン名を入れて有効化する
 - `Saved/` `Intermediate/` `Binaries/` `DerivedDataCache/` はコミットしない（`.gitignore` 済み）
 - `.uasset` / `.umap` は**マージできない**。同じアセットを 2 人が同時に編集すると、どちらかを捨てるしかない。着手前に声をかけ合う
@@ -198,3 +201,4 @@ submodule を正式サポートしている。Commit ツールウィンドウで
 | エディタが「アセットが見つからない」と言う | Content が古い。エディタを閉じて `git pull` |
 | ビルドは通るがエディタでクラッシュ | `Binaries/` `Intermediate/` を削除して project files を再生成 |
 | `.sln` が Git の変更に出てくる | 出ないはず。出るなら `.gitignore` が効いていない。`git rm --cached ToonStory.sln` |
+| 画像を追加したのに `git status` に出ない | `Content/` の外に置いている。`Content/` の下に移動する。`docs/images/` だけは例外的に追跡される |
