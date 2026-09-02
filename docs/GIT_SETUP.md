@@ -95,15 +95,15 @@ UE エディタで作業すると、この 2 つは**同時に変わることが
 
 ### アセットを変更したとき
 
-**必ず Content を先に push する。**
+**コミットは 2 回、push は 1 回。**
 
 ```bash
-# 1. Content 側
+# 1. Content 側でコミット（push はしなくてよい）
 git -C Content add -A
 git -C Content commit -m "キャラクターのマテリアルを調整"
-git -C Content push
 
-# 2. 親側（Content がどのコミットを指すかを記録する）
+
+# 2. 親側でコミットして push（Content も一緒に push される）
 git add Content
 git commit -m "Update content"
 git push
@@ -111,23 +111,33 @@ git push
 
 `git add Content` でコミットされるのは**アセットの中身ではなく「Content リポジトリのどのコミットを使うか」という参照 1 行だけ**（gitlink と呼ぶ）。だから親側の履歴は軽いまま保たれる。
 
+**なぜコミットだけ 2 回なのか。** git には submodule をまたいでコミットする機能が無い。`git add` は submodule の中まで降りていかないので、Content の中身は Content 側でコミットするしかない。
+
+**push が 1 回で済む理由。** 「2. 初回だけ必ずやる設定」の `push.recurseSubmodules on-demand` により、親を push するとき git が「この親コミットが指す Content のコミットはリモートにあるか」を確認し、無ければ先に Content を push する。実行すると次のように出る:
+
+```
+Pushing submodule 'Content'
+   e12a4c0..45441d6  main -> main      ← Content
+   37b1dc8..483ff27  main -> main      ← 親
+```
+
 ### コードだけ変更したとき
 
 普通に `git add` / `git commit` / `git push`。特別なことは要らない。
 
-### 順序を間違えるとどうなるか
+### やりがちな失敗: 手順 2 の `git add Content` を忘れる
 
-親だけ push して Content を push し忘れると、**他のメンバーの環境が壊れる。**
-親リポジトリが「リモートに存在しないコミット」を指した状態になり、相手側で:
+アセットを Content 側でコミットしただけで満足して、親側で `git add Content` をしないまま `git push` すると:
 
 ```
-fatal: remote error: upload-pack: not our ref <sha>
-Fetched in submodule path 'Content', but it did not contain <sha>
+Everything up-to-date
 ```
 
-が出て `git submodule update` が失敗する。手元では正常に見えるので気づきにくい。
+で終わる。親に新しいコミットが無いので push するものが無く、**Content の新コミットもリモートに送られない。**
 
-**「2. 初回だけ必ずやる設定」の `push.recurseSubmodules on-demand` を入れておけば、親を push したときに Content も自動で push されるのでこの事故は起きない。**
+エラーは一切出ない。手元のエディタでは変更が見えているので、「え、入ってないよ?」と言われるまで気づかない。**アセットを変えたら必ず親側もコミットする。**
+
+逆の「Content を push せず親だけ push」で相手の `git submodule update` が壊れるパターンは、`push.recurseSubmodules on-demand` が自動で防ぐので気にしなくてよい。
 
 ---
 
@@ -172,8 +182,8 @@ CLI でなくても構わないが、**submodule を扱えるクライアント�
 
 1. `Ctrl+Shift+G` でソース管理ビューを開くと、`TOON-STORY` と `CONTENT` が別セクションで並ぶ
    - 表示されない場合はビュー右上の `…` →「ビュー」→ **Source Control Repositories** を有効化
-2. アセットを変更したら **CONTENT** セクションでステージ → コミット → **プッシュ**
-3. その後 **TOON-STORY** に `Content` が変更として現れるので、ステージ → コミット → プッシュ
+2. アセットを変更したら **CONTENT** セクションでステージ → **コミット**（プッシュはまだしなくてよい）
+3. その後 **TOON-STORY** に `Content` が変更として現れるので、ステージ → コミット → **プッシュ**。VS Code も内部で git を呼ぶので、`push.recurseSubmodules on-demand` が効いて Content も一緒に push される
 4. 左下ステータスバーのブランチ表示は「今アクティブなリポジトリ」のもの。クリックで切り替わる
 
 ### JetBrains Rider
