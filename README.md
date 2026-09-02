@@ -8,20 +8,18 @@ UE5 / C++ で開発中の対戦アクション（PvP）。
 | | |
 |---|---|
 | ジャンル | PvP 対戦アクション |
-| エンジン | Unreal Engine 5 / C++ |
+| エンジン | Unreal Engine 5.8 / C++ |
 | プラットフォーム | Windows |
-| 開発期間 | TODO: 2026.xx - |
-| 制作人数 | TODO: x 名 |
+| 開発期間 | TODO: 2026.09- |
+| 制作人数 | TODO: 現在4名 |
 | 担当 | TODO: 例）ゲームプレイ実装、ネットワーク同期、UI |
 
 ## 技術的な取り組み
 
-<!-- TODO: 「何を作ったか」ではなく「何を考えて、どう解いたか」を書く。
-     採用側が見るのはここ。各項目1-3行で、実装ファイルへのリンクを添えると強い。 -->
+<!-- TODO: 「何を作ったか」ではなく「何を考えて、どう作ったか」を書く。 -->
 
 - TODO: 例）キャラクターのステート管理を GAS ベースで実装し、〜
 - TODO: 例）ネットワーク同期のラグ補正に〜を採用し、〜
-- TODO: 例）〜のボトルネックを、〜により xx ms → xx ms に改善
 
 ## 構成
 
@@ -35,7 +33,7 @@ Content/    アセット
 
 ## ビルド
 
-Unreal Engine 5.x と Visual Studio 2022 が必要。
+Unreal Engine 5.8 と Visual Studio 2022 が必要。
 
 1. `ToonStory.uproject` を右クリック →「Generate Visual Studio project files」
 2. 生成された `.sln` を開き、`Development Editor` / `Win64` でビルド
