@@ -2,8 +2,6 @@
 
 UE5 / C++ で開発中の対戦アクション（PvP）。
 
-<!-- TODO: スクリーンショットか30秒のGIFを1枚置く。ここが一番見られる。
-     docs/images/ に配置して ![](docs/images/xxx.png) で参照 -->
 
 ## 概要
 
@@ -42,4 +40,3 @@ Unreal Engine 5.x と Visual Studio 2022 が必要。
 1. `ToonStory.uproject` を右クリック →「Generate Visual Studio project files」
 2. 生成された `.sln` を開き、`Development Editor` / `Win64` でビルド
 
-開発環境のセットアップ手順は [docs/GIT_SETUP.md](docs/GIT_SETUP.md) を参照。

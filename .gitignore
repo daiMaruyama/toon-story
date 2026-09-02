@@ -1,14 +1,10 @@
-# Unreal Engine 5 — toon-story
-# Content/ は private サブモジュール。ここで ignore しないこと。
+# Unreal Engine
 
-# エンジン生成物（どの階層でも効くよう末尾スラッシュ形式）
 Binaries/
 Intermediate/
 Saved/
 DerivedDataCache/
 
-# Build/ は段階形式。git は除外済みディレクトリを走査しないため、
-# "Build/" と書くと下の再包含が効かなくなる。
 Build/*
 !Build/*/
 Build/*/**
@@ -29,7 +25,7 @@ Build/*/**
 *.VC.db
 *.VC.opendb
 
-# コンパイル生成物
+# Build output
 *.slo
 *.lo
 *.o
@@ -52,7 +48,7 @@ Build/*/**
 *.idb
 *.ilk
 
-# キャッシュ / ログ
+# Cache / logs
 *.tmp
 *.log
 .ue4dependencies
