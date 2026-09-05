@@ -24,20 +24,7 @@ public class ToonStory : ModuleRules
 		PrivateDependencyModuleNames.AddRange(new string[] { });
 
 		PublicIncludePaths.AddRange(new string[] {
-			"ToonStory",
-			"ToonStory/Variant_Platforming",
-			"ToonStory/Variant_Platforming/Animation",
-			"ToonStory/Variant_Combat",
-			"ToonStory/Variant_Combat/AI",
-			"ToonStory/Variant_Combat/Animation",
-			"ToonStory/Variant_Combat/Gameplay",
-			"ToonStory/Variant_Combat/Interfaces",
-			"ToonStory/Variant_Combat/UI",
-			"ToonStory/Variant_SideScrolling",
-			"ToonStory/Variant_SideScrolling/AI",
-			"ToonStory/Variant_SideScrolling/Gameplay",
-			"ToonStory/Variant_SideScrolling/Interfaces",
-			"ToonStory/Variant_SideScrolling/UI"
+			"ToonStory"
 		});
 
 		// Uncomment if you are using Slate UI
