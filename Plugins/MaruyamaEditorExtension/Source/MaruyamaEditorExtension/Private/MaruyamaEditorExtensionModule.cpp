@@ -192,7 +192,7 @@ void FMaruyamaEditorExtensionModule::FillMaruyamaMenu(UToolMenu* Menu)
 		Section.AddMenuEntry(
 			"GenerateClaudeCodeConfig",
 			LOCTEXT("GenerateClaude", "Claude Code の設定を生成"),
-			LOCTEXT("GenerateClaudeTooltip", "プロジェクト直下に .mcp.json を書き出します。サーバーは Claude Code と Codex で共通なので、一度書き出せば以降は不要です。"),
+			LOCTEXT("GenerateClaudeTooltip", "プロジェクト直下に .mcp.json を書き出します。これは Claude Code 専用の設定ファイルです。Codex も使う場合は、下の「Codex の設定を生成」も実行してください。"),
 			FSlateIcon(),
 			FUIAction(FExecuteAction::CreateStatic(
 				&GenerateClientConfig,
@@ -202,7 +202,7 @@ void FMaruyamaEditorExtensionModule::FillMaruyamaMenu(UToolMenu* Menu)
 		Section.AddMenuEntry(
 			"GenerateCodexConfig",
 			LOCTEXT("GenerateCodex", "Codex の設定を生成"),
-			LOCTEXT("GenerateCodexTooltip", "プロジェクト直下に .codex/config.toml を書き出します。既にファイルがある場合は上書きされません。"),
+			LOCTEXT("GenerateCodexTooltip", "プロジェクト直下に .codex/config.toml を書き出します。これは Codex 専用の設定ファイルです（接続先のサーバーは Claude Code と共通）。既にファイルがある場合は上書きされません。"),
 			FSlateIcon(),
 			FUIAction(FExecuteAction::CreateStatic(
 				&GenerateClientConfig,
