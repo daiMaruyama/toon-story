@@ -84,3 +84,10 @@ Plugins/VisualStudioTools/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# AIクライアントのMCP接続設定（個人設定・localhost 固定なので共有しない）
+/.mcp.json
+/.codex/
+/.cursor/mcp.json
+/.vscode/mcp.json
+/.gemini/settings.json
