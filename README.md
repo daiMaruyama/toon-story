@@ -25,6 +25,7 @@ Source/     ゲームロジック (C++)
     Variant_*/    UE テンプレート由来
 Config/     エンジン・プロジェクト設定
 Content/    アセット（別リポジトリを submodule として接続）
+Plugins/    エディタ拡張
 docs/       開発ドキュメント
 ```
 
