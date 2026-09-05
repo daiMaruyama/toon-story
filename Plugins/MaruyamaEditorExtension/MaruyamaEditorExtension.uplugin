@@ -1,0 +1,33 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "0.1",
+	"FriendlyName": "丸山拡張",
+	"Description": "MCP サーバーの開始 / 停止と、AI クライアント設定の生成をメインメニューから行うエディタ拡張。",
+	"Category": "ToonStory",
+	"CreatedBy": "daiMaruyama",
+	"CreatedByURL": "https://github.com/daiMaruyama/toon-story",
+	"DocsURL": "",
+	"MarketplaceURL": "",
+	"SupportURL": "",
+	"EditorOnly": true,
+	"CanContainContent": false,
+	"IsBetaVersion": false,
+	"IsExperimentalVersion": false,
+	"Installed": false,
+	"EnabledByDefault": false,
+	"Modules": [
+		{
+			"Name": "MaruyamaEditorExtension",
+			"Type": "Editor",
+			"LoadingPhase": "Default",
+			"TargetAllowList": [ "Editor" ]
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "ModelContextProtocol",
+			"Enabled": true
+		}
+	]
+}
