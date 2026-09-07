@@ -18,12 +18,21 @@
 
 ## 0. 事前に必要なもの
 
+共通:
+
 - Unreal Engine 5.8
+- Git
+- **`toon-story-content` へのアクセス権**（private のため招待が必要。持っていなければ @daiMaruyama に依頼）
+
+Windows:
+
 - Visual Studio 2022
   - ワークロード「**C++ によるゲーム開発**」
   - 個別コンポーネント「**Windows 10/11 SDK**」「**.NET Framework 4.6.2 targeting pack**」
-- Git
-- **`toon-story-content` へのアクセス権**（private のため招待が必要。持っていなければ @daiMaruyama に依頼）
+
+macOS:
+
+- Xcode（コマンドラインツールを含む。`xcode-select -p` がパスを返せば入っている）
 
 アクセス権が無いと clone 自体は通るが `Content/` が空になり、エディタが起動しない。
 
@@ -54,6 +63,8 @@ clone する**前**に 1 回（マシンごと）、clone した後に 5 行（c
 git config --global core.longpaths true
 ```
 
+**Windows のみ。** macOS にパス長の制限は無いので不要。
+
 Windows の既定ではパスが 260 文字を超えると失敗する。UE はアセット名とフォルダが深くなりやすく、
 プロジェクトを深い場所（`Documents/GitHub/...` など）に置くと届きうる。現状このリポジトリの最長パスは
 94 文字なので今すぐ問題になるわけではないが、アセットが増えてから踏むと `Filename too long` で
@@ -79,9 +90,15 @@ git -C Content checkout main
 
 下の 5 行は clone ごとのローカル設定なので、**環境を作り直すたびに実行する**。`core.longpaths` はマシン全体の設定なので 1 回でよい。
 
+`submodule.recurse` だけは `git config --global submodule.recurse true` としてマシン単位で入れてしまってもよい。
+これを忘れた clone では `git pull` しても `Content/` が古いまま取り残され、`git status` に
+`modified: Content (new commits)` という分かりにくい差分が出続ける（対処は「5. 最新を取り込む」）。
+
 ---
 
 ## 3. ビルド
+
+### Windows
 
 1. `ToonStory.uproject` を右クリック →「**Generate Visual Studio project files**」
 2. 生成された `ToonStory.sln` を開く
@@ -89,6 +106,19 @@ git -C Content checkout main
 4. F5 で起動、または `ToonStory.uproject` をダブルクリック
 
 `.sln` は Git 管理外（`.gitignore` 済み）なので、各自の環境で毎回生成する。
+
+### macOS
+
+`ToonStory.uproject` をダブルクリックするだけでよい。未ビルドのモジュールがあると
+「The following modules are missing or built with a different engine version」と聞かれるので **Yes**。
+そのままエディタが起動する。Xcode プロジェクトの生成は不要（C++ を Xcode で編集したいときだけ生成する）。
+
+ダイアログで失敗する場合は、ターミナルからビルドするとエラーが読める:
+
+```bash
+"/Users/Shared/Epic Games/UE_5.8/Engine/Build/BatchFiles/Mac/Build.sh" \
+  ToonStoryEditor Mac Development -project="$PWD/ToonStory.uproject"
+```
 
 ---
 
@@ -319,7 +349,9 @@ submodule を正式サポートしている。Commit ツールウィンドウで
 | Content で「HEAD detached」と出る | `git -C Content checkout main && git -C Content pull` |
 | Content でコミットしたのに GitHub に出ない | detached HEAD でコミットした。`git -C Content log` で SHA を控え、`git -C Content checkout main` してから `git -C Content cherry-pick <sha>` |
 | エディタが「アセットが見つからない」と言う | Content が古い。エディタを閉じて `git pull` |
-| 初回起動で「The following modules are missing or built with a different engine version」と出る | 正常。`Binaries/` は Git 管理外なので、clone 後の初回だけコンパイルが必要。**Yes** を押す。失敗したらエディタを閉じて Visual Studio から `Development Editor` / `Win64` でビルドする |
+| 初回起動で「The following modules are missing or built with a different engine version」と出る | 正常。`Binaries/` は Git 管理外なので、clone 後の初回だけコンパイルが必要。**Yes** を押す。失敗したら Windows は Visual Studio で `Development Editor` / `Win64`、macOS は「3. ビルド」の `Build.sh` |
+| pull した後だけ同じダイアログが出る | 他の人が C++ モジュールやプラグインを追加した。ソースだけ来てバイナリは各自の環境に無いので、これも **Yes** で正常 |
+| `git status` に `modified: Content (new commits)` が出る | `git pull` が Content の中身まで更新していない。`submodule.recurse` 未設定の clone で起きる。`git submodule update --init --recursive`（アセットを触る前なら `git -C Content checkout main && git -C Content merge --ff-only origin/main` でもよい）。**このとき `git add Content` でコミットしてはいけない。** Content を古い状態へ巻き戻す変更になる |
 | `Plugins/VisualStudioTools/` が勝手に増える | Visual Studio の UE 連携が入れてくる。`.gitignore` 済みなのでコミットされない。使わないならフォルダごと削除してよい。`ToonStory.uproject` に行が追加されていたら、それはコミットしない |
 | ビルドは通るがエディタでクラッシュ | `Binaries/` `Intermediate/` を削除して project files を再生成 |
 | `.sln` が Git の変更に出てくる | 出ないはず。出るなら `.gitignore` が効いていない。`git rm --cached ToonStory.sln` |
