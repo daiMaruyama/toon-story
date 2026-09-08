@@ -1,0 +1,6 @@
+# clangd は c_cpp_properties.json を読まないため、ここで補う。
+# UE が生成する response file には -std= が入っておらず、clangd の既定（C++17）で
+# UE 5.8 の Core ヘッダにある concept が解釈できずにパースが崩れる。
+CompileFlags:
+  Add:
+    - -std=c++20
