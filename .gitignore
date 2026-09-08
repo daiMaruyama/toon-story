@@ -43,6 +43,10 @@ Plugins/VisualStudioTools/
 .vsconfig
 *.xcodeproj
 *.xcworkspace
+*.code-workspace
+.ignore
+compile_commands.json
+.cache/
 *.sln
 *.slnx
 *.suo
