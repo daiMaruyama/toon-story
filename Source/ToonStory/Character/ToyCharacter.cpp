@@ -2,6 +2,7 @@
 
 #include "Components/CapsuleComponent.h"
 #include "Core/GazeFreezeSubsystem.h"
+#include "EnhancedInputComponent.h"
 #include "Core/ToyBoxPlayerState.h"
 #include "GameFramework/CharacterMovementComponent.h"
 
@@ -265,4 +266,29 @@ void AToyCharacter::ServerSetCollecting_Implementation(bool bActive)
 	}
 
 	bWantsToCollect = bActive;
+}
+
+void AToyCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
+{
+	Super::SetupPlayerInputComponent(PlayerInputComponent);
+
+	UEnhancedInputComponent* Input = Cast<UEnhancedInputComponent>(PlayerInputComponent);
+	if (!Input)
+	{
+		return;
+	}
+
+	if (RescueAction)
+	{
+		Input->BindAction(RescueAction, ETriggerEvent::Started, this, &AToyCharacter::OnRescuePressed);
+		Input->BindAction(RescueAction, ETriggerEvent::Completed, this, &AToyCharacter::OnRescueReleased);
+		Input->BindAction(RescueAction, ETriggerEvent::Canceled, this, &AToyCharacter::OnRescueReleased);
+	}
+
+	if (CollectAction)
+	{
+		Input->BindAction(CollectAction, ETriggerEvent::Started, this, &AToyCharacter::OnCollectPressed);
+		Input->BindAction(CollectAction, ETriggerEvent::Completed, this, &AToyCharacter::OnCollectReleased);
+		Input->BindAction(CollectAction, ETriggerEvent::Canceled, this, &AToyCharacter::OnCollectReleased);
+	}
 }

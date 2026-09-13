@@ -3,6 +3,7 @@
 #include "Character/ToyCharacter.h"
 #include "Combat/CarryComponent.h"
 #include "Core/GazeFreezeSubsystem.h"
+#include "EnhancedInputComponent.h"
 #include "Core/ToyBoxPlayerState.h"
 
 AHumanCharacter::AHumanCharacter()
@@ -103,5 +104,82 @@ void AHumanCharacter::ServerRelease_Implementation()
 	if (CarryComponent)
 	{
 		CarryComponent->ReleaseCarried();
+	}
+}
+
+void AHumanCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
+{
+	// 移動・視点・ジャンプはテンプレート側の割り当てをそのまま使う。
+	Super::SetupPlayerInputComponent(PlayerInputComponent);
+
+	UEnhancedInputComponent* Input = Cast<UEnhancedInputComponent>(PlayerInputComponent);
+	if (!Input)
+	{
+		return;
+	}
+
+	if (CaptureAction)
+	{
+		Input->BindAction(CaptureAction, ETriggerEvent::Started, this, &AHumanCharacter::RequestCaptureNearest);
+	}
+	if (StoreAction)
+	{
+		Input->BindAction(StoreAction, ETriggerEvent::Started, this, &AHumanCharacter::RequestStore);
+	}
+	if (ReleaseAction)
+	{
+		Input->BindAction(ReleaseAction, ETriggerEvent::Started, this, &AHumanCharacter::RequestRelease);
+	}
+}
+
+AToyCharacter* AHumanCharacter::FindCaptureTarget() const
+{
+	const UGazeFreezeSubsystem* Gaze = UGazeFreezeSubsystem::Get(this);
+	if (!Gaze)
+	{
+		return nullptr;
+	}
+
+	AToyCharacter* Best = nullptr;
+	float BestDot = GrabFacingDot;
+
+	for (const TWeakObjectPtr<AToyCharacter>& Entry : Gaze->GetToys())
+	{
+		AToyCharacter* Toy = Entry.Get();
+		if (!Toy)
+		{
+			continue;
+		}
+
+		const FVector Offset = Toy->GetActorLocation() - GetActorLocation();
+		if (Offset.Size() > GrabRange + GrabRangeTolerance)
+		{
+			continue;
+		}
+
+		// いちばん正面にいる相手を選ぶ。
+		const float Dot = FVector::DotProduct(GetActorForwardVector(), Offset.GetSafeNormal());
+		if (Dot > BestDot)
+		{
+			BestDot = Dot;
+			Best = Toy;
+		}
+	}
+
+	return Best;
+}
+
+void AHumanCharacter::RequestCaptureNearest()
+{
+	// 運搬中に押したら収納を試す。箱から離れていればサーバー側で弾かれる。
+	if (CarryComponent && CarryComponent->IsCarrying())
+	{
+		RequestStore();
+		return;
+	}
+
+	if (AToyCharacter* Target = FindCaptureTarget())
+	{
+		RequestCapture(Target);
 	}
 }

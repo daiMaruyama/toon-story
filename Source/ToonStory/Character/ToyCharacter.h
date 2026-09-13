@@ -1,9 +1,11 @@
 ﻿#pragma once
 
 #include "CoreMinimal.h"
-#include "GameFramework/Character.h"
+#include "ToonStoryCharacter.h"
 #include "Core/ToyBoxTypes.h"
 #include "ToyCharacter.generated.h"
+
+class UInputAction;
 
 /**
  * おもちゃ側の Pawn。
@@ -13,7 +15,7 @@
  * （仕様書「2. 視線凍結システム」）。
  */
 UCLASS()
-class AToyCharacter : public ACharacter
+class AToyCharacter : public AToonStoryCharacter
 {
 	GENERATED_BODY()
 
@@ -23,6 +25,7 @@ public:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void Tick(float DeltaSeconds) override;
+	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 
 	// PlayerState は Pawn より後に届くことがあるので、両方から bind を試みる。
 	virtual void PossessedBy(AController* NewController) override;
@@ -72,6 +75,13 @@ public:
 	 */
 	bool bWantsToRescue = false;
 
+	/** 箱を開ける / アイテムを拾う。どちらも押しっぱなしで進む。 */
+	UPROPERTY(EditAnywhere, Category = "Input")
+	TObjectPtr<UInputAction> RescueAction;
+
+	UPROPERTY(EditAnywhere, Category = "Input")
+	TObjectPtr<UInputAction> CollectAction;
+
 	/** 入力から呼ぶ。押している間 true、離したら false。 */
 	UFUNCTION(BlueprintCallable, Category = "ToyBox")
 	void RequestRescue(bool bActive);
@@ -92,6 +102,12 @@ public:
 	}
 
 protected:
+	// Enhanced Input の bind は引数無しの関数を要求するので、押下／離しで分ける。
+	void OnRescuePressed()  { RequestRescue(true); }
+	void OnRescueReleased() { RequestRescue(false); }
+	void OnCollectPressed()  { RequestCollect(true); }
+	void OnCollectReleased() { RequestCollect(false); }
+
 	UFUNCTION(Server, Reliable)
 	void ServerSetRescuing(bool bActive);
 

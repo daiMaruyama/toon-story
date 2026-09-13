@@ -1,11 +1,12 @@
 ﻿#pragma once
 
 #include "CoreMinimal.h"
-#include "GameFramework/Character.h"
+#include "ToonStoryCharacter.h"
 #include "HumanCharacter.generated.h"
 
 class AToyCharacter;
 class UCarryComponent;
+class UInputAction;
 
 /**
  * 人間側の Pawn。
@@ -14,7 +15,7 @@ class UCarryComponent;
  * 掴む・運ぶ・収納は UCarryComponent が持つ（M6 で追加）。
  */
 UCLASS()
-class AHumanCharacter : public ACharacter
+class AHumanCharacter : public AToonStoryCharacter
 {
 	GENERATED_BODY()
 
@@ -23,6 +24,7 @@ public:
 
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 
 	/**
 	 * 視線の始点と向き。
@@ -60,6 +62,27 @@ public:
 	/** 運搬の状態機械。掴む・運ぶ・収納はここが持つ。 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "ToyBox")
 	TObjectPtr<UCarryComponent> CarryComponent;
+
+	/** 掴む / 収納 / 手放す。IMC 側で割り当てる。 */
+	UPROPERTY(EditAnywhere, Category = "Input")
+	TObjectPtr<UInputAction> CaptureAction;
+
+	UPROPERTY(EditAnywhere, Category = "Input")
+	TObjectPtr<UInputAction> StoreAction;
+
+	UPROPERTY(EditAnywhere, Category = "Input")
+	TObjectPtr<UInputAction> ReleaseAction;
+
+	/**
+	 * 目の前のおもちゃから、掴む相手を選ぶ。
+	 * 選ぶのはクライアントでよい。成立の可否はサーバーが別に検証する。
+	 */
+	UFUNCTION(BlueprintPure, Category = "ToyBox")
+	AToyCharacter* FindCaptureTarget() const;
+
+	/** 入力から呼ぶ。相手は FindCaptureTarget() で選ぶ。 */
+	UFUNCTION(BlueprintCallable, Category = "ToyBox")
+	void RequestCaptureNearest();
 
 	/** 掴む。入力から呼ぶ。成立させるのはサーバー。 */
 	UFUNCTION(BlueprintCallable, Category = "ToyBox")

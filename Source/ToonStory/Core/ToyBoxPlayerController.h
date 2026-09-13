@@ -1,7 +1,7 @@
 ﻿#pragma once
 
 #include "CoreMinimal.h"
-#include "GameFramework/PlayerController.h"
+#include "ToonStoryPlayerController.h"
 #include "Core/ToyBoxTypes.h"
 #include "ToyBoxPlayerController.generated.h"
 
@@ -12,7 +12,7 @@
  * （仕様書「0. 設計上いちばん大事な原則」）。
  */
 UCLASS()
-class AToyBoxPlayerController : public APlayerController
+class AToyBoxPlayerController : public AToonStoryPlayerController
 {
 	GENERATED_BODY()
 
@@ -39,6 +39,21 @@ public:
 	 */
 	UFUNCTION(BlueprintPure, Category = "ToyBox")
 	bool IsLocalHost() const;
+
+	// --- デバッグ用のコンソールコマンド ---
+	// UI がまだ無い段階でも、~ キーのコンソールから一通り動かせるようにしておく。
+
+	/** ToyBoxStart : ホストがマッチを開始する。 */
+	UFUNCTION(Exec)
+	void ToyBoxStart();
+
+	/** ToyBoxTeam <0=おまかせ / 1=人間 / 2=おもちゃ> : 希望陣営を送る。 */
+	UFUNCTION(Exec)
+	void ToyBoxTeam(int32 Team);
+
+	/** ToyBoxStatus : 自分と全体の状態をログに出す。 */
+	UFUNCTION(Exec)
+	void ToyBoxStatus();
 
 	/**
 	 * アイテムの取り合いに負けたときにサーバーから届く。
