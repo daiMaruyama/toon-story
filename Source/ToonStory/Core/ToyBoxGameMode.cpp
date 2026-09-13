@@ -71,6 +71,26 @@ void AToyBoxGameMode::PostLogin(APlayerController* NewPlayer)
 	}
 }
 
+UClass* AToyBoxGameMode::GetDefaultPawnClassForController_Implementation(AController* InController)
+{
+	const AToyBoxPlayerState* PS = InController ? InController->GetPlayerState<AToyBoxPlayerState>() : nullptr;
+
+	if (PS)
+	{
+		if (PS->TeamId == ETeamId::Human && HumanPawnClass)
+		{
+			return HumanPawnClass;
+		}
+		if (PS->TeamId == ETeamId::Toy && ToyPawnClass)
+		{
+			return ToyPawnClass;
+		}
+	}
+
+	// ロビー中など陣営が決まる前は既定の Pawn で待たせる。
+	return Super::GetDefaultPawnClassForController_Implementation(InController);
+}
+
 void AToyBoxGameMode::Logout(AController* Exiting)
 {
 	if (HostController.Get() == Exiting)

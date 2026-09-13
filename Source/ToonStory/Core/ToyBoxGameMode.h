@@ -26,6 +26,9 @@ public:
 	virtual void PostLogin(APlayerController* NewPlayer) override;
 	virtual void Logout(AController* Exiting) override;
 
+	/** 陣営に応じて Pawn を出し分ける。陣営未割り当てならエンジン既定のまま。 */
+	virtual UClass* GetDefaultPawnClassForController_Implementation(AController* InController) override;
+
 	/**
 	 * ホストが「開始」を押したときに呼ぶ。要求元がホストでなければ何もしない。
 	 * @return 実際に開始したか。
@@ -51,6 +54,14 @@ protected:
 	/** 既定のマッチ設定。BP 側で差し替えられる。 */
 	UPROPERTY(EditDefaultsOnly, Category = "ToyBox")
 	FMatchSettings DefaultSettings;
+
+	/** 人間側の Pawn。BP で AHumanCharacter の子を指定する。 */
+	UPROPERTY(EditDefaultsOnly, Category = "ToyBox")
+	TSubclassOf<APawn> HumanPawnClass;
+
+	/** おもちゃ側の Pawn。BP で AToyCharacter の子を指定する。 */
+	UPROPERTY(EditDefaultsOnly, Category = "ToyBox")
+	TSubclassOf<APawn> ToyPawnClass;
 
 private:
 	AToyBoxGameState* GetToyBoxGameState() const;
