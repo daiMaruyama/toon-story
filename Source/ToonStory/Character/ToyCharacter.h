@@ -76,6 +76,16 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "ToyBox")
 	void RequestRescue(bool bActive);
 
+	/**
+	 * アイテムを拾おうとしているか（サーバーのみが読む）。
+	 * 箱を開ける操作とは別に持つ。箱とアイテムが近接していても取り違えない。
+	 */
+	bool bWantsToCollect = false;
+
+	/** 入力から呼ぶ。押している間 true、離したら false。 */
+	UFUNCTION(BlueprintCallable, Category = "ToyBox")
+	void RequestCollect(bool bActive);
+
 	bool IsFreezeBlocking(EFreezeBlock Block) const
 	{
 		return (FreezeBlocks & static_cast<uint8>(Block)) != 0;
@@ -84,6 +94,9 @@ public:
 protected:
 	UFUNCTION(Server, Reliable)
 	void ServerSetRescuing(bool bActive);
+
+	UFUNCTION(Server, Reliable)
+	void ServerSetCollecting(bool bActive);
 
 	/** PlayerState の bFrozen を自分に反映させる。 */
 	UFUNCTION()

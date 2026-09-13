@@ -40,6 +40,13 @@ public:
 	UFUNCTION(BlueprintPure, Category = "ToyBox")
 	bool IsLocalHost() const;
 
+	/**
+	 * アイテムの取り合いに負けたときにサーバーから届く。
+	 * 先着 1 人だけが成立するので、負けた側には理由を返してやる。
+	 */
+	UFUNCTION(Client, Reliable)
+	void ClientItemPickupFailed();
+
 protected:
 	UFUNCTION(Server, Reliable)
 	void ServerSetPreferredTeam(ETeamId Team);

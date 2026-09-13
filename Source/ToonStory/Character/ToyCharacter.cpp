@@ -106,6 +106,7 @@ void AToyCharacter::HandleToyStateChanged(EToyState NewToyState)
 		Movement->StopMovementImmediately();
 		Movement->DisableMovement();
 		bWantsToRescue = false;
+		bWantsToCollect = false;
 	}
 	else if (Movement->MovementMode == MOVE_None)
 	{
@@ -247,4 +248,21 @@ void AToyCharacter::ServerSetRescuing_Implementation(bool bActive)
 	}
 
 	bWantsToRescue = bActive;
+}
+
+void AToyCharacter::RequestCollect(bool bActive)
+{
+	ServerSetCollecting(bActive);
+}
+
+void AToyCharacter::ServerSetCollecting_Implementation(bool bActive)
+{
+	// 凍結中にアイテムを触れるかは EFreezeBlock::Interact 次第。v1 は禁止。
+	if (bActive && IsEffectivelyFrozen() && IsFreezeBlocking(EFreezeBlock::Interact))
+	{
+		bWantsToCollect = false;
+		return;
+	}
+
+	bWantsToCollect = bActive;
 }

@@ -55,3 +55,9 @@ void AToyBoxPlayerController::ServerApplySettings_Implementation(FMatchSettings 
 		GM->TryApplySettings(this, NewSettings);
 	}
 }
+
+void AToyBoxPlayerController::ClientItemPickupFailed_Implementation()
+{
+	// 演出は BP 側で。ここでは通知が届いたことだけを示す。
+	UE_LOG(LogToyBox, Verbose, TEXT("アイテムの取得に失敗（先を越された）"));
+}
