@@ -42,6 +42,15 @@ public:
 	UFUNCTION(BlueprintPure, Category = "ToyBox")
 	bool IsHost(const AController* Controller) const;
 
+	/**
+	 * おもちゃの状態が変わったときにサーバーで呼ばれる。
+	 * 勝敗は「状態が変化した瞬間だけ」評価する（仕様書「6. タイマーと勝敗判定」）。
+	 */
+	void NotifyToyStateChanged(AToyBoxPlayerState* ToyPlayerState);
+
+	/** 決着したら PostMatch へ移す。二重には呼ばれない。 */
+	void EndMatch(EMatchResult NewResult);
+
 protected:
 	/**
 	 * ロビーの全員に陣営を配る。
@@ -50,6 +59,9 @@ protected:
 	 * 開始を押した瞬間にまとめて配る（仕様書「3. 割り振りのタイミング」）。
 	 */
 	void AssignTeams();
+
+	/** 成立している勝利条件があれば決着させる。 */
+	void EvaluateWinConditions();
 
 	/** 既定のマッチ設定。BP 側で差し替えられる。 */
 	UPROPERTY(EditDefaultsOnly, Category = "ToyBox")

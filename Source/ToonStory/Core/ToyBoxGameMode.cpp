@@ -159,6 +159,43 @@ bool AToyBoxGameMode::TryStartMatch(AController* Requester)
 	return true;
 }
 
+void AToyBoxGameMode::NotifyToyStateChanged(AToyBoxPlayerState* /*ToyPlayerState*/)
+{
+	EvaluateWinConditions();
+}
+
+void AToyBoxGameMode::EvaluateWinConditions()
+{
+	AToyBoxGameState* GS = GetToyBoxGameState();
+	if (!GS || GS->Phase != EMatchPhase::InProgress)
+	{
+		return;
+	}
+
+	// 人間の勝利は Boxed だけを数える。
+	// 運搬中（Carried / Storing）を数に入れると、最後の1人を担いだ瞬間に
+	// 試合が終わり、救助の見せ場が消える（仕様書「6.」）。
+	const int32 NumToys = GS->CountPlayersOnTeam(ETeamId::Toy);
+	if (NumToys > 0 && GS->CountFreeToys() == 0)
+	{
+		EndMatch(EMatchResult::HumanWin_AllToysBoxed);
+	}
+}
+
+void AToyBoxGameMode::EndMatch(EMatchResult NewResult)
+{
+	AToyBoxGameState* GS = GetToyBoxGameState();
+	if (!GS || GS->Phase != EMatchPhase::InProgress)
+	{
+		return;
+	}
+
+	GS->SetResult(NewResult);
+	GS->SetPhase(EMatchPhase::PostMatch);
+
+	UE_LOG(LogToyBox, Log, TEXT("決着: %s"), *UEnum::GetValueAsString(NewResult));
+}
+
 void AToyBoxGameMode::AssignTeams()
 {
 	AToyBoxGameState* GS = GetToyBoxGameState();

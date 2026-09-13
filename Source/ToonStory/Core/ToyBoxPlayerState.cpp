@@ -1,5 +1,7 @@
 ﻿#include "Core/ToyBoxPlayerState.h"
 
+#include "Core/ToyBoxGameMode.h"
+#include "Engine/World.h"
 #include "Net/UnrealNetwork.h"
 
 AToyBoxPlayerState::AToyBoxPlayerState()
@@ -55,6 +57,15 @@ void AToyBoxPlayerState::SetToyState(EToyState NewToyState)
 
 	ToyState = NewToyState;
 	OnRep_ToyState();
+
+	// 勝敗の評価はここが唯一の入口。状態を変えた側が呼び忘れる余地を作らない。
+	if (UWorld* World = GetWorld())
+	{
+		if (AToyBoxGameMode* GM = World->GetAuthGameMode<AToyBoxGameMode>())
+		{
+			GM->NotifyToyStateChanged(this);
+		}
+	}
 }
 
 void AToyBoxPlayerState::SetFrozen(bool bNewFrozen)
