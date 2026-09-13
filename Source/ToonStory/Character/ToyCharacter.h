@@ -66,12 +66,25 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "ToyBox", meta = (Bitmask, BitmaskEnum = "/Script/ToonStory.EFreezeBlock"))
 	uint8 FreezeBlocks = static_cast<uint8>(ToyBox::FreezeBlocksV1);
 
+	/**
+	 * 箱を開けようとしているか（サーバーのみが読む）。
+	 * 離した瞬間に進行度が 0 に戻るので、押しっぱなしの状態をそのまま持つ。
+	 */
+	bool bWantsToRescue = false;
+
+	/** 入力から呼ぶ。押している間 true、離したら false。 */
+	UFUNCTION(BlueprintCallable, Category = "ToyBox")
+	void RequestRescue(bool bActive);
+
 	bool IsFreezeBlocking(EFreezeBlock Block) const
 	{
 		return (FreezeBlocks & static_cast<uint8>(Block)) != 0;
 	}
 
 protected:
+	UFUNCTION(Server, Reliable)
+	void ServerSetRescuing(bool bActive);
+
 	/** PlayerState の bFrozen を自分に反映させる。 */
 	UFUNCTION()
 	void HandleFrozenChanged(bool bNewFrozen);

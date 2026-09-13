@@ -200,3 +200,20 @@ void AToyCharacter::EnforceFreezeAnchor()
 		}
 	}
 }
+
+void AToyCharacter::RequestRescue(bool bActive)
+{
+	ServerSetRescuing(bActive);
+}
+
+void AToyCharacter::ServerSetRescuing_Implementation(bool bActive)
+{
+	// 凍結中に救助を続けられるかは EFreezeBlock::Rescue 次第。v1 は禁止。
+	if (bActive && IsEffectivelyFrozen() && IsFreezeBlocking(EFreezeBlock::Rescue))
+	{
+		bWantsToRescue = false;
+		return;
+	}
+
+	bWantsToRescue = bActive;
+}

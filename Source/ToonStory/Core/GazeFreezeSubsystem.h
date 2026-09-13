@@ -41,6 +41,10 @@ public:
 	/** 1対1の判定。視野角 → 遮蔽の順に見る。 */
 	bool IsWatchedByHuman(const AToyCharacter* Toy, const AHumanCharacter* Human) const;
 
+	/** 登録済みのおもちゃ／人間。全体を走査したい他システムのための読み取り口。 */
+	const TArray<TWeakObjectPtr<AToyCharacter>>& GetToys() const { return CachedToys; }
+	const TArray<TWeakObjectPtr<AHumanCharacter>>& GetHumans() const { return CachedHumans; }
+
 protected:
 	/** サーバー専用。登録済みの全おもちゃについて凍結状態を更新する。 */
 	void EvaluateAll();

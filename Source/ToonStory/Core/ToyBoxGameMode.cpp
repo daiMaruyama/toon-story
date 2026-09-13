@@ -1,5 +1,7 @@
 ﻿#include "Core/ToyBoxGameMode.h"
 
+#include "Character/ToyCharacter.h"
+#include "Combat/ToyBoxActor.h"
 #include "Core/ToyBoxGameState.h"
 #include "Core/ToyBoxPlayerController.h"
 #include "Core/ToyBoxPlayerState.h"
@@ -159,8 +161,17 @@ bool AToyBoxGameMode::TryStartMatch(AController* Requester)
 	return true;
 }
 
-void AToyBoxGameMode::NotifyToyStateChanged(AToyBoxPlayerState* /*ToyPlayerState*/)
+void AToyBoxGameMode::NotifyToyStateChanged(AToyBoxPlayerState* ToyPlayerState)
 {
+	// 収容されたら箱の中へ移す。箱が置かれていないレベルでも動くようにしておく。
+	if (ToyPlayerState && ToyPlayerState->ToyState == EToyState::Boxed)
+	{
+		if (AToyBoxActor* Box = AToyBoxActor::GetPrimaryBox(this))
+		{
+			Box->StoreToy(Cast<AToyCharacter>(ToyPlayerState->GetPawn()));
+		}
+	}
+
 	EvaluateWinConditions();
 }
 
