@@ -5,7 +5,9 @@
 #include "Core/ToyBoxGameState.h"
 #include "Core/ToyBoxPlayerController.h"
 #include "Core/ToyBoxPlayerState.h"
+#include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
+#include "TimerManager.h"
 
 namespace
 {
@@ -104,6 +106,9 @@ void AToyBoxGameMode::Logout(AController* Exiting)
 	}
 
 	Super::Logout(Exiting);
+
+	// Super の後に見る。PlayerArray から抜けたあとでないと本人を数えてしまう。
+	EvaluateWinConditions();
 }
 
 bool AToyBoxGameMode::IsHost(const AController* Controller) const
@@ -153,6 +158,14 @@ bool AToyBoxGameMode::TryStartMatch(AController* Requester)
 	GS->SetResult(EMatchResult::None);
 	GS->SetPhase(EMatchPhase::InProgress);
 
+	// 残り時間の表示は GameState のサーバー時刻から引くが、
+	// 実際に切る判断はサーバーのタイマー1本に任せる。
+	GetWorldTimerManager().SetTimer(
+		MatchTimerHandle,
+		FTimerDelegate::CreateUObject(this, &AToyBoxGameMode::OnMatchTimeExpired),
+		GS->Settings.MatchDuration,
+		false);
+
 	UE_LOG(LogToyBox, Log, TEXT("マッチ開始。人間 %d / おもちゃ %d、制限時間 %.0f 秒"),
 		GS->CountPlayersOnTeam(ETeamId::Human),
 		GS->CountPlayersOnTeam(ETeamId::Toy),
@@ -190,7 +203,37 @@ void AToyBoxGameMode::EvaluateWinConditions()
 	if (NumToys > 0 && GS->CountFreeToys() == 0)
 	{
 		EndMatch(EMatchResult::HumanWin_AllToysBoxed);
+		return;
 	}
+
+	// おもちゃ側: アイテムが必要数に到達。
+	if (GS->Settings.RequiredItems > 0 && GS->CollectedItems >= GS->Settings.RequiredItems)
+	{
+		EndMatch(EMatchResult::ToyWin_ItemsCollected);
+		return;
+	}
+
+	// おもちゃ側: 人間が全員離脱。
+	if (GS->CountPlayersOnTeam(ETeamId::Human) == 0)
+	{
+		EndMatch(EMatchResult::ToyWin_HumansLeft);
+	}
+}
+
+void AToyBoxGameMode::OnMatchTimeExpired()
+{
+	// 制限時間切れはおもちゃ側の勝利。
+	EndMatch(EMatchResult::ToyWin_TimeUp);
+}
+
+void AToyBoxGameMode::NotifyItemCollected(int32 NewTotal)
+{
+	if (AToyBoxGameState* GS = GetToyBoxGameState())
+	{
+		GS->SetCollectedItems(NewTotal);
+	}
+
+	EvaluateWinConditions();
 }
 
 void AToyBoxGameMode::EndMatch(EMatchResult NewResult)
@@ -200,6 +243,8 @@ void AToyBoxGameMode::EndMatch(EMatchResult NewResult)
 	{
 		return;
 	}
+
+	GetWorldTimerManager().ClearTimer(MatchTimerHandle);
 
 	GS->SetResult(NewResult);
 	GS->SetPhase(EMatchPhase::PostMatch);

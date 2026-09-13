@@ -51,6 +51,9 @@ public:
 	/** 決着したら PostMatch へ移す。二重には呼ばれない。 */
 	void EndMatch(EMatchResult NewResult);
 
+	/** アイテムが取得されたときにサーバーで呼ばれる。 */
+	void NotifyItemCollected(int32 NewTotal);
+
 protected:
 	/**
 	 * ロビーの全員に陣営を配る。
@@ -62,6 +65,11 @@ protected:
 
 	/** 成立している勝利条件があれば決着させる。 */
 	void EvaluateWinConditions();
+
+	/** 制限時間が切れたとき。おもちゃ側の勝利。 */
+	void OnMatchTimeExpired();
+
+	FTimerHandle MatchTimerHandle;
 
 	/** 既定のマッチ設定。BP 側で差し替えられる。 */
 	UPROPERTY(EditDefaultsOnly, Category = "ToyBox")
