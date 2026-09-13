@@ -21,7 +21,13 @@ public class ToonStory : ModuleRules
 			"Slate"
 		});
 
-		PrivateDependencyModuleNames.AddRange(new string[] { });
+		// セッション（ロビー / LAN / 将来の EOS・Steam）。
+		// OSSv2 (Online Services) は公式ドキュメント上ベータ扱いなので、
+		// 実績のある OSSv1 を使う（仕様書「10. Online Services の成熟度」）。
+		PrivateDependencyModuleNames.AddRange(new string[] {
+			"OnlineSubsystem",
+			"OnlineSubsystemUtils"
+		});
 
 		PublicIncludePaths.AddRange(new string[] {
 			"ToonStory"
