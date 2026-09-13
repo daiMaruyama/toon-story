@@ -1,7 +1,7 @@
 ﻿#pragma once
 
 #include "CoreMinimal.h"
-#include "GameFramework/GameModeBase.h"
+#include "GameFramework/GameMode.h"
 #include "Core/ToyBoxTypes.h"
 #include "ToyBoxGameMode.generated.h"
 
@@ -15,8 +15,15 @@ class AToyBoxPlayerState;
  * クライアントは「開始したい」と要求するだけで、成立させる権利は持たない
  * （仕様書「0. 確定した仕様 - 設計上いちばん大事な原則」）。
  */
+/**
+ * AGameModeBase ではなく AGameMode を継承している。
+ *
+ * 切断したプレイヤーの PlayerState を一定時間保持する仕組み
+ * （InactivePlayerArray / FindInactivePlayer）は AGameMode 側にしかなく、
+ * 「一瞬の切断は復帰させる」（仕様書「7.」）はこれに乗るのがいちばん素直なため。
+ */
 UCLASS()
-class AToyBoxGameMode : public AGameModeBase
+class AToyBoxGameMode : public AGameMode
 {
 	GENERATED_BODY()
 
@@ -48,8 +55,11 @@ public:
 	 */
 	void NotifyToyStateChanged(AToyBoxPlayerState* ToyPlayerState);
 
-	/** 決着したら PostMatch へ移す。二重には呼ばれない。 */
-	void EndMatch(EMatchResult NewResult);
+	/**
+	 * 決着したら PostMatch へ移す。二重には呼ばれない。
+	 * AGameMode::EndMatch() は引数を取らないので、名前を分けて隠蔽を避けている。
+	 */
+	void FinishMatch(EMatchResult NewResult);
 
 	/** アイテムが取得されたときにサーバーで呼ばれる。 */
 	void NotifyItemCollected(int32 NewTotal);
@@ -68,6 +78,9 @@ protected:
 
 	/** 制限時間が切れたとき。おもちゃ側の勝利。 */
 	void OnMatchTimeExpired();
+
+	/** 進行中に抜けたおもちゃの Pawn を、その場に残して無防備にする。 */
+	void LeaveDisconnectedToyInWorld(AController* Exiting);
 
 	FTimerHandle MatchTimerHandle;
 

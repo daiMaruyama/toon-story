@@ -16,6 +16,7 @@ void AToyBoxGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out
 	DOREPLIFETIME(AToyBoxGameState, Result);
 	DOREPLIFETIME(AToyBoxGameState, MatchEndServerTime);
 	DOREPLIFETIME(AToyBoxGameState, CollectedItems);
+	DOREPLIFETIME(AToyBoxGameState, bHostLeft);
 }
 
 float AToyBoxGameState::GetRemainingSeconds() const
@@ -115,6 +116,14 @@ void AToyBoxGameState::SetCollectedItems(int32 NewCount)
 	if (HasAuthority())
 	{
 		CollectedItems = FMath::Max(0, NewCount);
+	}
+}
+
+void AToyBoxGameState::SetHostLeft(bool bLeft)
+{
+	if (HasAuthority())
+	{
+		bHostLeft = bLeft;
 	}
 }
 

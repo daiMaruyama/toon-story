@@ -34,6 +34,22 @@ void AToyBoxPlayerState::CopyProperties(APlayerState* NewPlayerState)
 	}
 }
 
+void AToyBoxPlayerState::OverrideWith(APlayerState* OldPlayerState)
+{
+	Super::OverrideWith(OldPlayerState);
+
+	if (const AToyBoxPlayerState* Old = Cast<AToyBoxPlayerState>(OldPlayerState))
+	{
+		TeamId = Old->TeamId;
+		ToyState = Old->ToyState;
+		PreferredTeam = Old->PreferredTeam;
+		bWasHumanLastMatch = Old->bWasHumanLastMatch;
+
+		// 凍結だけは持ち越さない。復帰した瞬間の視線で決め直す。
+		bFrozen = false;
+	}
+}
+
 void AToyBoxPlayerState::SetTeamId(ETeamId NewTeamId)
 {
 	if (!HasAuthority() || TeamId == NewTeamId)

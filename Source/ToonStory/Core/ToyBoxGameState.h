@@ -1,7 +1,7 @@
 ﻿#pragma once
 
 #include "CoreMinimal.h"
-#include "GameFramework/GameStateBase.h"
+#include "GameFramework/GameState.h"
 #include "Core/ToyBoxTypes.h"
 #include "ToyBoxGameState.generated.h"
 
@@ -16,7 +16,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnMatchSettingsChanged, FMatchSetti
  * （仕様書「6. タイマーと勝敗判定」）。
  */
 UCLASS()
-class AToyBoxGameState : public AGameStateBase
+class AToyBoxGameState : public AGameState
 {
 	GENERATED_BODY()
 
@@ -41,6 +41,16 @@ public:
 	/** おもちゃ側が集めたアイテム数。全員が進捗を見られるべき情報なので GameState に置く。 */
 	UPROPERTY(Replicated, BlueprintReadOnly, Category = "ToyBox")
 	int32 CollectedItems = 0;
+
+	/**
+	 * ホストが抜けたか。
+	 *
+	 * リッスンサーバーである以上、ホストが落ちたら全員解散は避けられない。
+	 * できるのは黒画面で放り出さないことだけなので、理由を出すための旗を立てる
+	 * （仕様書「7. 解散の扱い」）。
+	 */
+	UPROPERTY(Replicated, BlueprintReadOnly, Category = "ToyBox")
+	bool bHostLeft = false;
 
 	UPROPERTY(BlueprintAssignable, Category = "ToyBox")
 	FOnMatchPhaseChanged OnMatchPhaseChanged;
@@ -69,6 +79,7 @@ public:
 	void SetResult(EMatchResult NewResult);
 	void SetMatchEndServerTime(float NewEndTime);
 	void SetCollectedItems(int32 NewCount);
+	void SetHostLeft(bool bLeft);
 
 protected:
 	UFUNCTION()

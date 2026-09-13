@@ -31,6 +31,15 @@ public:
 	/** Seamless Travel で陣営と抽選の重みを引き継ぐ。ToyState は新マッチで初期化するので写さない。 */
 	virtual void CopyProperties(APlayerState* NewPlayerState) override;
 
+	/**
+	 * 切断からの復帰で、元の PlayerState の内容を引き継ぐ。
+	 *
+	 * CopyProperties（Seamless Travel 用）とは別経路で、
+	 * AGameMode::FindInactivePlayer から呼ばれる。こちらは進行中のマッチへ
+	 * 戻ってくる場面なので、ToyState も含めて丸ごと戻す。
+	 */
+	virtual void OverrideWith(APlayerState* OldPlayerState) override;
+
 	/** 陣営。 */
 	UPROPERTY(ReplicatedUsing = OnRep_TeamId, BlueprintReadOnly, Category = "ToyBox")
 	ETeamId TeamId = ETeamId::Unassigned;

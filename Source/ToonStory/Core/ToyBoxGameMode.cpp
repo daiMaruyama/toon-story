@@ -48,6 +48,13 @@ AToyBoxGameMode::AToyBoxGameMode()
 	PlayerControllerClass = AToyBoxPlayerController::StaticClass();
 
 	bStartPlayersAsSpectators = false;
+
+	// ホストが「開始」を押すまで待つ。押さない限り WaitingToStart のまま。
+	bDelayedStart = true;
+
+	// ロビーから本編へ移るときに接続を張り直さない。
+	// PlayerState は CopyProperties 経由で引き継がれる。
+	bUseSeamlessTravel = true;
 }
 
 AToyBoxGameState* AToyBoxGameMode::GetToyBoxGameState() const
@@ -100,11 +107,22 @@ void AToyBoxGameMode::Logout(AController* Exiting)
 	if (HostController.Get() == Exiting)
 	{
 		// リッスンサーバーである以上、ホストが落ちたら全員解散は避けられない
-		// （仕様書「7. 解散の扱い」）。ここでは記録だけ残す。
+		// （仕様書「7. 解散の扱い」）。せめて理由は伝えられるように旗を立てる。
 		UE_LOG(LogToyBox, Warning, TEXT("ホスト %s が抜けた"), *GetNameSafe(Exiting));
 		HostController.Reset();
+
+		if (AToyBoxGameState* GS = GetToyBoxGameState())
+		{
+			GS->SetHostLeft(true);
+		}
 	}
 
+	// 進行中に抜けたおもちゃは、その場に残して無防備にする。
+	// 一時的に退場させるより実装が単純で、待つ側にも状況が分かる（仕様書「7.」）。
+	LeaveDisconnectedToyInWorld(Exiting);
+
+	// AGameMode::Logout が PlayerState を InactivePlayerArray へ退避する。
+	// 復帰時は FindInactivePlayer が拾い、OverrideWith で陣営と状態が戻る。
 	Super::Logout(Exiting);
 
 	// Super の後に見る。PlayerArray から抜けたあとでないと本人を数えてしまう。
@@ -154,6 +172,13 @@ bool AToyBoxGameMode::TryStartMatch(AController* Requester)
 
 	AssignTeams();
 
+	// エンジン側の MatchState も進めておく。
+	// 表示用のフェーズは EMatchPhase 側を正とし、こちらは土台としてだけ使う。
+	if (GetMatchState() == MatchState::WaitingToStart)
+	{
+		StartMatch();
+	}
+
 	GS->SetMatchEndServerTime(static_cast<float>(GS->GetServerWorldTimeSeconds()) + GS->Settings.MatchDuration);
 	GS->SetResult(EMatchResult::None);
 	GS->SetPhase(EMatchPhase::InProgress);
@@ -172,6 +197,31 @@ bool AToyBoxGameMode::TryStartMatch(AController* Requester)
 		GS->Settings.MatchDuration);
 
 	return true;
+}
+
+void AToyBoxGameMode::LeaveDisconnectedToyInWorld(AController* Exiting)
+{
+	const AToyBoxGameState* GS = GetToyBoxGameState();
+	if (!GS || GS->Phase != EMatchPhase::InProgress || !Exiting)
+	{
+		return;
+	}
+
+	const AToyBoxPlayerState* PS = Exiting->GetPlayerState<AToyBoxPlayerState>();
+	if (!PS || PS->TeamId != ETeamId::Toy)
+	{
+		return;
+	}
+
+	APawn* Pawn = Exiting->GetPawn();
+	if (!Pawn)
+	{
+		return;
+	}
+
+	// UnPossess しておかないと、コントローラーの破棄に巻き込まれて Pawn ごと消える。
+	Exiting->UnPossess();
+	Pawn->SetOwner(nullptr);
 }
 
 void AToyBoxGameMode::NotifyToyStateChanged(AToyBoxPlayerState* ToyPlayerState)
@@ -202,28 +252,28 @@ void AToyBoxGameMode::EvaluateWinConditions()
 	const int32 NumToys = GS->CountPlayersOnTeam(ETeamId::Toy);
 	if (NumToys > 0 && GS->CountFreeToys() == 0)
 	{
-		EndMatch(EMatchResult::HumanWin_AllToysBoxed);
+		FinishMatch(EMatchResult::HumanWin_AllToysBoxed);
 		return;
 	}
 
 	// おもちゃ側: アイテムが必要数に到達。
 	if (GS->Settings.RequiredItems > 0 && GS->CollectedItems >= GS->Settings.RequiredItems)
 	{
-		EndMatch(EMatchResult::ToyWin_ItemsCollected);
+		FinishMatch(EMatchResult::ToyWin_ItemsCollected);
 		return;
 	}
 
 	// おもちゃ側: 人間が全員離脱。
 	if (GS->CountPlayersOnTeam(ETeamId::Human) == 0)
 	{
-		EndMatch(EMatchResult::ToyWin_HumansLeft);
+		FinishMatch(EMatchResult::ToyWin_HumansLeft);
 	}
 }
 
 void AToyBoxGameMode::OnMatchTimeExpired()
 {
 	// 制限時間切れはおもちゃ側の勝利。
-	EndMatch(EMatchResult::ToyWin_TimeUp);
+	FinishMatch(EMatchResult::ToyWin_TimeUp);
 }
 
 void AToyBoxGameMode::NotifyItemCollected(int32 NewTotal)
@@ -236,7 +286,7 @@ void AToyBoxGameMode::NotifyItemCollected(int32 NewTotal)
 	EvaluateWinConditions();
 }
 
-void AToyBoxGameMode::EndMatch(EMatchResult NewResult)
+void AToyBoxGameMode::FinishMatch(EMatchResult NewResult)
 {
 	AToyBoxGameState* GS = GetToyBoxGameState();
 	if (!GS || GS->Phase != EMatchPhase::InProgress)
@@ -248,6 +298,12 @@ void AToyBoxGameMode::EndMatch(EMatchResult NewResult)
 
 	GS->SetResult(NewResult);
 	GS->SetPhase(EMatchPhase::PostMatch);
+
+	// エンジン側の MatchState も合わせて進める。
+	if (GetMatchState() == MatchState::InProgress)
+	{
+		EndMatch();
+	}
 
 	UE_LOG(LogToyBox, Log, TEXT("決着: %s"), *UEnum::GetValueAsString(NewResult));
 }
