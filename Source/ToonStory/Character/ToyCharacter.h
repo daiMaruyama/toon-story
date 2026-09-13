@@ -89,6 +89,10 @@ protected:
 	UFUNCTION()
 	void HandleFrozenChanged(bool bNewFrozen);
 
+	/** 捕獲中（Grabbed / Carried / Storing）は所有クライアント側でも移動を止める。 */
+	UFUNCTION()
+	void HandleToyStateChanged(EToyState NewToyState);
+
 	/** PlayerState の通知に bind する。二重 bind はしない。 */
 	void BindToPlayerState();
 

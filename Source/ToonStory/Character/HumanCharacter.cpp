@@ -1,12 +1,15 @@
 ﻿#include "Character/HumanCharacter.h"
 
 #include "Character/ToyCharacter.h"
+#include "Combat/CarryComponent.h"
 #include "Core/GazeFreezeSubsystem.h"
 #include "Core/ToyBoxPlayerState.h"
 
 AHumanCharacter::AHumanCharacter()
 {
 	PrimaryActorTick.bCanEverTick = false;
+
+	CarryComponent = CreateDefaultSubobject<UCarryComponent>(TEXT("CarryComponent"));
 
 	bReplicates = true;
 	SetReplicateMovement(true);
@@ -70,17 +73,35 @@ bool AHumanCharacter::ServerTryCapture_Validate(AToyCharacter* Target)
 
 void AHumanCharacter::ServerTryCapture_Implementation(AToyCharacter* Target)
 {
-	AToyBoxPlayerState* TargetPS = Target ? Target->GetPlayerState<AToyBoxPlayerState>() : nullptr;
-	if (!TargetPS || TargetPS->ToyState != EToyState::Free)
+	// 距離・正面・相手の状態はすべて CarryComponent 側で検証する。
+	if (CarryComponent)
 	{
-		return;
+		CarryComponent->BeginGrab(Target);
 	}
+}
 
-	if (!CanReachToy(Target))
+void AHumanCharacter::RequestStore()
+{
+	ServerTryStore();
+}
+
+void AHumanCharacter::ServerTryStore_Implementation()
+{
+	if (CarryComponent)
 	{
-		return;
+		CarryComponent->BeginStore();
 	}
+}
 
-	// M3 の簡易版。M6 で Grabbed → Carried → Storing を挟むようになる。
-	TargetPS->SetToyState(EToyState::Boxed);
+void AHumanCharacter::RequestRelease()
+{
+	ServerRelease();
+}
+
+void AHumanCharacter::ServerRelease_Implementation()
+{
+	if (CarryComponent)
+	{
+		CarryComponent->ReleaseCarried();
+	}
 }

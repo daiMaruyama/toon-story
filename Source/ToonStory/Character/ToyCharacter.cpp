@@ -78,8 +78,39 @@ void AToyCharacter::BindToPlayerState()
 		PS->OnFrozenChanged.AddDynamic(this, &AToyCharacter::HandleFrozenChanged);
 	}
 
+	if (!PS->OnToyStateChanged.IsAlreadyBound(this, &AToyCharacter::HandleToyStateChanged))
+	{
+		PS->OnToyStateChanged.AddDynamic(this, &AToyCharacter::HandleToyStateChanged);
+	}
+
 	// bind より前に届いていた値を取りこぼさない。
 	ApplyServerFreeze(PS->bFrozen);
+	HandleToyStateChanged(PS->ToyState);
+}
+
+void AToyCharacter::HandleToyStateChanged(EToyState NewToyState)
+{
+	UCharacterMovementComponent* Movement = GetCharacterMovement();
+	if (!Movement)
+	{
+		return;
+	}
+
+	const bool bCaptured =
+		NewToyState == EToyState::Grabbed ||
+		NewToyState == EToyState::Carried ||
+		NewToyState == EToyState::Storing;
+
+	if (bCaptured)
+	{
+		Movement->StopMovementImmediately();
+		Movement->DisableMovement();
+		bWantsToRescue = false;
+	}
+	else if (Movement->MovementMode == MOVE_None)
+	{
+		Movement->SetMovementMode(MOVE_Walking);
+	}
 }
 
 void AToyCharacter::HandleFrozenChanged(bool bNewFrozen)

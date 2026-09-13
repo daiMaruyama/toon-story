@@ -5,6 +5,7 @@
 #include "HumanCharacter.generated.h"
 
 class AToyCharacter;
+class UCarryComponent;
 
 /**
  * 人間側の Pawn。
@@ -56,15 +57,29 @@ public:
 	/** サーバーから見て、この相手を掴める位置関係にあるか。 */
 	bool CanReachToy(const AToyCharacter* Target) const;
 
-	/** 入力から呼ぶ。成立させるのはサーバー。 */
+	/** 運搬の状態機械。掴む・運ぶ・収納はここが持つ。 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "ToyBox")
+	TObjectPtr<UCarryComponent> CarryComponent;
+
+	/** 掴む。入力から呼ぶ。成立させるのはサーバー。 */
 	UFUNCTION(BlueprintCallable, Category = "ToyBox")
 	void RequestCapture(AToyCharacter* Target);
 
+	/** 箱の前で収納を始める。 */
+	UFUNCTION(BlueprintCallable, Category = "ToyBox")
+	void RequestStore();
+
+	/** 運搬・収納をやめる。おもちゃはその場に落ちる。 */
+	UFUNCTION(BlueprintCallable, Category = "ToyBox")
+	void RequestRelease();
+
 protected:
-	/**
-	 * M3 の簡易版。触れたら即 Boxed にする。
-	 * M6 で掴む → 運ぶ → 収納の3段階に置き換わる。
-	 */
 	UFUNCTION(Server, Reliable, WithValidation)
 	void ServerTryCapture(AToyCharacter* Target);
+
+	UFUNCTION(Server, Reliable)
+	void ServerTryStore();
+
+	UFUNCTION(Server, Reliable)
+	void ServerRelease();
 };
