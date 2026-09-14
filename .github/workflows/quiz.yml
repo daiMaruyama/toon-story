@@ -1,0 +1,69 @@
+name: quiz
+
+# PR が開かれた / 更新されたときに、変更内容の理解度チェック（/quiz）を
+# 通してあるかを確認する。ローカルの合格マーカーは push されないので、
+# PR 本文に書かれた結果行を検査する。
+#
+#   Quiz: 5/5 @ 2339663
+#
+# コミットを積み直すと head SHA が変わり、古い結果行では通らなくなる。
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: quiz
+    runs-on: ubuntu-latest
+    steps:
+      - name: 理解度チェックの結果を確認
+        env:
+          # 本文はコマンドに直接展開せず env 経由で渡す（script injection 対策）
+          BODY: ${{ github.event.pull_request.body }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -u
+          short=$(printf '%s' "$HEAD_SHA" | cut -c1-7)
+          hint="PR 本文に結果を 1 行入れてください（例: Quiz: 3/5 @ $short）。clone したディレクトリから /quiz（Codex は \$quiz）を実行して 50% 以上取ると、貼り付け用の行が出ます。"
+
+          matches=$(printf '%s' "$BODY" | tr -d '\r' | grep -iE '^Quiz: *([0-9]|10) */ *([1-9]|10) *@ *[0-9a-f]{7,40} *$' || true)
+          if [ -z "$matches" ]; then
+            echo "::error::理解度チェックの結果が見つかりません。$hint"
+            exit 1
+          fi
+
+          stale=0
+          printf '%s\n' "$matches" > /tmp/quiz-lines
+          while IFS= read -r line; do
+            [ -n "$line" ] || continue
+            sha=$(printf '%s' "$line" | sed -E 's/.*@ *//; s/ *$//' | tr 'A-Z' 'a-z')
+            correct=$(printf '%s' "$line" | sed -E 's/^[^:]+: *//; s/ *\/.*//; s/ //g')
+            total=$(printf '%s' "$line" | sed -E 's/.*\/ *//; s/ *@.*//; s/ //g')
+
+            case "$HEAD_SHA" in
+              "$sha"*) ;;
+              *) stale=1; continue ;;
+            esac
+
+            [ "$correct" -le "$total" ] || continue
+            # 合格ラインは 50% 以上
+            if [ $((correct * 2)) -lt "$total" ]; then
+              echo "::error::理解度チェックが合格ラインに届いていません（$correct/$total、50% 必要）。受け直してください。"
+              exit 1
+            fi
+
+            echo "OK: $line (head $short)"
+            exit 0
+          done < /tmp/quiz-lines
+
+          if [ "$stale" -eq 1 ]; then
+            echo "::error::理解度チェックの結果が古いコミットのものです。今の head は $short です。出題した差分と PR の中身がずれているので、受け直して結果行を更新してください。"
+            exit 1
+          fi
+
+          echo "::error::理解度チェックの結果を読み取れませんでした。$hint"
+          exit 1

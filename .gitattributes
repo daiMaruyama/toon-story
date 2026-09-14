@@ -17,6 +17,13 @@
 *.uproject text eol=lf
 *.uplugin  text eol=lf
 *.md       text eol=lf
+*.sh       text eol=lf
+*.json     text eol=lf
+*.yml      text eol=lf
+*.yaml     text eol=lf
+
+# git フックは sh で実行されるので CRLF にしない
+.agents/githooks/* text eol=lf
 *.txt      text eol=lf
 
 *.bat text eol=crlf

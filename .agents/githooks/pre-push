@@ -1,0 +1,58 @@
+#!/bin/sh
+# /quiz に合格していないコミットは push させない。
+# この clone からの通常の push を検査する。GitHub 上の操作や --no-verify は防げない。
+#
+# 有効化（clone ごとに 1 回）:
+#   git config core.hooksPath .agents/githooks
+#
+git_dir=$(git rev-parse --git-dir) || exit 1
+zero=0000000000000000000000000000000000000000
+status=0
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  # ブランチの削除は素通し
+  [ "$local_sha" = "$zero" ] && continue
+  # タグなどブランチ以外は素通し
+  case "$remote_ref" in
+    refs/heads/*) ;;
+    *) continue ;;
+  esac
+
+  # 合格記録は送信元ブランチに属する。別名で push しても同じ記録を使う。
+  case "$local_ref" in
+    refs/heads/*) branch=${local_ref#refs/heads/} ;;
+    *) branch=$(git symbolic-ref --quiet --short HEAD) || exit 1 ;;
+  esac
+
+  marker="$git_dir/quiz-pass/$(printf '%s' "$branch" | tr '/' '_')"
+  passed=''
+  score=''
+  if [ -f "$marker" ]; then
+    line=$(head -n 1 "$marker")
+    passed=$(printf '%s' "$line" | cut -d' ' -f1)
+    score=$(printf '%s' "$line" | cut -d' ' -f3)
+  fi
+
+  if [ "$passed" = "$local_sha" ] && printf '%s\n' "$score" | awk -F/ '
+    /^([0-9]|10)\/([1-9]|10)$/ && $1 <= $2 && $1 * 2 >= $2 { ok=1 }
+    END { exit !ok }
+  '; then
+    continue
+  fi
+
+  echo "" >&2
+  echo "  push を中止しました: $branch" >&2
+  if [ -n "$passed" ]; then
+    echo "  /quiz に合格したのは $(printf '%s' "$passed" | cut -c1-7)（$score）ですが、push しようとしているのは $(printf '%s' "$local_sha" | cut -c1-7) です。" >&2
+    echo "  記録が古いか点数が無効です。clone したディレクトリから /quiz を受け直してください。" >&2
+  else
+    echo "  このブランチはまだ /quiz に合格していません。" >&2
+    echo "  Claude Code なら /quiz、Codex なら \$quiz を実行してください。" >&2
+  fi
+  echo "" >&2
+  echo "  ブランチ名による免除はありません。本人がクイズに回答してください。" >&2
+  echo "" >&2
+  status=1
+done
+
+exit $status
