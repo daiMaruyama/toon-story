@@ -29,12 +29,14 @@ while read -r local_ref local_sha remote_ref remote_sha; do
   score=''
   if [ -f "$marker" ]; then
     line=$(head -n 1 "$marker")
-    passed=$(printf '%s' "$line" | cut -d' ' -f1)
-    score=$(printf '%s' "$line" | cut -d' ' -f3)
+    passed=$(printf '%s' "$line" | awk '{ print $1 }')
+    # 日時にスペースを含む書き方でも読めるよう、点数は後ろから 2 番目の欄を見る
+    score=$(printf '%s' "$line" | awk 'NF >= 4 { print $(NF - 1) }')
   fi
 
+  # クイズは 4 択 3 問固定。2 問以上で合格
   if [ "$passed" = "$local_sha" ] && printf '%s\n' "$score" | awk -F/ '
-    /^([0-9]|10)\/([1-9]|10)$/ && $1 <= $2 && $1 * 2 >= $2 { ok=1 }
+    /^[0-3]\/3$/ && $1 >= 2 { ok=1 }
     END { exit !ok }
   '; then
     continue
@@ -42,12 +44,15 @@ while read -r local_ref local_sha remote_ref remote_sha; do
 
   echo "" >&2
   echo "  push を中止しました: $branch" >&2
-  if [ -n "$passed" ]; then
-    echo "  /quiz に合格したのは $(printf '%s' "$passed" | cut -c1-7)（$score）ですが、push しようとしているのは $(printf '%s' "$local_sha" | cut -c1-7) です。" >&2
-    echo "  記録が古いか点数が無効です。clone したディレクトリから /quiz を受け直してください。" >&2
-  else
+  if [ -z "$passed" ]; then
     echo "  このブランチはまだ /quiz に合格していません。" >&2
     echo "  Claude Code なら /quiz、Codex なら \$quiz を実行してください。" >&2
+  elif [ "$passed" != "$local_sha" ]; then
+    echo "  /quiz に合格したのは $(printf '%s' "$passed" | cut -c1-7) ですが、push しようとしているのは $(printf '%s' "$local_sha" | cut -c1-7) です。" >&2
+    echo "  コミットが変わっているので、clone したディレクトリから /quiz を受け直してください。" >&2
+  else
+    echo "  記録の点数が有効ではありません（$score）。3 問中 2 問以上の合格が必要です。" >&2
+    echo "  clone したディレクトリから /quiz を受け直してください。" >&2
   fi
   echo "" >&2
   echo "  ブランチ名による免除はありません。本人がクイズに回答してください。" >&2
