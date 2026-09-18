@@ -7,10 +7,10 @@
 #include "ToonStoryGameMode.generated.h"
 
 /**
- *  Simple GameMode for a third person game
+ * Shared round lifecycle. Rule-specific modes decide winners and validate gameplay events.
  */
 UCLASS(abstract)
-class AToonStoryGameMode : public AGameModeBase
+class TOONSTORY_API AToonStoryGameMode : public AGameModeBase
 {
 	GENERATED_BODY()
 
@@ -18,7 +18,31 @@ public:
 	
 	/** Constructor */
 	AToonStoryGameMode();
+
+	/** Called by authoritative lobby/ready logic, not automatically by BeginPlay. */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Match")
+	bool TryStartRound();
+
+	/** Cancels without awarding a win. Disconnect policy belongs to the rule. */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Match")
+	bool AbortRound();
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Match", meta = (ClampMin = "0.1"))
+	float RoundDurationSeconds = 600.0f;
+
+protected:
+	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	virtual bool CanStartRound() const;
+	virtual void PrepareRound();
+	virtual void HandleTimeExpired();
+	bool FinishRound(FName WinningTeam, FName Reason);
+	/** All gameplay events check the deadline, even if the timer has not ticked yet. */
+	bool CanAcceptRoundEvent();
+	class AToonStoryGameState* GetToonGameState() const;
+
+private:
+	bool bStartingRound = false;
+	void CheckRoundDeadline();
+	FTimerHandle RoundDeadlineTimer;
 };
-
-
-
