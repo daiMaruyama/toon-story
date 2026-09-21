@@ -1,6 +1,6 @@
 # 試合基盤：実装と接続手順
 
-この変更は GameMode / GameState の土台です。マッチング・納品アクター・捕獲アクター・HUD は別途接続します。既存マップの GameMode やアセットは変更していません。
+GameMode / GameState の土台とメインループです。操作手順は [MAIN_LOOP.md](MAIN_LOOP.md) を参照してください。簡易HUDと専用テストマップを追加しました。マッチングサービス・納品アクター・捕獲アクターは別途接続します。
 
 ## 読む順番
 
@@ -17,7 +17,7 @@
 
 ```
 AGameModeBase
-  AToonStoryGameMode         Waiting → Playing → Finished、期限、終了の一意化
+  AToonStoryGameMode         Waiting → Countdown → Playing → Finished → マップ再読込
     ABatteryTagGameMode     納品・収監・救出を受けた勝敗判定
 
 AGameStateBase
@@ -38,8 +38,8 @@ AGameStateBase
 - 時間切れは `Human / TimeExpired`。
 - 救出で収監を解除。収監回数による脱落なし。
 - 人形0人では試合開始不可。
-- 試合の開始条件（Human人数・Readyなど）はロビー担当が追加確認し、`TryStartRound()` を呼ぶ。人形がいることだけで人数構成が完成したとは扱わない。
-- 1ワールドで1試合。再試合は新しいワールドをロードする想定で、同じワールドの状態リセットは未実装。
+- メインループ有効時は3人以上・全員Readyでカウントダウンし、自動開始する。
+- 結果表示後にサーバーが同じマップを再ロードして待機に戻る。同じワールドの数値だけをリセットする方式ではない。
 
 ## 未確定箇所の暫定実装
 
@@ -48,7 +48,7 @@ AGameStateBase
 1. **時刻の境界**：サーバーが処理する時刻が期限より前なら納品を認め、期限ちょうど以降は拒否。タイマーのコールバックが遅れていても同じ判定を行う。クライアントの入力時刻への巻き戻し補償はない。
 2. **納品と収監の競合**：サーバーのゲームスレッドで受理した順に処理。既に収監済みなら納品不可。終了が確定した後は別のイベントで結果を上書きしない。同一フレーム内のイベントを集めて優先順位を付ける方式ではない。
 3. **切断**：試合中の `Logout` は暫定的に勝者なしの `Aborted` とする。観戦者も含めて現状は中断する。登録PlayerStateが消失した場合も、次のルール処理または期限処理で中断。切断即敗北や再接続ルールはネットワーク担当と決める。
-4. **陣営**：PlayerStateの独自陣営型はまだないため、ロビー側がサーバー上で `RegisterToy()` した参加者をToyとして扱う。後でPlayerState担当の型につなぐ。クライアントから名簿を登録させない。
+4. **陣営**：独自PlayerStateに陣営を保持する。メインループでは接続順で最初の1人をHuman、残りをToyとする暫定方式。PlayerState担当と統合する際は二重管理を避ける。
 
 ## 他担当が呼ぶAPI
 
@@ -56,9 +56,9 @@ AGameStateBase
 
 | 関数 | 呼ぶ側と条件 |
 | --- | --- |
-| `RegisterToy(PlayerState)` | ロビーが陣営確定後、待機中に呼ぶ。同じPlayerStateの重複登録不可 |
-| `UnregisterToy(PlayerState)` | 待機中の退出・陣営変更。試合中は名簿を変更しない |
-| `TryStartRound()` | ロビーが必要人数・Readyなどを確認した後に呼ぶ |
+| `RegisterToy(PlayerState)` | メインループ無効時のみ、外部ロビーから待機中に登録 |
+| `UnregisterToy(PlayerState)` | メインループ無効時のみ、待機中に登録解除 |
+| `TryStartRound()` | メインループ有効時はカウントダウン完了時に内部で呼ぶ |
 | `TryRecordBatteryDeposit(PlayerState, BatteryId)` | 納品システムが所持・距離・操作成立をサーバー上で検証した後に呼ぶ |
 | `SetToyCaptured(PlayerState, true)` | 捕獲システムが収監を成立させたとき |
 | `SetToyCaptured(PlayerState, false)` | 救出システムが救出を成立させたとき |
@@ -95,11 +95,11 @@ HUD生成時は通知を購読し、**直後に現在値も読んで初期描画
 2. 必要に応じて専用のテスト用GameMode Blueprintを作り、親を `BatteryTagGameMode` にする。既存BPを複製・親変更する場合は、Pawn / Controller / Input設定を確認する。
 3. そのBPの Game State Class を `BatteryTagGameState` にする。
 4. テスト用マップの GameMode Override にそのBPを指定する。
-5. ロビー側からToyのPlayerStateを登録し、全員準備できたら `TryStartRound()` を呼ぶ。
+5. メインループ有効時は Player State Class を `ToonStoryPlayerState` に設定し、3人以上で各自Readyにする。詳細は `MAIN_LOOP.md`。
 6. テスト用に試合時間を短くして、納品・収監・時間切れを確認する。
 7. PIEのホスト＋クライアントで、各画面の状態が一致することを確認する。
 
-今回はアセット接続・複数プロセス通信の目視試験は未実施です。自動テストは一時ワールド内で本物のGameMode/GameStateを生成してルールを確認しますが、ネットワーク通信試験の代用にはなりません。
+専用アセットを接続してヘッドレス起動を確認しました。複数プロセス通信の目視試験は未実施です。自動テストは一時ワールド内で本物のGameMode/GameStateを生成してルールを確認しますが、ネットワーク通信試験の代用にはなりません。
 
 ## ビルドと自動テスト（このPC）
 
@@ -124,8 +124,8 @@ UEを閉じて、PowerShellで実行します。初回は新しいC++ファイ�
 
 ## 引き継ぎ
 
-- PlayerState / ロビー担当と陣営・開始条件を接続する。
+- PlayerState / ロビー担当と今回の陣営・Readyの型を統合する。
 - 納品 / 捕獲担当とサーバー側APIを接続する。
 - 期限境界・イベント競合・切断の暫定ルールをチームで承認または変更する。
-- テスト用BP・マップ・HUDを用意し、実通信で同期を確認する。
+- 作成済みのテスト用BP・マップ・HUDを使い、実通信で同期を確認する。
 - 読んで理解した後、対象ファイルだけコミット。クイズは本人が受ける。合格後にpushする。

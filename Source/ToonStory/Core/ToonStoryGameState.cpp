@@ -7,6 +7,12 @@ double AToonStoryGameState::GetRemainingSeconds() const
 		? FMath::Max(0.0, MatchStatus.EndServerTime - GetServerWorldTimeSeconds()) : 0.0;
 }
 
+double AToonStoryGameState::GetPhaseRemainingSeconds() const
+{
+	return MatchStatus.Phase != EToonMatchPhase::Waiting
+		? FMath::Max(0.0, MatchStatus.EndServerTime - GetServerWorldTimeSeconds()) : 0.0;
+}
+
 void AToonStoryGameState::SetMatchStatus(const FToonMatchStatus& NewStatus)
 {
 	if (!HasAuthority()) return;

@@ -8,7 +8,8 @@ enum class EToonMatchPhase : uint8
 {
 	Waiting,
 	Playing,
-	Finished
+	Finished,
+	Countdown
 };
 
 /** One replicated snapshot keeps phase, deadline and result together. */
@@ -30,4 +31,11 @@ struct FToonMatchStatus
 	/** Rule-defined identifier; the common foundation does not know battery rules. */
 	UPROPERTY(BlueprintReadOnly)
 	FName EndReason;
+
+	UPROPERTY(BlueprintReadOnly)
+	int32 ConnectedPlayers = 0;
+	UPROPERTY(BlueprintReadOnly)
+	int32 ReadyPlayers = 0;
+	UPROPERTY(BlueprintReadOnly)
+	int32 MinimumPlayers = 0;
 };

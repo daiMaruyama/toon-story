@@ -7,6 +7,9 @@
 #include "Engine/Engine.h"
 #include "GameFramework/PlayerState.h"
 #include "TimerManager.h"
+#include "Core/ToonStoryPlayerState.h"
+#include "ToonStoryPlayerController.h"
+#include "Engine/LocalPlayer.h"
 
 namespace ToonMatchTests
 {
@@ -26,6 +29,7 @@ namespace ToonMatchTests
 			World = UWorld::CreateWorld(EWorldType::Game, false, NAME_None, nullptr, true, ERHIFeatureLevel::Num, &Values);
 			GEngine->CreateNewWorldContext(EWorldType::Game).SetCurrentWorld(World);
 			Mode = World->SpawnActor<ABatteryTagGameMode>();
+			Mode->bEnableMatchLoop = false; // These cases exercise the rule independently of lobby integration.
 			Mode->PreInitializeComponents();
 			State = Mode->GetGameState<ABatteryTagGameState>();
 			ToyA = World->SpawnActor<APlayerState>();
@@ -44,6 +48,16 @@ namespace ToonMatchTests
 		{
 			Mode->RegisterToy(ToyA);
 			Mode->RegisterToy(ToyB);
+		}
+
+		AToonStoryPlayerController* JoinLobby()
+		{
+			AToonStoryPlayerController* Player = World->SpawnActor<AToonStoryPlayerController>();
+			Player->Player = NewObject<ULocalPlayer>(GEngine);
+			Player->PlayerState = World->SpawnActor<AToonStoryPlayerState>();
+			Player->PlayerState->SetIsOnlyASpectator(true); // Avoid spawning a pawn in this physics-free fixture.
+			Mode->PostLogin(Player);
+			return Player;
 		}
 
 		~FMatchWorld()
@@ -181,6 +195,66 @@ bool FToonInvalidParticipant::RunTest(const FString& Parameters)
 	TestFalse(TEXT("Destroyed participant aborts processing"), Test.Mode->TryRecordBatteryDeposit(Test.ToyA, FGuid::NewGuid()));
 	TestEqual(TEXT("No invented winner"), Test.State->GetMatchStatus().WinningTeam, NAME_None);
 	TestEqual(TEXT("Abort reason"), Test.State->GetMatchStatus().EndReason, FName(TEXT("Aborted")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FToonMainLoop, "ToonStory.Match.MainLoop",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FToonMainLoop::RunTest(const FString& Parameters)
+{
+	ToonMatchTests::FMatchWorld Test;
+	Test.Mode->bEnableMatchLoop = true;
+	Test.Mode->StartCountdownSeconds = 0.25f;
+	Test.Mode->ResultDisplaySeconds = 0.25f;
+	Test.Mode->RequiredBatteries = 1;
+	AToonStoryPlayerController* Human = Test.JoinLobby();
+	AToonStoryPlayerController* ToyA = Test.JoinLobby();
+	Test.Mode->SetPlayerReady(Human, true);
+	Test.Mode->SetPlayerReady(ToyA, true);
+	TestEqual(TEXT("Two players still wait"), Test.State->GetMatchStatus().Phase, EToonMatchPhase::Waiting);
+	AToonStoryPlayerController* ToyB = Test.JoinLobby();
+	TestEqual(TEXT("First player is Human"), Human->GetPlayerState<AToonStoryPlayerState>()->GetTeam(), EToonTeam::Human);
+	TestEqual(TEXT("Other player is Toy"), ToyB->GetPlayerState<AToonStoryPlayerState>()->GetTeam(), EToonTeam::Toy);
+	TestFalse(TEXT("Cannot bypass all-ready/countdown"), Test.Mode->TryStartRound());
+	TestTrue(TEXT("Third player ready"), Test.Mode->SetPlayerReady(ToyB, true));
+	TestEqual(TEXT("Countdown entered"), Test.State->GetMatchStatus().Phase, EToonMatchPhase::Countdown);
+	TestEqual(TEXT("Three ready"), Test.State->GetMatchStatus().ReadyPlayers, 3);
+	TestFalse(TEXT("Cannot skip countdown"), Test.Mode->TryStartRound());
+	Test.Mode->SetPlayerReady(ToyA, false);
+	TestEqual(TEXT("Unready cancels countdown"), Test.State->GetMatchStatus().Phase, EToonMatchPhase::Waiting);
+	Test.AdvanceFrame(0.3f);
+	TestEqual(TEXT("Cancelled timer cannot start"), Test.State->GetMatchStatus().Phase, EToonMatchPhase::Waiting);
+	Test.Mode->SetPlayerReady(ToyA, true);
+	Test.AdvanceFrame(0.3f);
+	TestEqual(TEXT("Automatically starts after countdown"), Test.State->GetMatchStatus().Phase, EToonMatchPhase::Playing);
+	TestFalse(TEXT("Ready locked during play"), Test.Mode->SetPlayerReady(ToyA, false));
+	TestTrue(TEXT("Toy deposits"), Test.Mode->TryRecordBatteryDeposit(ToyA->PlayerState, FGuid::NewGuid()));
+	TestEqual(TEXT("Result phase"), Test.State->GetMatchStatus().Phase, EToonMatchPhase::Finished);
+	TestTrue(TEXT("Result display deadline"), Test.State->GetPhaseRemainingSeconds() > 0.0);
+	Test.AdvanceFrame(0.3f);
+	TestEqual(TEXT("Queues world reload, not just score reset"), Test.World->NextURL, FString(TEXT("?Restart")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FToonLobbyLeave, "ToonStory.Match.LobbyLeave",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FToonLobbyLeave::RunTest(const FString& Parameters)
+{
+	ToonMatchTests::FMatchWorld Test;
+	Test.Mode->bEnableMatchLoop = true;
+	AToonStoryPlayerController* Human = Test.JoinLobby();
+	AToonStoryPlayerController* ToyA = Test.JoinLobby();
+	AToonStoryPlayerController* ToyB = Test.JoinLobby();
+	Test.Mode->SetPlayerReady(Human, true);
+	Test.Mode->SetPlayerReady(ToyA, true);
+	Test.Mode->SetPlayerReady(ToyB, true);
+	static_cast<AToonStoryGameMode*>(Test.Mode)->Logout(Human);
+	TestEqual(TEXT("Leave cancels countdown"), Test.State->GetMatchStatus().Phase, EToonMatchPhase::Waiting);
+	TestEqual(TEXT("Connected count reduced"), Test.State->GetMatchStatus().ConnectedPlayers, 2);
+	TestEqual(TEXT("Next participant becomes human"), ToyA->GetPlayerState<AToonStoryPlayerState>()->GetTeam(), EToonTeam::Human);
+	TestFalse(TEXT("Changed role requires ready again"), ToyA->GetPlayerState<AToonStoryPlayerState>()->IsMatchReady());
+	TestFalse(TEXT("Departed controller cannot ready"), Test.Mode->SetPlayerReady(Human, true));
+	TestEqual(TEXT("Toy roster rebuilt"), Test.State->GetProgress().TotalToys, 1);
 	return true;
 }
 

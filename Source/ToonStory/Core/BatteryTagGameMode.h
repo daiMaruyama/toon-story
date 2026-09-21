@@ -37,6 +37,7 @@ protected:
 	virtual void PrepareRound() override;
 	virtual void HandleTimeExpired() override;
 	virtual void Logout(AController* Exiting) override;
+	virtual void RebuildLobbyRoles() override;
 
 private:
 	bool IsRosterValid() const;

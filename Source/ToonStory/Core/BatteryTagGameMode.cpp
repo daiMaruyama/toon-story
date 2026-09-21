@@ -2,15 +2,20 @@
 #include "Core/BatteryTagGameState.h"
 #include "GameFramework/PlayerState.h"
 #include "GameFramework/Controller.h"
+#include "Core/ToonStoryPlayerState.h"
+#include "Core/ToonMatchHUD.h"
+#include "GameFramework/PlayerController.h"
 
 ABatteryTagGameMode::ABatteryTagGameMode()
 {
 	GameStateClass = ABatteryTagGameState::StaticClass();
+	bEnableMatchLoop = true;
+	HUDClass = AToonMatchHUD::StaticClass();
 }
 
 bool ABatteryTagGameMode::RegisterToy(APlayerState* Player)
 {
-	if (bProcessingRuleEvent) return false;
+	if (bEnableMatchLoop || bProcessingRuleEvent) return false;
 	TGuardValue<bool> EventGuard(bProcessingRuleEvent, true);
 	const AToonStoryGameState* State = GetToonGameState();
 	if (!HasAuthority() || !State || State->GetMatchStatus().Phase != EToonMatchPhase::Waiting
@@ -22,7 +27,7 @@ bool ABatteryTagGameMode::RegisterToy(APlayerState* Player)
 
 bool ABatteryTagGameMode::UnregisterToy(APlayerState* Player)
 {
-	if (bProcessingRuleEvent) return false;
+	if (bEnableMatchLoop || bProcessingRuleEvent) return false;
 	TGuardValue<bool> EventGuard(bProcessingRuleEvent, true);
 	const AToonStoryGameState* State = GetToonGameState();
 	if (!HasAuthority() || !State || State->GetMatchStatus().Phase != EToonMatchPhase::Waiting
@@ -43,7 +48,28 @@ bool ABatteryTagGameMode::IsRosterValid() const
 
 bool ABatteryTagGameMode::CanStartRound() const
 {
-	return !bProcessingRuleEvent && GetGameState<ABatteryTagGameState>() && RequiredBatteries > 0 && IsRosterValid();
+	return !bProcessingRuleEvent && GetGameState<ABatteryTagGameState>() && RequiredBatteries > 0 && IsRosterValid()
+		&& (!bEnableMatchLoop || GetLobbyPlayers().Num() >= 3);
+}
+
+void ABatteryTagGameMode::RebuildLobbyRoles()
+{
+	const AToonStoryGameState* State = GetToonGameState();
+	if (!State || State->GetMatchStatus().Phase != EToonMatchPhase::Waiting) return;
+	TGuardValue<bool> Guard(bProcessingRuleEvent, true);
+	Toys.Reset();
+	bool bHumanAssigned = false;
+	for (const auto& Entry : GetLobbyPlayers())
+	{
+		AToonStoryPlayerState* Player = Entry.IsValid() ? Entry->GetPlayerState<AToonStoryPlayerState>() : nullptr;
+		if (!Player) continue;
+		const EToonTeam Team = bHumanAssigned ? EToonTeam::Toy : EToonTeam::Human;
+		if (Player->GetTeam() != Team) Player->SetMatchReady(false);
+		Player->SetTeam(Team);
+		if (Team == EToonTeam::Toy) Toys.Add(Player, false);
+		bHumanAssigned = true;
+	}
+	PublishProgress();
 }
 
 void ABatteryTagGameMode::PrepareRound()
@@ -110,6 +136,7 @@ void ABatteryTagGameMode::HandleTimeExpired()
 
 void ABatteryTagGameMode::Logout(AController* Exiting)
 {
+	if (bEnableMatchLoop) { Super::Logout(Exiting); return; }
 	// Temporary fail-safe: don't award a win from a disappearing participant.
 	// Matchmaking owner must replace this with the agreed disconnect/rejoin policy.
 	const AToonStoryGameState* State = GetToonGameState();

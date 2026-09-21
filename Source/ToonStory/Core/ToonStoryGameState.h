@@ -19,6 +19,10 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Match")
 	double GetRemainingSeconds() const;
 
+	/** Countdown / round / result-screen remaining time, according to Phase. */
+	UFUNCTION(BlueprintPure, Category = "Match")
+	double GetPhaseRemainingSeconds() const;
+
 	UPROPERTY(BlueprintAssignable, Category = "Match")
 	FOnToonMatchStatusChanged OnMatchStatusChanged;
 
