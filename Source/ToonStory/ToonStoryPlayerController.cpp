@@ -7,7 +7,30 @@
 #include "InputMappingContext.h"
 #include "Blueprint/UserWidget.h"
 #include "ToonStory.h"
+#include "ToonStoryGameMode.h"
+#include "Core/ToonStoryPlayerState.h"
 #include "Widgets/Input/SVirtualJoystick.h"
+
+void AToonStoryPlayerController::MatchReady(bool bReady)
+{
+	ServerSetMatchReady(bReady);
+}
+
+void AToonStoryPlayerController::ToggleMatchReady()
+{
+	if (const AToonStoryPlayerState* State = GetPlayerState<AToonStoryPlayerState>())
+	{
+		MatchReady(!State->IsMatchReady());
+	}
+}
+
+void AToonStoryPlayerController::ServerSetMatchReady_Implementation(bool bReady)
+{
+	if (AToonStoryGameMode* Mode = GetWorld()->GetAuthGameMode<AToonStoryGameMode>())
+	{
+		Mode->SetPlayerReady(this, bReady);
+	}
+}
 
 void AToonStoryPlayerController::BeginPlay()
 {
@@ -36,6 +59,7 @@ void AToonStoryPlayerController::BeginPlay()
 void AToonStoryPlayerController::SetupInputComponent()
 {
 	Super::SetupInputComponent();
+	InputComponent->BindKey(EKeys::R, IE_Pressed, this, &AToonStoryPlayerController::ToggleMatchReady);
 
 	// only add IMCs for local player controllers
 	if (IsLocalPlayerController())

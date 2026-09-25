@@ -13,10 +13,20 @@ class UUserWidget;
  *  Basic PlayerController class for a third person game
  *  Manages input mappings
  */
-UCLASS(abstract)
+UCLASS()
 class AToonStoryPlayerController : public APlayerController
 {
 	GENERATED_BODY()
+
+public:
+	/** UI calls this on its own controller. Console: MatchReady 1 / MatchReady 0. */
+	UFUNCTION(BlueprintCallable, Exec, Category = "Match")
+	void MatchReady(bool bReady);
+
+private:
+	UFUNCTION(Server, Reliable)
+	void ServerSetMatchReady(bool bReady);
+	void ToggleMatchReady();
 	
 protected:
 
