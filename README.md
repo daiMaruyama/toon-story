@@ -34,7 +34,7 @@ Steam App ID 480を設定済みです。PIE用LAN設定への切替と実機手�
 | プラットフォーム | Windows |
 | 開発環境 | Windows (Visual Studio 2022) / macOS (Xcode) |
 | 開発期間 | 2026.09 - |
-| 制作人数 | 4 名 |
+| 制作人数 | 3 名 |
 
 ## 構成
 
