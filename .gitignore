@@ -56,6 +56,8 @@ compile_commands.json
 *.VC.opendb
 
 # Build output
+steam_appid.txt
+Builds/
 *.slo
 *.lo
 *.o
