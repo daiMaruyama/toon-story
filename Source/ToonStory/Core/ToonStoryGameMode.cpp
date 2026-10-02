@@ -4,5 +4,4 @@
 
 AToonStoryGameMode::AToonStoryGameMode()
 {
-	// stub
 }

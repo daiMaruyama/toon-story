@@ -9,7 +9,7 @@ if (!(Test-Path (Join-Path $ProjectRoot 'Content\Maps\Arena.umap'))) { throw 'Cr
 & $UAT BuildCookRun "-project=$Project" -noP4 -platform=Win64 -clientconfig=Development -build -cook -stage -pak -archive "-archivedirectory=$Destination" -map=/Game/Maps/Arena
 if ($LASTEXITCODE -ne 0) { throw "Packaging failed with code $LASTEXITCODE. Read the first UAT error." }
 if ([IO.File]::ReadAllText((Join-Path $ProjectRoot 'Config\DefaultEngine.ini')) -match 'DefaultPlatformService=Steam') {
-    # Development test only. Do not include this file in a Steam release upload.
+    # 開発テスト専用。後々消す予定。Steamで出すときには含めないようにする。
     $ExecutableDirectories = Get-ChildItem -LiteralPath $Destination -Filter 'ToonStory*.exe' -File -Recurse |
         Select-Object -ExpandProperty DirectoryName -Unique
     foreach ($Directory in $ExecutableDirectories) {

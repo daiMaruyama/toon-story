@@ -6,17 +6,15 @@
 #include "GameFramework/GameModeBase.h"
 #include "ToonStoryGameMode.generated.h"
 
-/**
- *  Simple GameMode for a third person game
- */
+/** 三人称ゲーム用のGameMode。 */
 UCLASS(abstract)
 class AToonStoryGameMode : public AGameModeBase
 {
 	GENERATED_BODY()
 
 public:
-	
-	/** Constructor */
+
+
 	AToonStoryGameMode();
 };
 

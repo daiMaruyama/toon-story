@@ -9,7 +9,7 @@ $Config = [IO.File]::ReadAllText($ConfigPath)
 $Service = if ($Mode -eq 'Steam') { 'Steam' } else { 'Null' }
 $Driver = if ($Mode -eq 'Steam') { '/Script/SteamSockets.SteamSocketsNetDriver' } else { '/Script/OnlineSubsystemUtils.IpNetDriver' }
 $Config = [regex]::Replace($Config, '(?m)^DefaultPlatformService=.*$', "DefaultPlatformService=$Service")
-# Use the same known driver as fallback; fail visibly instead of silently changing transport.
+# 接続方式の自動切替を避けるため、代替ドライバーにも同じものを指定する。
 $Definition = '+NetDriverDefinitions=(DefName="GameNetDriver",DriverClassName="' + $Driver + '",DriverClassNameFallback="' + $Driver + '")'
 $Config = [regex]::Replace($Config, '(?m)^\+NetDriverDefinitions=\(DefName="GameNetDriver"[^\r\n]*', $Definition)
 [IO.File]::WriteAllText($ConfigPath, $Config, [Text.UTF8Encoding]::new($false))

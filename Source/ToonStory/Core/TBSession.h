@@ -28,6 +28,8 @@ public:
 	void Join(int32 Index);
 	UFUNCTION(BlueprintCallable)
 	void Leave();
+	// 試合開始時に検索・招待からの新規参加を停止する（サーバー専用）。
+	void CloseLobby();
 	UFUNCTION(BlueprintPure)
 	bool IsBusy() const
 	{
@@ -55,8 +57,10 @@ private:
 	TArray<FOnlineSessionSearchResult> Results;
 	// 登録した完了通知を、終了時に解除するための識別子。
 	FDelegateHandle CreateSessionHandle, FindSessionsHandle, JoinSessionHandle, DestroySessionHandle,
-	    InviteAcceptedHandle, NetworkFailureHandle, TravelFailureHandle;
+	    InviteAcceptedHandle, NetworkFailureHandle, TravelFailureHandle, UpdateSessionHandle;
 	FTimerHandle CloseTimer;
+	FTimerHandle LobbyUpdateTimer;
+	void LobbyUpdated(FName Name, bool bSucceeded);
 	bool Acquire();
 	void Message(const FString& Text);
 	void Created(FName Name, bool bSucceeded);

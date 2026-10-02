@@ -6,6 +6,8 @@
 #include "Engine/World.h"
 #include "Engine/GameInstance.h"
 #include "GameFramework/PlayerController.h"
+#include "GameFramework/GameModeBase.h"
+#include "GameFramework/GameSession.h"
 #include "Kismet/GameplayStatics.h"
 #include "TimerManager.h"
 
@@ -13,7 +15,8 @@ namespace
 {
 	const FName GameKey(TEXT("TOYBOX_BUILD"));
 	const FString BuildTag(TEXT("ToonStory_FixedBox_20260930"));
-} // namespace
+	const FName LobbyKey(TEXT("LOBBY_OPEN"));
+}
 void UTBSession::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
@@ -29,6 +32,7 @@ void UTBSession::Deinitialize()
 	if (GetWorld())
 	{
 		GetWorld()->GetTimerManager().ClearTimer(CloseTimer);
+		GetWorld()->GetTimerManager().ClearTimer(LobbyUpdateTimer);
 	}
 	if (Sessions.IsValid())
 	{
@@ -37,6 +41,7 @@ void UTBSession::Deinitialize()
 		Sessions->ClearOnJoinSessionCompleteDelegate_Handle(JoinSessionHandle);
 		Sessions->ClearOnDestroySessionCompleteDelegate_Handle(DestroySessionHandle);
 		Sessions->ClearOnSessionUserInviteAcceptedDelegate_Handle(InviteAcceptedHandle);
+		Sessions->ClearOnUpdateSessionCompleteDelegate_Handle(UpdateSessionHandle);
 	}
 	if (GEngine)
 	{
@@ -78,6 +83,8 @@ bool UTBSession::Acquire()
 	    FOnDestroySessionCompleteDelegate::CreateUObject(this, &UTBSession::Destroyed));
 	InviteAcceptedHandle = Sessions->AddOnSessionUserInviteAcceptedDelegate_Handle(
 	    FOnSessionUserInviteAcceptedDelegate::CreateUObject(this, &UTBSession::Accepted));
+	UpdateSessionHandle = Sessions->AddOnUpdateSessionCompleteDelegate_Handle(
+	    FOnUpdateSessionCompleteDelegate::CreateUObject(this, &UTBSession::LobbyUpdated));
 	return true;
 }
 
@@ -101,17 +108,24 @@ void UTBSession::Host()
 	IOnlineSubsystem* OnlineSubsystem = Online::GetSubsystem(GetWorld());
 	const bool bIsLAN = OnlineSubsystem && OnlineSubsystem->GetSubsystemName() == FName(TEXT("NULL"));
 	FOnlineSessionSettings Settings;
-	Settings.NumPublicConnections = 8;
+	const auto* GameMode = GetWorld()->GetAuthGameMode();
+	if (!GameMode || !GameMode->GameSession || GameMode->GameSession->MaxPlayers < 2)
+	{
+		Message(TEXT("Hosting requires an offline/server world and MaxPlayers >= 2."));
+		return;
+	}
+	Settings.NumPublicConnections = GameMode->GameSession->MaxPlayers;
 	Settings.bIsLANMatch = bIsLAN;
 	Settings.bIsDedicated = false;
 	Settings.bShouldAdvertise = true;
-	Settings.bAllowJoinInProgress = true;
+	Settings.bAllowJoinInProgress = false;
 	Settings.bAllowInvites = true;
 	Settings.bUsesPresence = !bIsLAN;
 	Settings.bAllowJoinViaPresence = !bIsLAN;
 	Settings.bUseLobbiesIfAvailable = !bIsLAN;
 	Settings.BuildUniqueId = 2;
 	Settings.Set(GameKey, BuildTag, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
+	Settings.Set(LobbyKey, true, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
 	CurrentOperation = ESessionOperation::Creating;
 	Message(TEXT("Creating room..."));
 	if (!Sessions->CreateSession(0, NAME_GameSession, Settings))
@@ -171,6 +185,49 @@ void UTBSession::Find()
 	}
 }
 
+// 更新失敗時は再試行する。更新待ちでもGameModeのPreLoginが試合中参加を拒否する。
+void UTBSession::CloseLobby()
+{
+	if (!GetWorld() || !GetWorld()->GetAuthGameMode() || !Sessions.IsValid() ||
+	    CurrentOperation != ESessionOperation::Idle)
+	{
+		return;
+	}
+	auto* Current = Sessions->GetSessionSettings(NAME_GameSession);
+	if (!Current)
+	{
+		return; // PIEの直接接続にはオンラインセッションがない。
+	}
+	FOnlineSessionSettings Settings = *Current;
+	Settings.bShouldAdvertise = false;
+	Settings.bAllowJoinInProgress = false;
+	Settings.bAllowInvites = false;
+	Settings.bAllowJoinViaPresence = false;
+	Settings.bAllowJoinViaPresenceFriendsOnly = false;
+	Settings.Set(LobbyKey, false, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
+	if (!Sessions->UpdateSession(NAME_GameSession, Settings, true))
+	{
+		LobbyUpdated(NAME_GameSession, false);
+	}
+}
+
+void UTBSession::LobbyUpdated(FName Name, bool bSucceeded)
+{
+	if (Name != NAME_GameSession || !GetWorld() || CurrentOperation != ESessionOperation::Idle)
+	{
+		return;
+	}
+	if (!bSucceeded)
+	{
+		Message(TEXT("Could not close room advertisement; retrying."));
+		GetWorld()->GetTimerManager().SetTimer(LobbyUpdateTimer, this, &UTBSession::CloseLobby, 2.f, false);
+	}
+	else
+	{
+		GetWorld()->GetTimerManager().ClearTimer(LobbyUpdateTimer);
+	}
+}
+
 void UTBSession::Found(bool bSucceeded)
 {
 	if (CurrentOperation != ESessionOperation::Finding)
@@ -188,7 +245,10 @@ void UTBSession::Found(bool bSucceeded)
 	for (const auto& SearchResult : Search->SearchResults)
 	{
 		FString Tag;
-		if (!SearchResult.IsValid() || !SearchResult.Session.SessionSettings.Get(GameKey, Tag) || Tag != BuildTag)
+		bool bLobbyOpen = false;
+		if (!SearchResult.IsValid() || !SearchResult.Session.SessionSettings.Get(GameKey, Tag) || Tag != BuildTag ||
+		    !SearchResult.Session.SessionSettings.Get(LobbyKey, bLobbyOpen) || !bLobbyOpen ||
+		    SearchResult.Session.NumOpenPublicConnections <= 0)
 		{
 			continue;
 		}
@@ -223,6 +283,13 @@ void UTBSession::BeginJoin(const FOnlineSessionSearchResult& SearchResult)
 	if (Sessions->GetNamedSession(NAME_GameSession))
 	{
 		Message(TEXT("TBLeave before joining another room."));
+		return;
+	}
+	bool bLobbyOpen = false;
+	if (!SearchResult.Session.SessionSettings.Get(LobbyKey, bLobbyOpen) || !bLobbyOpen ||
+	    SearchResult.Session.NumOpenPublicConnections <= 0)
+	{
+		Message(TEXT("Room is closed or full. TBFind to refresh."));
 		return;
 	}
 	CurrentOperation = ESessionOperation::Joining;
@@ -277,7 +344,7 @@ void UTBSession::Accepted(bool bSucceeded, int32 LocalUser, TSharedPtr<const FUn
 // 処理中の非同期操作は取り消さず、完了を待ってから退出してもらう。
 void UTBSession::Leave()
 {
-	// Waiting for a create/join callback avoids creating an orphaned session after Leave.
+	// 作成・参加の完了を待ち、退出後にセッションが残るのを防ぐ。
 	if (CurrentOperation == ESessionOperation::Closing)
 	{
 		return;
@@ -293,6 +360,7 @@ void UTBSession::Leave()
 		return;
 	}
 	CurrentOperation = ESessionOperation::Closing;
+	GetWorld()->GetTimerManager().ClearTimer(LobbyUpdateTimer);
 	Message(TEXT("Leaving room..."));
 	if (Sessions->GetNamedSession(NAME_GameSession))
 	{
@@ -335,12 +403,18 @@ void UTBSession::ReturnOffline()
 // 自分のWorldの通信失敗だけを扱い、通知後に通常の退出処理へ進む。
 void UTBSession::NetworkFailed(UWorld* World, UNetDriver* Driver, ENetworkFailure::Type Type, const FString& Error)
 {
-	if (World != GetWorld())
+	if (!World || World != GetWorld())
+	{
+		return;
+	}
+	// サーバー側での単一クライアント切断はLogoutが扱う。ホストの部屋は閉じない。
+	if (World->GetNetMode() != NM_Client &&
+	    (Type == ENetworkFailure::ConnectionLost || Type == ENetworkFailure::ConnectionTimeout))
 	{
 		return;
 	}
 	Message(FString::Printf(TEXT("Network failure: %s"), *Error));
-	// Keep the reason for a moment, then run normal session cleanup. No fake reconnect.
+	// 切断理由を表示してから退出する。
 	if (CurrentOperation == ESessionOperation::Idle)
 	{
 		World->GetTimerManager().SetTimer(CloseTimer, FTimerDelegate::CreateUObject(this, &UTBSession::Leave), 2.f,

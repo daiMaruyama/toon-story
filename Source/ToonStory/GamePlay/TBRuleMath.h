@@ -24,10 +24,12 @@ namespace TBRuleMath
 		return Next > 1.f ? 1.f : Next;
 	}
 
-	// 追加の救助者1人につき、基準速度の50%を加える。
-	inline float RescueRate(int N, float Seconds)
+	// 追加の救助者1人につき、指定割合を基準速度へ加える。
+	inline float RescueRate(int N, float Seconds, float AdditionalBonus)
 	{
-		return N > 0 ? (1.f + .5f * (N - 1)) / (Seconds > .1f ? Seconds : .1f) : 0.f;
+		return N > 0
+		           ? (1.f + (AdditionalBonus > 0.f ? AdditionalBonus : 0.f) * (N - 1)) / (Seconds > .1f ? Seconds : .1f)
+		           : 0.f;
 	}
 
 	// 扉の状態はなく、全員を収納すると人間の勝利。
@@ -57,4 +59,4 @@ namespace TBRuleMath
 		}
 		return HumansWin(Toys, Boxed) ? EWinReason::AllToysBoxed : EWinReason::None;
 	}
-} // namespace TBRuleMath
+}
