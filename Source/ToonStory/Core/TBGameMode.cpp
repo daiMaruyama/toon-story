@@ -37,10 +37,10 @@ void ATBGameMode::BeginPlay()
 	}
 	if (auto* MatchInfo = TB::GS(GetWorld()))
 	{
-		for (TActorIterator<ATBBox> It(GetWorld()); It; ++It)
+		TActorIterator<ATBBox> It(GetWorld());
+		if (It)
 		{
 			MatchInfo->Box = *It;
-			break;
 		}
 	}
 }
