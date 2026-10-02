@@ -1,0 +1,24 @@
+BasedOnStyle: Microsoft
+UseTab: ForIndentation
+IndentWidth: 4
+TabWidth: 4
+ColumnLimit: 120
+BreakBeforeBraces: Allman
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Never
+InsertBraces: true
+SortIncludes: Never
+IndentCaseLabels: true
+AccessModifierOffset: -4
+PointerAlignment: Left
+ReferenceAlignment: Left
+NamespaceIndentation: All
+StatementMacros:
+  - UPROPERTY
+  - UFUNCTION
+  - UCLASS
+  - USTRUCT
+  - UENUM
+  - GENERATED_BODY
