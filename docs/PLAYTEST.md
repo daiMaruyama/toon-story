@@ -1,17 +1,15 @@
-# 試遊手順（2026-09-30・現在の仕様）
+# 試遊手順
 
-このページが最新です。ZIP由来の文書にある扉開閉・時間切れでおもちゃ勝利の記述は旧仕様です。
+ルールの数値は Notion の仕様を参照してください。このページのコマンド引数は動作確認用の例です。
+制限時間切れ・全員収納で人間勝利、時間内の必要アイテム収集でおもちゃ勝利となります。
+箱の救助は外側の操作位置で行い、完了すると仲間が箱外へ移動します。
 
-確認状況: Windows Developmentのゲーム本体とエディタ用ビルド、ルール単体テストは成功しています。Arenaは作成済みで、保存後の再読み込み・TBGameMode・照明3種類を検証しました。画面上の見た目、パッケージ作成、PIEでの操作、Steam実接続は未検証です。
+## ビルド
 
-## ルール
-
-- 全員一人称。人間は450cm/s、おもちゃは350cm/s、運搬中は300cm/s。
-- 制限時間0で人間勝利。時間が残っている間に必要アイテムを取得するとおもちゃ勝利。全員収納でも人間勝利。
-- 箱は固定壁で閉じており、扉の開閉・閉鎖操作・自力脱出はありません。
-- 自由なおもちゃが外の操作位置でEを押し続けると救助。1人10秒、複数人で加速。完了したら箱外へ移動します。移動先が塞がっている場合、その対象は残して再試行します。
-- おもちゃ同士は衝突します。人間とおもちゃ、人間同士はすり抜けます。運搬中の対象は衝突しません。
-- 新しい通信識別子を使うため、旧ビルドと混ぜず、全員に同じパッケージを配ってください。
+```powershell
+.\Scripts\BuildEditor.ps1 -EngineRoot 'C:\Program Files\Epic Games\UE_5.8'
+.\Scripts\PackageWindows.ps1 -EngineRoot 'C:\Program Files\Epic Games\UE_5.8'
+```
 
 ## UE側で最初に用意するもの
 
@@ -27,7 +25,7 @@
 4. `/Game/Maps/Arena`、つまり `Content/Maps/Arena.umap` に保存する。
 5. Maps & Modesの既定マップがArena、既定GameModeがTBGameModeであることを確認する（設定ファイルは反映済み）。
 
-床・壁・箱・アイテム8個・開始位置8個・仮キャラクターはC++がEngine標準のCube/Sphereで生成します。床やPlayerStartを追加する必要はありません。新しいモデル、アニメーション、外部プラグインの購入は不要です。警報音だけは未設定なので、表示のみでテストできます。
+床・壁・箱・検証用アイテム・定員分の開始位置・仮キャラクターはC++がEngine標準のCube/Sphereで生成します。床やPlayerStartを追加する必要はありません。警報音だけは未設定なので、表示のみでテストできます。
 
 Contentはサブモジュールです。追加したArenaはContent側でコミットし、その後に親リポジトリの参照を更新してください。既存マップは変更していません。
 
@@ -51,8 +49,8 @@ TBPrefer 1
 おもちゃ役のウィンドウで `TBPrefer 2`。全員R、ホストF5で開始。設定変更後はReadyが解除されるので、Rを押し直します。
 
 - WASD移動、マウス視点、Spaceジャンプ。
-- 人間: Eで捕獲、箱の外の小さな操作マーカーでE長押し3秒で収納、Qで落とす。
-- おもちゃ: アイテムに3秒接触して取得、箱の操作マーカーでE長押しして救助。
+- 人間: Eで捕獲、箱の外の小さな操作マーカーでE長押しで収納、Qで落とす。
+- おもちゃ: アイテムに接触し続けて取得、箱の操作マーカーでE長押しして救助。
 - 時間切れを手早く試すなら次の試合で `TBRules 1 2 10 5`。
 - 2人なら `TBRules 1 1 60 5`。ただし唯一のおもちゃを収納すると勝利が確定し、救助の検証はできません。
 - 結果画面から次の試合を試すときはPIEを停止し、再度Play。
@@ -82,11 +80,14 @@ TBPrefer 1
 
 接続できない場合は `-log` を付けて起動し、`LogOnline`・`STEAM`・`SteamSockets`と `[ToyBoxSession]` を確認します。Steamログイン、同じビルド/モード、Arenaの保存とCook、Windows Firewallの許可を確認してください。LANに切り替えた場合は再パッケージが必要です。
 
-手元のUE5.8には `Engine/Binaries/ThirdParty/Steamworks/Steamv164/Win64/steam_api64.dll` が存在します。初回テストに向けたSteamworks SDKの差し替えは不要です。配布先でDLLエラーが出る場合はパッケージ全体のコピーを確認してください。
 
-## 公式資料
+## 設定と切断時の確認
 
-- [Epic: Online Subsystem Steam（App ID 480、steam_appid.txt）](https://dev.epicgames.com/documentation/unreal-engine/online-subsystem-steam-interface-in-unreal-engine)
-- [Epic: Steam Sockets（プラグインとNetDriver）](https://dev.epicgames.com/documentation/unreal-engine/using-steam-sockets-in-unreal-engine)
+- 定員は `Config/DefaultGame.ini` の `[/Script/Engine.GameSession] MaxPlayers` を参照します。変更後は再起動してください。
+- 救助の加速割合は `TBBox` の `AdditionalRescuerBonus` で調整できます。自動生成する箱を調整する場合は `TBBox` のBlueprintを作成し、使用するGameModeの `BoxClass` に指定します。
+- 試合開始後は部屋の募集・招待を閉じます。開始前に取得した検索結果からの参加もサーバーが拒否します。
+- 非ホストが退出しても両陣営が残っていれば継続します。最後の人間が退出するとおもちゃ勝利、最後のおもちゃが退出すると人間勝利です。結果後も部屋は自動解散しません。
+- ホストが終了すると参加者は通信失敗後に退出します。ホスト移譲・途中参加・再接続には対応していません。
+- `r.DefaultFeature.AutoExposure=False` は、Arenaで視線や遮蔽物による凍結を確認するとき、視点方向による明るさの変化を抑えるための設定です。全マップに適用されるため、本番マップの照明調整時に見直します。
 
-旧 `Profiles/Steam` の設定例を追加コピーする必要はありません。現在は `SetOnlineMode.ps1` でDefaultEngine.iniを切り替えます。
+実機での確認は [受入テスト](ACCEPTANCE_TESTS.md) に沿って行ってください。
