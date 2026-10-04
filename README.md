@@ -23,6 +23,7 @@ Source/     ゲームロジック (C++)
     GamePlay/     捕獲・収納・救助・収集、共通ルール計算
     UI/           HUD
     Data/         陣営・試合状態の型、設定
+    Tests/        保存済みステージ・再戦のAutomationテスト
     ToonStory.*   モジュール設定
 Config/     エンジン・プロジェクト設定
 Content/    アセット（別リポジトリを submodule として接続）
@@ -53,3 +54,4 @@ git clone --recurse-submodules https://github.com/daiMaruyama/toon-story.git
 
 - [試遊手順](docs/PLAYTEST.md)
 - [受入テスト](docs/ACCEPTANCE_TESTS.md)
+- [UEエディタでのステージ編集](docs/STAGE_EDITING.md)

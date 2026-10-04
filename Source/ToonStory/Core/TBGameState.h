@@ -13,6 +13,10 @@ class TOONSTORY_API ATBGameState : public AGameStateBase
 	GENERATED_BODY()
 public:
 	UPROPERTY(Replicated, BlueprintReadOnly)
+	FString StageName;
+	UPROPERTY(Replicated, BlueprintReadOnly)
+	int32 PlayerLimit = 0;
+	UPROPERTY(Replicated, BlueprintReadOnly)
 	FTBSettings Settings;
 	UPROPERTY(Replicated, BlueprintReadOnly)
 	ETBPhase Phase = ETBPhase::Lobby;
