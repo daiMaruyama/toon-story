@@ -9,11 +9,13 @@
 #include "Core/TBGameHelpers.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/InputComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
+#include "GameFramework/SpringArmComponent.h"
 #include "Net/UnrealNetwork.h"
 #include "UObject/ConstructorHelpers.h"
 
@@ -29,6 +31,8 @@ ATBCharacter::ATBCharacter(const FObjectInitializer& Init)
 	GetCapsuleComponent()->SetGenerateOverlapEvents(true);
 	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
 	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+	// 運搬カメラの壁よけ判定で、人間自身に当たってアームが縮まないようにする。
+	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
 	GetCharacterMovement()->bOrientRotationToMovement = false;
 	bUseControllerRotationYaw = true;
 	Camera = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
@@ -38,8 +42,22 @@ ATBCharacter::ATBCharacter(const FObjectInitializer& Init)
 	Camera->AspectRatio = 16.f / 9.f;
 	Camera->bConstrainAspectRatio = true;
 	Camera->SetRelativeLocation(FVector(0, 0, 64));
+	CarryCameraArm = CreateDefaultSubobject<USpringArmComponent>(TEXT("CarryCameraArm"));
+	CarryCameraArm->SetupAttachment(GetRootComponent());
+	CarryCameraArm->TargetArmLength = 450.f;
+	CarryCameraArm->TargetOffset = FVector(0, 0, 80);
+	// 位置は人間に追従し、回転は所有者であるおもちゃの視点を使う。
+	CarryCameraArm->SetUsingAbsoluteRotation(true);
+	CarryCameraArm->bUsePawnControlRotation = true;
+	// 人間のメッシュ側のネット補間を使い、注視点だけが遅れて中心からずれるのを防ぐ。
+	CarryCameraArm->bEnableCameraLag = false;
+	CarryCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("CarryCamera"));
+	CarryCamera->SetupAttachment(CarryCameraArm, USpringArmComponent::SocketName);
+	CarryCamera->FieldOfView = 90.f;
+	CarryCamera->SetAutoActivate(false);
 	Body = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Body"));
-	Body->SetupAttachment(GetRootComponent());
+	// 表示する身体も運搬カメラと同じ補間に追従させる。
+	Body->SetupAttachment(GetMesh());
 	Body->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	Body->SetOwnerNoSee(true);
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> Cube(TEXT("/Engine/BasicShapes/Cube.Cube"));
@@ -49,7 +67,8 @@ ATBCharacter::ATBCharacter(const FObjectInitializer& Init)
 	}
 	Body->SetRelativeScale3D(FVector(.55, .55, 1.6));
 	CarryAnchor = CreateDefaultSubobject<USceneComponent>(TEXT("CarryAnchor"));
-	CarryAnchor->SetupAttachment(GetRootComponent());
+	// ルートはネット更新で飛び飛びに動くので、補間されるメッシュに付ける。
+	CarryAnchor->SetupAttachment(GetMesh());
 	CarryAnchor->SetRelativeLocation(FVector(95, 0, 10));
 	GetCharacterMovement()->MaxWalkSpeed = HumanSpeed;
 }
@@ -208,6 +227,44 @@ void ATBCharacter::OnRep_Carrier()
 	ApplyState();
 }
 
+// 降ろす・収納はサーバーでCarrierを直接書くため、OnRepではなく毎フレーム差分を見る。
+void ATBCharacter::UpdateCarryCamera()
+{
+	if (!IsLocallyControlled())
+	{
+		return;
+	}
+	const bool bCarried = IsValid(Carrier);
+	if (bCarried == bCarryView)
+	{
+		return;
+	}
+	bCarryView = bCarried;
+	AController* PlayerController = GetController();
+	if (bCarried)
+	{
+		CarryCameraArm->AttachToComponent(Carrier->GetMesh(), FAttachmentTransformRules::SnapToTargetNotIncludingScale);
+		// 掴まれる前に見ていた方角を保ち、以降はマウス左右だけで回り込む。
+		if (PlayerController)
+		{
+			PlayerController->SetControlRotation(FRotator(CarryViewPitch, PlayerController->GetControlRotation().Yaw, 0));
+		}
+	}
+	else
+	{
+		// 見ていた方向のまま、水平に戻して一人称へ。
+		if (PlayerController)
+		{
+			PlayerController->SetControlRotation(FRotator(0, PlayerController->GetControlRotation().Yaw, 0));
+		}
+		CarryCameraArm->AttachToComponent(GetRootComponent(), FAttachmentTransformRules::SnapToTargetNotIncludingScale);
+	}
+	Camera->SetActive(!bCarried);
+	CarryCamera->SetActive(bCarried);
+	// 抱えられている自分も画面に入れる。
+	Body->SetOwnerNoSee(!bCarried);
+}
+
 void ATBCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
@@ -222,6 +279,7 @@ void ATBCharacter::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 	ApplyState();
+	UpdateCarryCamera();
 	if (!HasAuthority())
 	{
 		return;
@@ -445,14 +503,16 @@ void ATBCharacter::Right(float InputValue)
 	}
 }
 
+// 運ばれている間は移動できないが、人間の周りを左右に回り込める。
 void ATBCharacter::Yaw(float InputValue)
 {
-	if (!IsMovementLocked())
+	if (!IsMovementLocked() || Carrier)
 	{
 		AddControllerYawInput(InputValue);
 	}
 }
 
+// 運ばれている間の見下ろし角は掴まれた時点の値で固定する。
 void ATBCharacter::Pitch(float InputValue)
 {
 	if (!IsMovementLocked())
