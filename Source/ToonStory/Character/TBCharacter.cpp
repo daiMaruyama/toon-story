@@ -234,18 +234,20 @@ void ATBCharacter::UpdateCarryCamera()
 	{
 		return;
 	}
-	const bool bCarried = IsValid(Carrier);
-	if (bCarried == bCarryView)
+	ATBCharacter* NewCarrier = IsValid(Carrier) ? Carrier.Get() : nullptr;
+	const bool bCarried = NewCarrier != nullptr;
+	if (bCarried == bCarryView && NewCarrier == CarryViewCarrier.Get())
 	{
 		return;
 	}
-	bCarryView = bCarried;
 	AController* PlayerController = GetController();
 	if (bCarried)
 	{
-		CarryCameraArm->AttachToComponent(Carrier->GetMesh(), FAttachmentTransformRules::SnapToTargetNotIncludingScale);
+		// 運ぶ人が入れ替わった場合も付け直す。視点はそのまま引き継ぐ。
+		CarryCameraArm->AttachToComponent(NewCarrier->GetMesh(),
+		                                  FAttachmentTransformRules::SnapToTargetNotIncludingScale);
 		// 掴まれる前に見ていた方角を保ち、以降はマウス左右だけで回り込む。
-		if (PlayerController)
+		if (!bCarryView && PlayerController)
 		{
 			PlayerController->SetControlRotation(FRotator(CarryViewPitch, PlayerController->GetControlRotation().Yaw, 0));
 		}
@@ -259,6 +261,12 @@ void ATBCharacter::UpdateCarryCamera()
 		}
 		CarryCameraArm->AttachToComponent(GetRootComponent(), FAttachmentTransformRules::SnapToTargetNotIncludingScale);
 	}
+	CarryViewCarrier = NewCarrier;
+	if (bCarried == bCarryView)
+	{
+		return;
+	}
+	bCarryView = bCarried;
 	Camera->SetActive(!bCarried);
 	CarryCamera->SetActive(bCarried);
 	// 抱えられている自分も画面に入れる。

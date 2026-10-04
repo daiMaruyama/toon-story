@@ -98,4 +98,6 @@ private:
 	bool bWasPhysicsLocked = false;
 	// 表示用。運ばれているかの正解はCarrier。
 	bool bCarryView = false;
+	// 運搬カメラを今付けている相手。途中のnullptrが届かず運ぶ人が入れ替わる場合に付け直す。
+	TWeakObjectPtr<ATBCharacter> CarryViewCarrier;
 };
