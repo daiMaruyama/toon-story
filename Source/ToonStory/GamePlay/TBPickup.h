@@ -6,16 +6,21 @@
 
 class USphereComponent;
 class UStaticMeshComponent;
+class UStaticMesh;
 class ATBCharacter;
 class ATBPickup;
 
 /** 接触による取得を確定し、取得済み状態を同期する。 */
-UCLASS()
+UCLASS(Config = Game)
 class TOONSTORY_API ATBPickup : public AActor
 {
 	GENERATED_BODY()
 public:
 	ATBPickup();
+	virtual void BeginPlay() override;
+	// 保存済みマップと検証用Arenaで同じ収集物を使用する。
+	UPROPERTY(Config, EditDefaultsOnly, Category = "Appearance")
+	TSoftObjectPtr<UStaticMesh> PickupMesh;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	TObjectPtr<USphereComponent> Contact;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (ClampMin = "0.1"))

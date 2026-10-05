@@ -101,7 +101,7 @@ void ATBGameMode::BuildArena()
 	// アイテムの配置数は参加定員とは独立させる。
 	for (int32 Index = 0; Index < 8; ++Index)
 	{
-		GetWorld()->SpawnActor<ATBPickup>(FVector(-1900 + (Index % 4) * 950, -2200 + (Index / 4) * 4400, 40),
+		GetWorld()->SpawnActor<ATBPickup>(FVector(-1900 + (Index % 4) * 950, -2200 + (Index / 4) * 4400, 15),
 		                                  FRotator::ZeroRotator);
 	}
 }
@@ -374,7 +374,6 @@ void ATBGameMode::ResetStageInteractions()
 	{
 		It->RescueProgress = 0;
 		It->Rescuers = 0;
-		It->AlarmUntil = 0;
 		It->ForceNetUpdate();
 	}
 }

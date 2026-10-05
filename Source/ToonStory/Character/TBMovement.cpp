@@ -2,6 +2,88 @@
 #include "Character/TBCharacter.h"
 #include "GamePlay/TBRuleMath.h"
 #include "GameFramework/PhysicsVolume.h"
+#include "Core/TBPlayerState.h"
+
+namespace
+{
+	class FTBSavedMove : public FSavedMove_Character
+	{
+	public:
+		bool bSavedSprint = false;
+		virtual void Clear() override
+		{
+			Super::Clear();
+			bSavedSprint = false;
+		}
+		virtual uint8 GetCompressedFlags() const override
+		{
+			return Super::GetCompressedFlags() | (bSavedSprint ? FLAG_Custom_0 : 0);
+		}
+		virtual bool CanCombineWith(const FSavedMovePtr& NewMove, ACharacter* Character, float MaxDelta) const override
+		{
+			return bSavedSprint == static_cast<const FTBSavedMove*>(NewMove.Get())->bSavedSprint &&
+			       Super::CanCombineWith(NewMove, Character, MaxDelta);
+		}
+		virtual void SetMoveFor(ACharacter* Character, float Delta, const FVector& Accel,
+		                        FNetworkPredictionData_Client_Character& Data) override
+		{
+			Super::SetMoveFor(Character, Delta, Accel, Data);
+			bSavedSprint = CastChecked<UTBMovement>(Character->GetCharacterMovement())->bWantsToSprint;
+		}
+		virtual void PrepMoveFor(ACharacter* Character) override
+		{
+			Super::PrepMoveFor(Character);
+			CastChecked<UTBMovement>(Character->GetCharacterMovement())->bWantsToSprint = bSavedSprint;
+		}
+
+	private:
+		using Super = FSavedMove_Character;
+	};
+
+	class FTBClientPredictionData : public FNetworkPredictionData_Client_Character
+	{
+	public:
+		explicit FTBClientPredictionData(const UCharacterMovementComponent& Movement)
+		    : FNetworkPredictionData_Client_Character(Movement)
+		{
+		}
+		virtual FSavedMovePtr AllocateNewMove() override
+		{
+			return FSavedMovePtr(new FTBSavedMove());
+		}
+	};
+} // namespace
+
+float UTBMovement::GetMaxSpeed() const
+{
+	const auto* Character = Cast<ATBCharacter>(CharacterOwner);
+	if (Character && Character->IsMovementLocked())
+	{
+		return 0.f;
+	}
+	if (bWantsToSprint && Character && Character->TBPS() && Character->TBPS()->Team == ETBTeam::Toy &&
+	    (IsMovingOnGround() || IsFalling()))
+	{
+		return Character->ToySprintSpeed;
+	}
+	return Super::GetMaxSpeed();
+}
+
+void UTBMovement::UpdateFromCompressedFlags(uint8 Flags)
+{
+	Super::UpdateFromCompressedFlags(Flags);
+	bWantsToSprint = (Flags & FSavedMove_Character::FLAG_Custom_0) != 0;
+}
+
+FNetworkPredictionData_Client* UTBMovement::GetPredictionData_Client() const
+{
+	if (!ClientPredictionData)
+	{
+		auto* MutableThis = const_cast<UTBMovement*>(this);
+		MutableThis->ClientPredictionData = new FTBClientPredictionData(*this);
+	}
+	return ClientPredictionData;
+}
 
 void UTBMovement::PerformMovement(float DeltaSeconds)
 {
@@ -68,7 +150,9 @@ void UTBMovement::MoveAutonomous(float ClientTimeStamp, float DeltaSeconds, uint
 	}
 	if (ToyCharacter && ToyCharacter->IsGazeFrozen())
 	{
-		Super::MoveAutonomous(ClientTimeStamp, DeltaSeconds, 0, FVector::ZeroVector);
+		// 凍結でジャンプ入力は捨てるが、押し続けているダッシュ入力は復帰後へ保持する。
+		Super::MoveAutonomous(ClientTimeStamp, DeltaSeconds, Flags & FSavedMove_Character::FLAG_Custom_0,
+		                      FVector::ZeroVector);
 		return;
 	}
 	Super::MoveAutonomous(ClientTimeStamp, DeltaSeconds, Flags, NewAcceleration);

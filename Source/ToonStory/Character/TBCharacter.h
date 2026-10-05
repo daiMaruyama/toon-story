@@ -7,11 +7,15 @@
 class UCameraComponent;
 class USpringArmComponent;
 class UStaticMeshComponent;
+class UStaticMesh;
 class ATBPlayerState;
 class ATBPickup;
+class USkeletalMesh;
+class UAnimInstance;
+class UAnimSequence;
 
 /** 人間とおもちゃ共通の本体。操作要求をサーバーで検証する。 */
-UCLASS()
+UCLASS(Config = Game)
 class TOONSTORY_API ATBCharacter : public ACharacter
 {
 	GENERATED_BODY()
@@ -35,6 +39,20 @@ public:
 	float CarryViewPitch = -40.f;
 	UPROPERTY(VisibleAnywhere)
 	TObjectPtr<UStaticMeshComponent> Body;
+	UPROPERTY(Config, EditDefaultsOnly, Category = "Appearance")
+	TSoftObjectPtr<UStaticMesh> ToyMesh;
+	UPROPERTY(Config, EditDefaultsOnly, Category = "Appearance")
+	TSoftObjectPtr<USkeletalMesh> ToySkeletalMesh;
+	UPROPERTY(Config, EditDefaultsOnly, Category = "Appearance")
+	TSoftObjectPtr<UAnimSequence> ToyIdleAnimation;
+	UPROPERTY(Config, EditDefaultsOnly, Category = "Appearance")
+	TSoftObjectPtr<UAnimSequence> ToyWalkAnimation;
+	UPROPERTY(Config, EditDefaultsOnly, Category = "Appearance")
+	TSoftObjectPtr<UAnimSequence> ToyJumpAnimation;
+	UPROPERTY(Config, EditDefaultsOnly, Category = "Appearance")
+	TSoftObjectPtr<USkeletalMesh> ChildMesh;
+	UPROPERTY(Config, EditDefaultsOnly, Category = "Appearance")
+	TSoftClassPtr<UAnimInstance> ChildAnimation;
 	UPROPERTY(VisibleAnywhere)
 	TObjectPtr<USceneComponent> CarryAnchor;
 	// Carrierは自分を運ぶ相手、CarriedToyは自分が運ぶおもちゃ。
@@ -45,7 +63,13 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	float HumanSpeed = 450.f;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
-	float ToySpeed = 350.f;
+	float ToySpeed = 180.f;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement")
+	float ToySprintSpeed = 320.f;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement")
+	float ToyJumpVelocity = 400.f;
+	UFUNCTION(BlueprintCallable, Category = "Movement")
+	void SetSprintRequested(bool bRequested);
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	float CarrySpeed = 300.f;
 	UFUNCTION()
@@ -82,7 +106,8 @@ public:
 	void StateVisualChanged();
 	// 操作の開始・終了時刻はサーバーで管理する。
 	double GrabEnds = 0;
-	double StoreStarted = 0;
+	UPROPERTY(Replicated)
+	double StoreStarted = -1;
 	bool bHoldingInteract = false;
 	bool bRescuing = false;
 
@@ -94,10 +119,18 @@ private:
 	void JumpPressed();
 	void JumpReleased();
 	void UpdateCarryCamera();
+	void SprintPressed();
+	void SprintReleased();
 	double LastRequest = -1000;
 	bool bWasPhysicsLocked = false;
 	// 表示用。運ばれているかの正解はCarrier。
 	bool bCarryView = false;
 	// 運搬カメラを今付けている相手。途中のnullptrが届かず運ぶ人が入れ替わる場合に付け直す。
 	TWeakObjectPtr<ATBCharacter> CarryViewCarrier;
+	bool bAppearanceInitialized = false;
+	bool bShowingToy = false;
+	void UpdateAppearance(bool bToy);
+	void UpdateToyAnimation();
+	UPROPERTY(Transient)
+	TObjectPtr<UAnimSequence> ActiveToyAnimation;
 };

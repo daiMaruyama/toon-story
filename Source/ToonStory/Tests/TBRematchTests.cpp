@@ -109,7 +109,6 @@ bool FTBRematchTest::RunTest(const FString& Parameters)
 		Mode->Finish(ETBWinner::Humans, TEXT("Rematch regression"), Round == 2);
 		State->Box->RescueProgress = .8f;
 		State->Box->Rescuers = 2;
-		State->Box->AlarmUntil = World->GetTimeSeconds() + 100;
 		const auto FinishedPhase = State->Phase;
 		Mode->ReturnToLobby(nullptr);
 		TestEqual(TEXT("Unauthorised reset rejected"), State->Phase, FinishedPhase);
@@ -128,7 +127,6 @@ bool FTBRematchTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("Boxed count cleared"), State->BoxedCount, 0);
 		TestEqual(TEXT("Rescue progress cleared"), State->Box->RescueProgress, 0.f);
 		TestEqual(TEXT("Rescuers cleared"), State->Box->Rescuers, 0);
-		TestEqual(TEXT("Alarm cleared"), State->Box->AlarmUntil, 0.0);
 		for (auto* Controller : {Host, Second})
 		{
 			const auto* Info = Controller->GetPlayerState<ATBPlayerState>();
@@ -160,6 +158,112 @@ bool FTBRematchTest::RunTest(const FString& Parameters)
 		Host->TBLobby();
 		TestTrue(TEXT("Duplicate return is ignored"), Host->GetPawn() == LobbyPawn);
 	}
+	UGameplayStatics::RemovePlayer(Second, true);
+	State->Settings = OriginalSettings;
+	return !HasAnyErrors();
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBStorageHoldTest, "ToonStory.Match.StorageHold",
+                                 EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+
+bool FTBStorageHoldTest::RunTest(const FString& Parameters)
+{
+	UWorld* World = nullptr;
+	for (const auto& Context : GEngine->GetWorldContexts())
+	{
+		if (Context.WorldType == EWorldType::Game && Context.World()->GetNetMode() == NM_Standalone)
+		{
+			World = Context.World();
+		}
+	}
+	if (!TestNotNull(TEXT("Standalone game world"), World))
+	{
+		return false;
+	}
+	auto* Mode = World->GetAuthGameMode<ATBGameMode>();
+	auto* State = World->GetGameState<ATBGameState>();
+	auto* Host = Cast<ATBController>(World->GetFirstPlayerController());
+	if (!Mode || !State || !Host || !State->Box)
+	{
+		return false;
+	}
+	const auto OriginalSettings = State->Settings;
+	auto* Second = Cast<ATBController>(UGameplayStatics::CreatePlayer(World, -1, true));
+	if (!TestNotNull(TEXT("Toy player created"), Second))
+	{
+		return false;
+	}
+	FTBSettings Rules = OriginalSettings;
+	Rules.Humans = 1;
+	Rules.Toys = 1;
+	Rules.Duration = 120;
+	Mode->SetRules(Host, Rules);
+	auto* HostInfo = Host->GetPlayerState<ATBPlayerState>();
+	auto* ToyInfo = Second->GetPlayerState<ATBPlayerState>();
+	HostInfo->Preference = ETBTeam::Human;
+	ToyInfo->Preference = ETBTeam::Toy;
+	HostInfo->bReady = true;
+	ToyInfo->bReady = true;
+	Mode->StartRound(Host);
+	auto* Human = Cast<ATBCharacter>(Host->GetPawn());
+	auto* Toy = Cast<ATBCharacter>(Second->GetPawn());
+	auto* Box = State->Box.Get();
+	// 箱の正面中央から収納する。
+	const FVector Approach(-80, 0, 65);
+	const FVector Near = Box->GetActorTransform().TransformPosition(Approach);
+	Human->SetActorLocation(Near, false, nullptr, ETeleportType::TeleportPhysics);
+	Human->CarriedToy = Toy;
+	Toy->Carrier = Human;
+	Toy->SetToyState(ETBToyState::Carried);
+	Toy->OnRep_Carrier();
+	TestEqual(TEXT("Storage takes three seconds"), Box->StoreSeconds, 3.f);
+	TestTrue(TEXT("Box front accepts storage"), Box->CanStoreFrom(Human));
+	Human->RequestInteract();
+	TestEqual(TEXT("Holding E starts storage"), ToyInfo->ToyState, ETBToyState::Storing);
+	Human->StoreStarted = World->GetTimeSeconds() - 1;
+	Human->ReleaseInteract();
+	TestEqual(TEXT("Release cancels without dropping"), ToyInfo->ToyState, ETBToyState::Carried);
+	TestTrue(TEXT("Toy remains attached"), Toy->Carrier == Human && Human->CarriedToy == Toy);
+	TestEqual(TEXT("Cancelled progress cleared"), Human->StoreStarted, -1.0);
+	World->Tick(LEVELTICK_All, .2f);
+	Human->RequestInteract();
+	Human->SetActorLocation(Box->GetActorTransform().TransformPosition(FVector(-500, 0, 65)), false, nullptr,
+	                        ETeleportType::TeleportPhysics);
+	Human->Tick(0);
+	TestEqual(TEXT("Leaving box cancels storage"), ToyInfo->ToyState, ETBToyState::Carried);
+	TestEqual(TEXT("Leaving box resets timer"), Human->StoreStarted, -1.0);
+	World->Tick(LEVELTICK_All, .2f);
+	Human->SetActorLocation(Near, false, nullptr, ETeleportType::TeleportPhysics);
+	Human->RequestInteract();
+	Human->StoreStarted = World->GetTimeSeconds() - 2.9;
+	Human->Tick(0);
+	TestEqual(TEXT("Not stored before three seconds"), ToyInfo->ToyState, ETBToyState::Storing);
+	Human->StoreStarted = World->GetTimeSeconds() - 3.01;
+	Human->Tick(0);
+	TestEqual(TEXT("Stored after continuous three-second hold"), ToyInfo->ToyState, ETBToyState::Boxed);
+	TestFalse(TEXT("Successful storage clears carry links"), Human->CarriedToy || Toy->Carrier);
+	const FVector RoomPosition =
+	    Box->StorageRoom->GetComponentTransform().InverseTransformPosition(Toy->GetActorLocation());
+	bool bInStorageSlot = false;
+	for (int32 Slot = 0; Slot < 9; ++Slot)
+	{
+		// 回転した部屋の座標変換による丸め誤差を許容する。
+		bInStorageSlot |= RoomPosition.Equals(FVector(200 + (Slot % 3) * 180, -170 + (Slot / 3) * 170, 60), .1);
+	}
+	TestTrue(TEXT("Storage teleports to the separate room"), bInStorageSlot);
+	TestTrue(TEXT("Storage destination is separate from the visible chest"),
+	         FVector::Dist(Toy->GetActorLocation(), Box->GetActorLocation()) > 800.f);
+	TestFalse(TEXT("Stored toy cannot rescue itself through the chest wall"), Box->InRange(Toy));
+	// この2人テストでは収納で試合終了する。救助は進行中の試合でのみ許可される。
+	State->Phase = ETBPhase::Playing;
+	Box->ReleasePrisoners();
+	TestEqual(TEXT("Rescue moves stored toy outside the chest"), ToyInfo->ToyState, ETBToyState::Free);
+	TestTrue(TEXT("Rescue destination is in front of the chest"),
+	         Box->GetActorTransform().InverseTransformPosition(Toy->GetActorLocation()).X < 0);
+	if (State->Phase == ETBPhase::Playing)
+	{
+		Mode->Finish(ETBWinner::Humans, TEXT("Storage test cleanup"), false);
+	}
+	Mode->ReturnToLobby(Host);
 	UGameplayStatics::RemovePlayer(Second, true);
 	State->Settings = OriginalSettings;
 	return !HasAnyErrors();

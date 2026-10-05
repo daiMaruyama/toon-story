@@ -11,6 +11,9 @@
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Engine/SkeletalMesh.h"
+#include "Animation/AnimInstance.h"
+#include "Animation/AnimSequence.h"
 #include "Components/InputComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
@@ -48,6 +51,7 @@ ATBCharacter::ATBCharacter(const FObjectInitializer& Init)
 	CarryCameraArm->TargetOffset = FVector(0, 0, 80);
 	// 位置は人間に追従し、回転は所有者であるおもちゃの視点を使う。
 	CarryCameraArm->SetUsingAbsoluteRotation(true);
+	CarryCameraArm->SetUsingAbsoluteScale(true);
 	CarryCameraArm->bUsePawnControlRotation = true;
 	// 人間のメッシュ側のネット補間を使い、注視点だけが遅れて中心からずれるのを防ぐ。
 	CarryCameraArm->bEnableCameraLag = false;
@@ -69,6 +73,7 @@ ATBCharacter::ATBCharacter(const FObjectInitializer& Init)
 	CarryAnchor = CreateDefaultSubobject<USceneComponent>(TEXT("CarryAnchor"));
 	// ルートはネット更新で飛び飛びに動くので、補間されるメッシュに付ける。
 	CarryAnchor->SetupAttachment(GetMesh());
+	CarryAnchor->SetUsingAbsoluteScale(true);
 	CarryAnchor->SetRelativeLocation(FVector(95, 0, 10));
 	GetCharacterMovement()->MaxWalkSpeed = HumanSpeed;
 }
@@ -76,10 +81,114 @@ ATBCharacter::ATBCharacter(const FObjectInitializer& Init)
 void ATBCharacter::BeginPlay()
 {
 	Super::BeginPlay();
+	ToyMesh.LoadSynchronous();
+	ToySkeletalMesh.LoadSynchronous();
+	ToyIdleAnimation.LoadSynchronous();
+	ToyWalkAnimation.LoadSynchronous();
+	ToyJumpAnimation.LoadSynchronous();
+	ChildMesh.LoadSynchronous();
+	ChildAnimation.LoadSynchronous();
+	GetMesh()->SetOwnerNoSee(true);
+	GetMesh()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	bAppearanceInitialized = false;
+	ApplyState();
 	if (auto* GameMode = GetWorld()->GetAuthGameMode<ATBGameMode>())
 	{
 		AddTickPrerequisiteActor(GameMode);
 	}
+}
+
+void ATBCharacter::UpdateAppearance(bool bToy)
+{
+	if (bAppearanceInitialized && bShowingToy == bToy)
+	{
+		return;
+	}
+	bAppearanceInitialized = true;
+	bShowingToy = bToy;
+	GetMesh()->SetVisibility(false);
+	Body->SetVisibility(true);
+	ActiveToyAnimation = nullptr;
+	if (bToy && ToySkeletalMesh.Get())
+	{
+		Body->SetVisibility(false);
+		auto* Visual = GetMesh();
+		Visual->SetSkeletalMesh(ToySkeletalMesh.Get());
+		const FBoxSphereBounds Bounds = ToySkeletalMesh->GetBounds();
+		const float Scale = 25.f / FMath::Max(1.f, float(Bounds.BoxExtent.Z * 2));
+		Visual->SetRelativeScale3D(FVector(Scale));
+		Visual->SetRelativeLocation(FVector(0, 0, -13) - FVector(0, 0, Bounds.Origin.Z - Bounds.BoxExtent.Z) * Scale);
+		Visual->SetRelativeRotation(FRotator(0, -90, 0));
+		CacheInitialMeshOffset(Visual->GetRelativeLocation(), Visual->GetRelativeRotation());
+		Visual->SetVisibility(true);
+		UpdateToyAnimation();
+	}
+	else if (bToy && ToyMesh.Get())
+	{
+		Body->SetStaticMesh(ToyMesh.Get());
+		const FBoxSphereBounds Bounds = ToyMesh->GetBounds();
+		const float Scale = 25.f / FMath::Max(1.f, float(Bounds.BoxExtent.Z * 2));
+		Body->SetRelativeScale3D(FVector(Scale));
+		Body->SetRelativeLocation(-Bounds.Origin * Scale + FVector(0, 0, -.5));
+	}
+	else if (!bToy && ChildMesh.Get())
+	{
+		Body->SetVisibility(false);
+		auto* Visual = GetMesh();
+		Visual->SetSkeletalMesh(ChildMesh.Get());
+		const FBoxSphereBounds Bounds = ChildMesh->GetBounds();
+		const float Scale = 125.f / FMath::Max(1.f, float(Bounds.BoxExtent.Z * 2));
+		Visual->SetRelativeScale3D(FVector(Scale));
+		// 縮小した分だけ歩幅が短くなるため、再生を速めて移動速度と足の動きを合わせる。
+		Visual->GlobalAnimRateScale = 1.f / Scale;
+		Visual->SetRelativeLocation(FVector(0, 0, -65) - FVector(0, 0, Bounds.Origin.Z - Bounds.BoxExtent.Z) * Scale);
+		// リターゲット後の子どもの姿勢はメッシュの+Yが正面。Pawnの+X（視点のYaw）へ合わせる。
+		Visual->SetRelativeRotation(FRotator(0, -90, 0));
+		// 他プレイヤー側の移動補間は記録済みのメッシュ位置へ毎フレーム戻すため、記録も更新しないと足が浮く。
+		CacheInitialMeshOffset(Visual->GetRelativeLocation(), Visual->GetRelativeRotation());
+		if (ChildAnimation.Get())
+		{
+			Visual->SetAnimInstanceClass(ChildAnimation.Get());
+		}
+		Visual->SetVisibility(true);
+	}
+	else
+	{
+		Body->SetStaticMesh(LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube")));
+		Body->SetRelativeLocation(FVector::ZeroVector);
+		Body->SetRelativeScale3D(bToy ? FVector(.18, .18, .25) : FVector(.45, .45, 1.2));
+	}
+	// メッシュの縮尺・正面補正に影響されず、従来のPawn基準の運搬位置を保つ。
+	const FTransform MeshTransform = GetMesh()->GetRelativeTransform();
+	CarryAnchor->SetRelativeLocation(MeshTransform.InverseTransformPosition(FVector(95, 0, 10)));
+	CarryAnchor->SetRelativeRotation(MeshTransform.GetRotation().Inverse());
+}
+
+void ATBCharacter::UpdateToyAnimation()
+{
+	if (!bAppearanceInitialized || !bShowingToy || !ToySkeletalMesh.Get())
+	{
+		return;
+	}
+	if (IsMovementLocked() && ActiveToyAnimation)
+	{
+		GetMesh()->GlobalAnimRateScale = 0.f;
+		return;
+	}
+	const bool Moving = GetVelocity().SizeSquared2D() > 25.f;
+	UAnimSequence* Animation = GetCharacterMovement()->IsFalling()
+	                               ? ToyJumpAnimation.Get()
+	                               : (Moving ? ToyWalkAnimation.Get() : ToyIdleAnimation.Get());
+	if (Animation && Animation != ActiveToyAnimation)
+	{
+		GetMesh()->PlayAnimation(Animation, Animation != ToyJumpAnimation.Get());
+		ActiveToyAnimation = Animation;
+	}
+	// 凍結は相手の画面でも同じ姿勢で止める。
+	const float WalkRate = ActiveToyAnimation == ToyWalkAnimation.Get()
+	                           ? FMath::Clamp(GetVelocity().Size2D() / FMath::Max(ToySpeed, 1.f), .7f, 1.8f)
+	                           : 1.f;
+	GetMesh()->GlobalAnimRateScale = IsMovementLocked() ? 0.f : WalkRate;
 }
 
 ATBPlayerState* ATBCharacter::TBPS() const
@@ -135,10 +244,10 @@ void ATBCharacter::ApplyState()
 	// ToyPawnはConfig/DefaultEngine.iniで定義する専用オブジェクトチャンネル。
 	GetCapsuleComponent()->SetCollisionObjectType(Toy ? ECC_GameTraceChannel1 : ECC_Pawn);
 	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_GameTraceChannel1, Toy ? ECR_Block : ECR_Ignore);
-	GetCapsuleComponent()->SetCapsuleSize(Toy ? 20.f : 34.f, Toy ? 35.f : 88.f);
-	BaseEyeHeight = Toy ? 24.f : 64.f;
+	GetCapsuleComponent()->SetCapsuleSize(Toy ? 10.f : 26.f, Toy ? 13.f : 65.f);
+	BaseEyeHeight = Toy ? 7.f : 50.f;
 	Camera->SetRelativeLocation(FVector(0, 0, BaseEyeHeight));
-	Body->SetRelativeScale3D(Toy ? FVector(.35, .35, .6) : FVector(.55, .55, 1.6));
+	UpdateAppearance(Toy);
 	const bool Held = ToyPlayerInfo->ToyState == ETBToyState::Grabbed ||
 	                  ToyPlayerInfo->ToyState == ETBToyState::Carried ||
 	                  ToyPlayerInfo->ToyState == ETBToyState::Storing;
@@ -146,6 +255,8 @@ void ATBCharacter::ApplyState()
 	                                                : ECollisionEnabled::QueryAndPhysics);
 	const bool PhysicsLocked = IsPhysicsLocked();
 	auto* Movement = GetCharacterMovement();
+	Movement->MaxStepHeight = Toy ? 8.f : 45.f;
+	Movement->JumpZVelocity = Toy ? ToyJumpVelocity : 420.f;
 	if (PhysicsLocked)
 	{
 		Movement->StopMovementImmediately();
@@ -271,6 +382,7 @@ void ATBCharacter::UpdateCarryCamera()
 	CarryCamera->SetActive(bCarried);
 	// 抱えられている自分も画面に入れる。
 	Body->SetOwnerNoSee(!bCarried);
+	GetMesh()->SetOwnerNoSee(!bCarried);
 }
 
 void ATBCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -280,6 +392,7 @@ void ATBCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
 	DOREPLIFETIME(ATBCharacter, CarriedToy);
 	DOREPLIFETIME_CONDITION(ATBCharacter, ContactItem, COND_OwnerOnly);
 	DOREPLIFETIME_CONDITION(ATBCharacter, ItemProgress, COND_OwnerOnly);
+	DOREPLIFETIME_CONDITION(ATBCharacter, StoreStarted, COND_OwnerOnly);
 }
 
 // 進捗と捕獲状態の確定はサーバー側だけで進める。
@@ -288,6 +401,7 @@ void ATBCharacter::Tick(float DeltaSeconds)
 	Super::Tick(DeltaSeconds);
 	ApplyState();
 	UpdateCarryCamera();
+	UpdateToyAnimation();
 	if (!HasAuthority())
 	{
 		return;
@@ -322,15 +436,15 @@ void ATBCharacter::Tick(float DeltaSeconds)
 	{
 		auto* MatchInfo = TB::GS(GetWorld());
 		auto* Box = MatchInfo ? MatchInfo->Box.Get() : nullptr;
-		if (!bHoldingInteract || !Box || !Box->InRange(this))
+		if (!bHoldingInteract || !Box || !Box->CanStoreFrom(this))
 		{
-			DropToy();
+			ClearHeldInteraction();
 			return;
 		}
 		if (Now - StoreStarted >= Box->StoreSeconds && Box->Store(CarriedToy))
 		{
 			CarriedToy = nullptr;
-			bHoldingInteract = false;
+			ClearHeldInteraction();
 			ApplyState();
 		}
 	}
@@ -340,6 +454,12 @@ void ATBCharacter::ClearHeldInteraction()
 {
 	bHoldingInteract = false;
 	bRescuing = false;
+	StoreStarted = -1;
+	if (HasAuthority() && IsValid(CarriedToy) && CarriedToy->TBPS() &&
+	    CarriedToy->TBPS()->ToyState == ETBToyState::Storing)
+	{
+		CarriedToy->SetToyState(ETBToyState::Carried);
+	}
 }
 
 // 壁への埋まり込みを避け、前方に空きがなければ自分の位置へ落とす。
@@ -363,8 +483,11 @@ void ATBCharacter::DropToy()
 		FHitResult Hit;
 		FCollisionQueryParams Params(SCENE_QUERY_STAT(TBDrop), false, this);
 		Params.AddIgnoredActor(Toy);
-		if (!World->SweepSingleByChannel(Hit, DropPosition, DesiredPosition, FQuat::Identity, ECC_GameTraceChannel1,
-		                                 FCollisionShape::MakeCapsule(20.f, 35.f), Params))
+		if (!World->SweepSingleByChannel(
+		        Hit, DropPosition, DesiredPosition, FQuat::Identity, ECC_GameTraceChannel1,
+		        FCollisionShape::MakeCapsule(Toy->GetCapsuleComponent()->GetScaledCapsuleRadius(),
+		                                     Toy->GetCapsuleComponent()->GetScaledCapsuleHalfHeight()),
+		        Params))
 		{
 			DropPosition = DesiredPosition;
 		}
@@ -395,7 +518,8 @@ void ATBCharacter::ServerInteract_Implementation()
 	{
 		if (CarriedToy)
 		{
-			if (Box && Box->InRange(this) && CarriedToy->TBPS()->ToyState == ETBToyState::Carried)
+			if (Box && Box->CanStoreFrom(this) && CarriedToy->TBPS() &&
+			    CarriedToy->TBPS()->ToyState == ETBToyState::Carried)
 			{
 				StoreStarted = Now;
 				CarriedToy->SetToyState(ETBToyState::Storing);
@@ -463,10 +587,6 @@ void ATBCharacter::ServerInteract_Implementation()
 void ATBCharacter::ServerReleaseInteract_Implementation()
 {
 	ClearHeldInteraction();
-	if (CarriedToy && CarriedToy->TBPS() && CarriedToy->TBPS()->ToyState == ETBToyState::Storing)
-	{
-		DropToy();
-	}
 }
 
 void ATBCharacter::ServerDrop_Implementation()
@@ -542,6 +662,21 @@ void ATBCharacter::JumpReleased()
 	StopJumping();
 }
 
+void ATBCharacter::SetSprintRequested(bool bRequested)
+{
+	CastChecked<UTBMovement>(GetCharacterMovement())->bWantsToSprint = bRequested;
+}
+
+void ATBCharacter::SprintPressed()
+{
+	SetSprintRequested(true);
+}
+
+void ATBCharacter::SprintReleased()
+{
+	SetSprintRequested(false);
+}
+
 void ATBCharacter::SetupPlayerInputComponent(UInputComponent* Input)
 {
 	Super::SetupPlayerInputComponent(Input);
@@ -551,6 +686,8 @@ void ATBCharacter::SetupPlayerInputComponent(UInputComponent* Input)
 	Input->BindAxis("Pitch", this, &ATBCharacter::Pitch);
 	Input->BindAction("Jump", IE_Pressed, this, &ATBCharacter::JumpPressed);
 	Input->BindAction("Jump", IE_Released, this, &ATBCharacter::JumpReleased);
+	Input->BindKey(EKeys::LeftShift, IE_Pressed, this, &ATBCharacter::SprintPressed);
+	Input->BindKey(EKeys::LeftShift, IE_Released, this, &ATBCharacter::SprintReleased);
 	Input->BindAction("Interact", IE_Pressed, this, &ATBCharacter::RequestInteract);
 	Input->BindAction("Interact", IE_Released, this, &ATBCharacter::ReleaseInteract);
 	Input->BindAction("Drop", IE_Pressed, this, &ATBCharacter::RequestDrop);
@@ -567,8 +704,9 @@ void ATBCharacter::ApplyInterruption()
 	{
 		return;
 	}
+	const bool bWasStoring = CarriedToy && CarriedToy->TBPS() && CarriedToy->TBPS()->ToyState == ETBToyState::Storing;
 	ClearHeldInteraction();
-	if (CarriedToy && CarriedToy->TBPS() && CarriedToy->TBPS()->ToyState == ETBToyState::Storing)
+	if (bWasStoring)
 	{
 		DropToy();
 	}

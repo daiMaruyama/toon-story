@@ -34,6 +34,19 @@ ATBPickup::ATBPickup()
 	Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 }
 
+void ATBPickup::BeginPlay()
+{
+	Super::BeginPlay();
+	if (auto* Visual = PickupMesh.LoadSynchronous())
+	{
+		Mesh->SetStaticMesh(Visual);
+		const FBoxSphereBounds Bounds = Visual->GetBounds();
+		const float Scale = 12.f / FMath::Max(1.f, float(Bounds.BoxExtent.Z * 2));
+		Mesh->SetRelativeScale3D(FVector(Scale));
+		Mesh->SetRelativeLocation(FVector(0, 0, -15.f - (Bounds.Origin.Z - Bounds.BoxExtent.Z) * Scale));
+	}
+}
+
 bool ATBPickup::Touches(const ATBCharacter* ToyCharacter) const
 {
 	return !bTaken && ToyCharacter && Contact->IsOverlappingActor(ToyCharacter) &&

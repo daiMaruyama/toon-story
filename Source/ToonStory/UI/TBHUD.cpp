@@ -6,6 +6,7 @@
 #include "Core/TBGameHelpers.h"
 #include "Character/TBCharacter.h"
 #include "GamePlay/TBBox.h"
+#include "Components/SceneComponent.h"
 #include "Engine/Canvas.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
@@ -287,20 +288,20 @@ void ATBHUD::DrawMatch(const ATBGameState& MatchState, ATBController& Controller
 	const bool Child = Player && Player->Team == ETBTeam::Human;
 	DrawRect(Panel, 24 * S, 24 * S, 310 * S, 77 * S);
 	DrawText(Child ? TEXT("CHILD") : TEXT("TOY"), Accent, 40 * S, 35 * S, nullptr, 1.4f * S);
-	DrawText(Child ? TEXT("Find toys. Bring them to the box.") : TEXT("Collect items. Rescue your friends."), Ink,
+	DrawText(Child ? TEXT("Find toys. Bring them to the box.") : TEXT("Collect batteries. Rescue your friends."), Ink,
 	         40 * S, 67 * S, nullptr, .95f * S);
 	const int32 Seconds = FMath::Max(0, FMath::CeilToInt(MatchState.Remaining()));
 	DrawRect(Panel, W * .5f - 64 * S, 24 * S, 128 * S, 56 * S);
 	DrawText(FString::Printf(TEXT("%02d:%02d"), Seconds / 60, Seconds % 60), Seconds < 60 ? Accent : Ink,
 	         W * .5f - 42 * S, 36 * S, nullptr, 2.f * S);
 	DrawRect(Panel, W - 286 * S, 24 * S, 262 * S, 77 * S);
-	DrawText(FString::Printf(TEXT("ITEMS  %d / %d"), MatchState.Collected, MatchState.Settings.RequiredItems), Ink,
+	DrawText(FString::Printf(TEXT("BATTERIES  %d / %d"), MatchState.Collected, MatchState.Settings.RequiredItems), Ink,
 	         W - 270 * S, 36 * S, nullptr, 1.35f * S);
 	DrawText(FString::Printf(TEXT("TOYS IN BOX  %d / %d"), MatchState.BoxedCount, MatchState.Settings.Toys), Accent,
 	         W - 270 * S, 68 * S, nullptr, .95f * S);
 	DrawRect(Panel, 24 * S, H - 62 * S, 700 * S, 38 * S);
 	DrawText(Child ? TEXT("WASD Move    Space Jump    E Grab / Store    Q Put down")
-	               : TEXT("WASD Move    Space Jump    E Hold to rescue    Touch items to collect"),
+	               : TEXT("WASD Move    Shift Sprint    Space Jump    E Rescue    Touch batteries to collect"),
 	         Ink, 40 * S, H - 51 * S, nullptr, .95f * S);
 	if (Player && Player->bFrozen)
 	{
@@ -315,14 +316,40 @@ void ATBHUD::DrawMatch(const ATBGameState& MatchState, ATBController& Controller
 		DrawText(Character->IsGazeFrozen() ? TEXT("Collection paused") : TEXT("Collecting..."), Ink, W * .5f - 130 * S,
 		         H * .78f + 10 * S, nullptr, 1.f * S);
 	}
-	if (MatchState.Box && MatchState.Box->Rescuers > 0)
+	if (Player && Player->Team == ETBTeam::Toy && MatchState.Box && MatchState.Box->Rescuers > 0)
 	{
 		DrawText(FString::Printf(TEXT("RESCUE  %.0f%%"), MatchState.Box->RescueProgress * 100), Accent,
 		         W * .5f - 70 * S, 108 * S, nullptr, 1.2f * S);
 	}
-	if (MatchState.Box && MatchState.GetServerWorldTimeSeconds() < MatchState.Box->AlarmUntil)
+	if (auto* Character = Cast<ATBCharacter>(Controller.GetPawn());
+	    Child && Character && Character->CarriedToy && MatchState.Box)
 	{
-		DrawText(TEXT("RESCUE STARTED AT THE BOX!"), Accent, W * .5f - 145 * S, 138 * S, nullptr, 1.1f * S);
+		const bool NearBox = MatchState.Box->CanStoreFrom(Character);
+		FVector2D BoxScreen;
+		const FVector BoxLocation = MatchState.Box->InteractionPoint->GetComponentLocation();
+		if (Controller.ProjectWorldLocationToScreen(BoxLocation + FVector(0, 0, 90), BoxScreen) &&
+		    BoxScreen.X > 70 * S && BoxScreen.X < W - 70 * S && BoxScreen.Y > 150 * S && BoxScreen.Y < H * .7f)
+		{
+			DrawText(FString::Printf(TEXT("TOY BOX  %.1f m"),
+			                         FVector::Distance(Character->GetActorLocation(), BoxLocation) / 100.f),
+			         Accent, BoxScreen.X - 60 * S, BoxScreen.Y, nullptr, 1.f * S);
+		}
+		const bool Storing = Character->StoreStarted >= 0;
+		const float Duration = FMath::Max(MatchState.Box->StoreSeconds, .01f);
+		const float Elapsed =
+		    Storing
+		        ? FMath::Clamp(float(MatchState.GetServerWorldTimeSeconds() - Character->StoreStarted), 0.f, Duration)
+		        : 0.f;
+		const FString Prompt = Storing
+		                           ? FString::Printf(TEXT("HOLD E  |  Storing toy... %.1f / %.0f s"), Elapsed, Duration)
+		                           : (NearBox ? FString::Printf(TEXT("Hold E for %.0f seconds to store toy"), Duration)
+		                                      : TEXT("Carrying toy - approach the front of the toy box"));
+		DrawRect(Panel, W * .5f - 235 * S, H * .76f, 470 * S, 64 * S);
+		DrawText(Prompt, Ink, W * .5f - 220 * S, H * .76f + 9 * S, nullptr, 1.f * S);
+		DrawRect(FLinearColor(.1f, .14f, .16f, 1), W * .5f - 220 * S, H * .76f + 37 * S, 440 * S, 7 * S);
+		DrawRect(Accent, W * .5f - 220 * S, H * .76f + 37 * S, 440 * S * Elapsed / Duration, 7 * S);
+		DrawText(TEXT("Release E or step away to cancel. Q puts the toy down."), Ink, W * .5f - 220 * S,
+		         H * .76f + 49 * S, nullptr, .75f * S);
 	}
 	DrawRect(Ink, W * .5f - 3 * S, H * .5f - 1 * S, 6 * S, 2 * S);
 	DrawRect(Ink, W * .5f - 1 * S, H * .5f - 3 * S, 2 * S, 6 * S);
@@ -355,9 +382,11 @@ void ATBHUD::DrawDebugHUD()
 			                     int32(Info->ToyState), Info->bFrozen));
 		}
 	}
-	if (State->Box)
+	const auto* Viewer =
+	    GetOwningPlayerController() ? GetOwningPlayerController()->GetPlayerState<ATBPlayerState>() : nullptr;
+	if (Viewer && Viewer->Team == ETBTeam::Toy && State->Box)
 	{
-		Line(FString::Printf(TEXT("Rescue: %.0f%% | Rescuers: %d | Alarm: %d"), State->Box->RescueProgress * 100,
-		                     State->Box->Rescuers, State->GetServerWorldTimeSeconds() < State->Box->AlarmUntil));
+		Line(FString::Printf(TEXT("Rescue: %.0f%% | Rescuers: %d"), State->Box->RescueProgress * 100,
+		                     State->Box->Rescuers));
 	}
 }
