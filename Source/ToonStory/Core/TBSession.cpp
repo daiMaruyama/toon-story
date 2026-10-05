@@ -121,7 +121,8 @@ void UTBSession::Host()
 	Settings.bIsLANMatch = bIsLAN;
 	Settings.bIsDedicated = false;
 	Settings.bShouldAdvertise = true;
-	Settings.bAllowJoinInProgress = false;
+	// Steamはメンバー変更時にもこの値でロビーを参加可能にする。試合前は開けておく。
+	Settings.bAllowJoinInProgress = true;
 	Settings.bAllowInvites = true;
 	Settings.bUsesPresence = !bIsLAN;
 	Settings.bAllowJoinViaPresence = !bIsLAN;
@@ -220,7 +221,8 @@ void UTBSession::RefreshLobbyAvailability()
 	FOnlineSessionSettings Settings = *Current;
 	bUpdatingLobbyOpen = State->Phase == ETBPhase::Lobby;
 	Settings.bShouldAdvertise = bUpdatingLobbyOpen;
-	Settings.bAllowJoinInProgress = false;
+	// ゲームのPhaseに合わせる。常にfalseだと、Steamが待機中の部屋まで検索から隠す。
+	Settings.bAllowJoinInProgress = bUpdatingLobbyOpen;
 	Settings.bAllowInvites = bUpdatingLobbyOpen;
 	Settings.bAllowJoinViaPresence = bUpdatingLobbyOpen && Settings.bUsesPresence;
 	Settings.bAllowJoinViaPresenceFriendsOnly = false;
