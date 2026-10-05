@@ -5,6 +5,7 @@
 #include "TBCharacter.generated.h"
 
 class UCameraComponent;
+class USpringArmComponent;
 class UStaticMeshComponent;
 class ATBPlayerState;
 class ATBPickup;
@@ -24,6 +25,14 @@ public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	TObjectPtr<UCameraComponent> Camera;
+	// 運ばれている間だけ使う、運ぶ人間を中心にした三人称カメラ。
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	TObjectPtr<USpringArmComponent> CarryCameraArm;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	TObjectPtr<UCameraComponent> CarryCamera;
+	// 運ばれている間の見下ろし角。左右には回り込めるが、上下は固定。
+	UPROPERTY(EditDefaultsOnly, Category = "Carry Camera")
+	float CarryViewPitch = -40.f;
 	UPROPERTY(VisibleAnywhere)
 	TObjectPtr<UStaticMeshComponent> Body;
 	UPROPERTY(VisibleAnywhere)
@@ -84,6 +93,11 @@ private:
 	void Pitch(float V);
 	void JumpPressed();
 	void JumpReleased();
+	void UpdateCarryCamera();
 	double LastRequest = -1000;
 	bool bWasPhysicsLocked = false;
+	// 表示用。運ばれているかの正解はCarrier。
+	bool bCarryView = false;
+	// 運搬カメラを今付けている相手。途中のnullptrが届かず運ぶ人が入れ替わる場合に付け直す。
+	TWeakObjectPtr<ATBCharacter> CarryViewCarrier;
 };
