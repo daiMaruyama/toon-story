@@ -28,15 +28,15 @@ public:
 	void Join(int32 Index);
 	UFUNCTION(BlueprintCallable)
 	void Leave();
-	// 試合開始時に検索・招待からの新規参加を停止する（サーバー専用）。
-	void CloseLobby();
+	// 現在のPhaseに合わせ、検索・招待からの参加を開閉する（サーバー専用）。
+	void RefreshLobbyAvailability();
 	UFUNCTION(BlueprintPure)
 	bool IsBusy() const
 	{
 		return CurrentOperation != ESessionOperation::Idle;
 	}
 	UPROPERTY(BlueprintReadOnly)
-	FString Status = TEXT("Offline prototype. TBHost to host; TBFind to search.");
+	FString Status = TEXT("Create a room or find friends to begin.");
 	UPROPERTY(BlueprintReadOnly)
 	TArray<FString> Rooms;
 	UPROPERTY(BlueprintAssignable)
@@ -60,6 +60,8 @@ private:
 	    InviteAcceptedHandle, NetworkFailureHandle, TravelFailureHandle, UpdateSessionHandle;
 	FTimerHandle CloseTimer;
 	FTimerHandle LobbyUpdateTimer;
+	bool bLobbyUpdateInFlight = false;
+	bool bUpdatingLobbyOpen = false;
 	void LobbyUpdated(FName Name, bool bSucceeded);
 	bool Acquire();
 	void Message(const FString& Text);

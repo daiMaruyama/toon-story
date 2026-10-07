@@ -17,6 +17,16 @@
 #include "GameFramework/GameSession.h"
 #include "GameFramework/PlayerStart.h"
 
+void ATBGameMode::InitGame(const FString& MapName, const FString& Options, FString& ErrorMessage)
+{
+	Super::InitGame(MapName, Options, ErrorMessage);
+	for (TActorIterator<APlayerStart> It(GetWorld()); It; ++It)
+	{
+		SpawnPoints.Add(*It);
+	}
+	bBuildTestArena = bBuildTestArena && !TActorIterator<ATBBox>(GetWorld());
+}
+
 ATBGameMode::ATBGameMode()
 {
 	PrimaryActorTick.bCanEverTick = true;
@@ -31,12 +41,17 @@ ATBGameMode::ATBGameMode()
 void ATBGameMode::BeginPlay()
 {
 	Super::BeginPlay();
-	if (bBuildTestArena && SpawnPoints.IsEmpty())
+	if (bBuildTestArena)
 	{
 		BuildArena();
 	}
 	if (auto* MatchInfo = TB::GS(GetWorld()))
 	{
+		const FString Map = GetWorld()->GetMapName();
+		MatchInfo->PlayerLimit = GameSession ? GameSession->MaxPlayers : 0;
+		MatchInfo->StageName = Map.Contains(TEXT("KidsRoom"))  ? TEXT("Kids' Rooms")
+		                       : Map.Contains(TEXT("ArchViz")) ? TEXT("ArchViz Apartment")
+		                                                       : TEXT("Test Arena");
 		TActorIterator<ATBBox> It(GetWorld());
 		if (It)
 		{
@@ -48,10 +63,11 @@ void ATBGameMode::BeginPlay()
 // 検証用の床・壁・箱・開始位置・アイテムをサーバーで一度だけ生成する。
 void ATBGameMode::BuildArena()
 {
-	if (!SpawnPoints.IsEmpty())
+	if (!bBuildTestArena)
 	{
 		return;
 	}
+	bBuildTestArena = false;
 	auto Block = [this](FVector Position, FVector Scale)
 	{
 		auto* BlockActor = GetWorld()->SpawnActor<ATBBlock>(Position, FRotator::ZeroRotator);
@@ -71,7 +87,9 @@ void ATBGameMode::BuildArena()
 	Block(FVector(-600, 900, 160), FVector(2, 6, 3.2));
 	Block(FVector(1000, -1100, 160), FVector(8, 2, 3.2));
 	GetWorld()->SpawnActor<ATBBox>(BoxClass, FVector(1300, 1000, 0), FRotator::ZeroRotator);
-	for (int32 Index = 0; GameSession && Index < GameSession->MaxPlayers; ++Index)
+	// マップに置かれたPlayerStartがあればそれを使い、なければ定員分を生成する。
+	const bool NeedsStarts = SpawnPoints.IsEmpty();
+	for (int32 Index = 0; NeedsStarts && GameSession && Index < GameSession->MaxPlayers; ++Index)
 	{
 		auto* Position = GetWorld()->SpawnActor<APlayerStart>(
 		    FVector(-2000 + (Index % 4) * 300, -1800 + (Index / 4) * 350, 120), FRotator::ZeroRotator);
@@ -83,14 +101,14 @@ void ATBGameMode::BuildArena()
 	// アイテムの配置数は参加定員とは独立させる。
 	for (int32 Index = 0; Index < 8; ++Index)
 	{
-		GetWorld()->SpawnActor<ATBPickup>(FVector(-1900 + (Index % 4) * 950, -2200 + (Index / 4) * 4400, 40),
+		GetWorld()->SpawnActor<ATBPickup>(FVector(-1900 + (Index % 4) * 950, -2200 + (Index / 4) * 4400, 15),
 		                                  FRotator::ZeroRotator);
 	}
 }
 
 AActor* ATBGameMode::ChoosePlayerStart_Implementation(AController* Player)
 {
-	if (bBuildTestArena && SpawnPoints.IsEmpty())
+	if (bBuildTestArena)
 	{
 		BuildArena();
 	}
@@ -221,9 +239,13 @@ void ATBGameMode::StartRound(APlayerController* PlayerController)
 	}
 	if (Boxes != 1 || Items < MatchInfo->Settings.RequiredItems)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("[ToyBoxMatch] Start refused on %s: boxes %d, items %d/%d"),
+		       *GetWorld()->GetMapName(), Boxes, Items, MatchInfo->Settings.RequiredItems);
 		if (HostController)
 		{
-			HostController->ClientNotice(TEXT("Map requires exactly one box and enough items."));
+			HostController->ClientNotice(
+			    FString::Printf(TEXT("Map requires exactly one box and enough items (boxes %d, items %d/%d)."), Boxes,
+			                    Items, MatchInfo->Settings.RequiredItems));
 		}
 		return;
 	}
@@ -269,7 +291,90 @@ void ATBGameMode::StartRound(APlayerController* PlayerController)
 	MatchInfo->ForceNetUpdate();
 	if (auto* Session = GetGameInstance()->GetSubsystem<UTBSession>())
 	{
-		Session->CloseLobby();
+		Session->RefreshLobbyAvailability();
+	}
+}
+
+// 接続・PlayerState・マップを保持し、試合に属する状態だけを初期化する。
+void ATBGameMode::ReturnToLobby(APlayerController* PlayerController)
+{
+	auto* State = TB::GS(GetWorld());
+	if (!IsHost(PlayerController) || !State || (State->Phase != ETBPhase::Results && State->Phase != ETBPhase::Aborted))
+	{
+		return;
+	}
+	DestroyRoundCharacters();
+	for (APlayerState* Player : State->PlayerArray)
+	{
+		if (auto* Info = Cast<ATBPlayerState>(Player))
+		{
+			Info->Team = ETBTeam::None;
+			Info->ToyState = ETBToyState::Free;
+			Info->bFrozen = false;
+			Info->bReady = false;
+			Info->Items = 0;
+			Info->ForceNetUpdate();
+		}
+	}
+	ResetStageInteractions();
+	State->Collected = 0;
+	State->BoxedCount = 0;
+	State->EndTime = 0;
+	State->Winner = ETBWinner::None;
+	State->Reason.Reset();
+	State->Phase = ETBPhase::Lobby;
+	State->ForceNetUpdate();
+	SpawnCursor = 0;
+	for (auto It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		if (auto* Controller = Cast<ATBController>(It->Get()))
+		{
+			RestartPlayer(Controller);
+			Controller->ClientNotice(TEXT("Same room. Choose your role and ready up for another round."));
+		}
+	}
+	if (auto* Session = GetGameInstance()->GetSubsystem<UTBSession>())
+	{
+		Session->RefreshLobbyAvailability();
+	}
+}
+
+void ATBGameMode::DestroyRoundCharacters()
+{
+	// 運搬の親子関係を解除してから全Pawnを再生成する。
+	// 移動補間、入力、取得途中・収納途中のタイマーも新しいPawnで初期状態になる。
+	TArray<ATBCharacter*> OldCharacters;
+	for (TActorIterator<ATBCharacter> It(GetWorld()); It; ++It)
+	{
+		It->ClearHeldInteraction();
+		It->Carrier = nullptr;
+		It->CarriedToy = nullptr;
+		It->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+		OldCharacters.Add(*It);
+	}
+	for (auto* Character : OldCharacters)
+	{
+		if (auto* Controller = Character->GetController())
+		{
+			Controller->UnPossess();
+		}
+		Character->Destroy();
+	}
+}
+
+void ATBGameMode::ResetStageInteractions()
+{
+	for (TActorIterator<ATBPickup> It(GetWorld()); It; ++It)
+	{
+		It->bTaken = false;
+		It->OnRep_Taken();
+		It->ForceNetUpdate();
+	}
+	for (TActorIterator<ATBBox> It(GetWorld()); It; ++It)
+	{
+		It->RescueProgress = 0;
+		It->Rescuers = 0;
+		It->ForceNetUpdate();
 	}
 }
 

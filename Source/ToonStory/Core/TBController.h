@@ -11,6 +11,7 @@ class TOONSTORY_API ATBController : public APlayerController
 	GENERATED_BODY()
 public:
 	virtual void BeginPlay() override;
+	virtual void PlayerTick(float DeltaTime) override;
 	virtual void SetupInputComponent() override;
 	UFUNCTION(Exec)
 	void TBHost();
@@ -20,6 +21,10 @@ public:
 	void TBJoin(int32 Index);
 	UFUNCTION(Exec)
 	void TBLeave();
+	UFUNCTION(Exec)
+	void TBLobby();
+	UFUNCTION(Server, Reliable)
+	void ServerReturnToLobby();
 	UFUNCTION(Exec)
 	void TBReady();
 	UFUNCTION(Exec)
@@ -40,4 +45,12 @@ public:
 	void ClientNotice(const FString& Message);
 	UPROPERTY(BlueprintReadOnly)
 	FString Notice;
+
+private:
+	void UpdateLobbyCamera(bool InLobby);
+	void UpdateMenuInput(bool ShowMenu);
+	bool bLobbyInput = false;
+	bool bLobbyCameraActive = false;
+	bool bLobbyCameraSearched = false;
+	TWeakObjectPtr<AActor> LobbyCamera;
 };

@@ -7,6 +7,74 @@
 #include "Components/InputComponent.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
+#include "Camera/CameraActor.h"
+
+void ATBController::PlayerTick(float DeltaTime)
+{
+	Super::PlayerTick(DeltaTime);
+	if (!IsLocalController())
+	{
+		return;
+	}
+	const auto* State = TB::GS(GetWorld());
+	const bool InLobby = State && State->Phase == ETBPhase::Lobby;
+	const bool ShowMenu = State && State->Phase != ETBPhase::Playing;
+	UpdateLobbyCamera(InLobby);
+	UpdateMenuInput(ShowMenu);
+}
+
+void ATBController::UpdateLobbyCamera(bool InLobby)
+{
+	// ロビー中はマップに置いたTBLobbyCameraから見せる。Pawnの所持で視点が戻されても毎フレーム掛け直す。
+	if (InLobby)
+	{
+		if (!bLobbyCameraSearched)
+		{
+			bLobbyCameraSearched = true;
+			for (TActorIterator<ACameraActor> It(GetWorld()); It; ++It)
+			{
+				if (It->ActorHasTag(TEXT("TBLobbyCamera")))
+				{
+					LobbyCamera = *It;
+					break;
+				}
+			}
+		}
+		if (LobbyCamera.IsValid() && GetViewTarget() != LobbyCamera.Get())
+		{
+			SetViewTarget(LobbyCamera.Get());
+			bLobbyCameraActive = true;
+		}
+	}
+	else if (bLobbyCameraActive && GetPawn())
+	{
+		SetViewTargetWithBlend(GetPawn(), .35f);
+		bLobbyCameraActive = false;
+	}
+}
+
+void ATBController::UpdateMenuInput(bool ShowMenu)
+{
+	if (bLobbyInput != ShowMenu)
+	{
+		bLobbyInput = ShowMenu;
+		bShowMouseCursor = ShowMenu;
+		bEnableClickEvents = ShowMenu;
+		SetIgnoreLookInput(ShowMenu);
+		SetIgnoreMoveInput(ShowMenu);
+		if (ShowMenu)
+		{
+			FInputModeGameAndUI Mode;
+			Mode.SetHideCursorDuringCapture(false);
+			SetInputMode(Mode);
+		}
+		else
+		{
+			SetInputMode(FInputModeGameOnly());
+		}
+	}
+}
 
 void ATBController::BeginPlay()
 {
@@ -62,6 +130,19 @@ void ATBController::TBLeave()
 void ATBController::TBReady()
 {
 	ServerReady();
+}
+
+void ATBController::TBLobby()
+{
+	ServerReturnToLobby();
+}
+
+void ATBController::ServerReturnToLobby_Implementation()
+{
+	if (auto* GameMode = GetWorld()->GetAuthGameMode<ATBGameMode>())
+	{
+		GameMode->ReturnToLobby(this);
+	}
 }
 
 void ATBController::TBStart()

@@ -1,4 +1,6 @@
 #include "TBSession.h"
+#include "Core/TBGameState.h"
+#include "Core/TBGameHelpers.h"
 #include "OnlineSubsystem.h"
 #include "OnlineSubsystemUtils.h"
 #include "Online/OnlineSessionNames.h"
@@ -10,13 +12,14 @@
 #include "GameFramework/GameSession.h"
 #include "Kismet/GameplayStatics.h"
 #include "TimerManager.h"
+#include "Misc/PackageName.h"
 
 namespace
 {
 	const FName GameKey(TEXT("TOYBOX_BUILD"));
-	const FString BuildTag(TEXT("ToonStory_FixedBox_20260930"));
+	const FString BuildTag(TEXT("ToonStory_ResidentialStages_20261003"));
 	const FName LobbyKey(TEXT("LOBBY_OPEN"));
-}
+} // namespace
 void UTBSession::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
@@ -29,10 +32,10 @@ void UTBSession::Initialize(FSubsystemCollectionBase& Collection)
 
 void UTBSession::Deinitialize()
 {
-	if (GetWorld())
+	if (UWorld* World = GetWorld())
 	{
-		GetWorld()->GetTimerManager().ClearTimer(CloseTimer);
-		GetWorld()->GetTimerManager().ClearTimer(LobbyUpdateTimer);
+		World->GetTimerManager().ClearTimer(CloseTimer);
+		World->GetTimerManager().ClearTimer(LobbyUpdateTimer);
 	}
 	if (Sessions.IsValid())
 	{
@@ -118,7 +121,8 @@ void UTBSession::Host()
 	Settings.bIsLANMatch = bIsLAN;
 	Settings.bIsDedicated = false;
 	Settings.bShouldAdvertise = true;
-	Settings.bAllowJoinInProgress = false;
+	// Steamはメンバー変更時にもこの値でロビーを参加可能にする。試合前は開けておく。
+	Settings.bAllowJoinInProgress = true;
 	Settings.bAllowInvites = true;
 	Settings.bUsesPresence = !bIsLAN;
 	Settings.bAllowJoinViaPresence = !bIsLAN;
@@ -135,7 +139,7 @@ void UTBSession::Host()
 	}
 }
 
-// 非同期の部屋作成が完了したら、Arenaをリッスンサーバーとして開く。
+// 非同期の部屋作成が完了したら、ステージを1つ選んでリッスンサーバーとして開く。
 void UTBSession::Created(FName Name, bool bSucceeded)
 {
 	if (Name != NAME_GameSession || CurrentOperation != ESessionOperation::Creating)
@@ -149,7 +153,22 @@ void UTBSession::Created(FName Name, bool bSucceeded)
 		return;
 	}
 	Message(TEXT("Room created. Opening listen server..."));
-	UGameplayStatics::OpenLevel(GetGameInstance(), FName(TEXT("/Game/Maps/Arena")), true, TEXT("listen"));
+	TArray<FName> Stages;
+	for (const TCHAR* Map : {TEXT("/Game/Maps/TB_ArchViz"), TEXT("/Game/Maps/TB_KidsRoom")})
+	{
+		if (FPackageName::DoesPackageExist(Map))
+		{
+			Stages.Add(FName(Map));
+		}
+	}
+	if (Stages.IsEmpty())
+	{
+		Message(TEXT("Residential stages are not installed. Opening test arena."));
+	}
+	const FName Selected =
+	    Stages.IsEmpty() ? FName(TEXT("/Game/Maps/Arena")) : Stages[FMath::RandRange(0, Stages.Num() - 1)];
+	// 抽選はホストで1回だけ。参加者は接続時にホストと同じマップへ移動する。
+	UGameplayStatics::OpenLevel(GetGameInstance(), Selected, true, TEXT("listen"));
 }
 
 // 同じビルド識別子の部屋を検索する。表示用文字列と参加用結果は分けて保持する。
@@ -185,26 +204,30 @@ void UTBSession::Find()
 	}
 }
 
-// 更新失敗時は再試行する。更新待ちでもGameModeのPreLoginが試合中参加を拒否する。
-void UTBSession::CloseLobby()
+// 再試行時にも現在のPhaseを参照し、古い「閉じる」要求が再戦ロビーを閉じないようにする。
+void UTBSession::RefreshLobbyAvailability()
 {
 	if (!GetWorld() || !GetWorld()->GetAuthGameMode() || !Sessions.IsValid() ||
-	    CurrentOperation != ESessionOperation::Idle)
+	    CurrentOperation != ESessionOperation::Idle || bLobbyUpdateInFlight)
 	{
 		return;
 	}
 	auto* Current = Sessions->GetSessionSettings(NAME_GameSession);
-	if (!Current)
+	const auto* State = TB::GS(GetWorld());
+	if (!Current || !State)
 	{
 		return; // PIEの直接接続にはオンラインセッションがない。
 	}
 	FOnlineSessionSettings Settings = *Current;
-	Settings.bShouldAdvertise = false;
-	Settings.bAllowJoinInProgress = false;
-	Settings.bAllowInvites = false;
-	Settings.bAllowJoinViaPresence = false;
+	bUpdatingLobbyOpen = State->Phase == ETBPhase::Lobby;
+	Settings.bShouldAdvertise = bUpdatingLobbyOpen;
+	// ゲームのPhaseに合わせる。常にfalseだと、Steamが待機中の部屋まで検索から隠す。
+	Settings.bAllowJoinInProgress = bUpdatingLobbyOpen;
+	Settings.bAllowInvites = bUpdatingLobbyOpen;
+	Settings.bAllowJoinViaPresence = bUpdatingLobbyOpen && Settings.bUsesPresence;
 	Settings.bAllowJoinViaPresenceFriendsOnly = false;
-	Settings.Set(LobbyKey, false, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
+	Settings.Set(LobbyKey, bUpdatingLobbyOpen, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
+	bLobbyUpdateInFlight = true;
 	if (!Sessions->UpdateSession(NAME_GameSession, Settings, true))
 	{
 		LobbyUpdated(NAME_GameSession, false);
@@ -213,18 +236,32 @@ void UTBSession::CloseLobby()
 
 void UTBSession::LobbyUpdated(FName Name, bool bSucceeded)
 {
-	if (Name != NAME_GameSession || !GetWorld() || CurrentOperation != ESessionOperation::Idle)
+	if (Name != NAME_GameSession || !bLobbyUpdateInFlight)
+	{
+		return;
+	}
+	bLobbyUpdateInFlight = false;
+	if (!GetWorld() || CurrentOperation != ESessionOperation::Idle)
 	{
 		return;
 	}
 	if (!bSucceeded)
 	{
-		Message(TEXT("Could not close room advertisement; retrying."));
-		GetWorld()->GetTimerManager().SetTimer(LobbyUpdateTimer, this, &UTBSession::CloseLobby, 2.f, false);
+		Message(TEXT("Could not update room advertisement; retrying."));
+		GetWorld()->GetTimerManager().SetTimer(LobbyUpdateTimer, this, &UTBSession::RefreshLobbyAvailability, 2.f,
+		                                       false);
 	}
 	else
 	{
-		GetWorld()->GetTimerManager().ClearTimer(LobbyUpdateTimer);
+		if (UWorld* World = GetWorld())
+		{
+			World->GetTimerManager().ClearTimer(LobbyUpdateTimer);
+		}
+		const auto* State = TB::GS(GetWorld());
+		if (State && bUpdatingLobbyOpen != (State->Phase == ETBPhase::Lobby))
+		{
+			RefreshLobbyAvailability();
+		}
 	}
 }
 
@@ -360,7 +397,10 @@ void UTBSession::Leave()
 		return;
 	}
 	CurrentOperation = ESessionOperation::Closing;
-	GetWorld()->GetTimerManager().ClearTimer(LobbyUpdateTimer);
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(LobbyUpdateTimer);
+	}
 	Message(TEXT("Leaving room..."));
 	if (Sessions->GetNamedSession(NAME_GameSession))
 	{
@@ -393,10 +433,17 @@ void UTBSession::Destroyed(FName Name, bool bSucceeded)
 
 void UTBSession::ReturnOffline()
 {
+	bLobbyUpdateInFlight = false;
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(LobbyUpdateTimer);
+	}
 	CurrentOperation = ESessionOperation::Idle;
 	Results.Reset();
 	Rooms.Reset();
-	UGameplayStatics::OpenLevel(GetGameInstance(), FName(TEXT("/Game/Maps/Arena")), true);
+	const TCHAR* Lobby = FPackageName::DoesPackageExist(TEXT("/Game/Maps/TB_KidsRoom")) ? TEXT("/Game/Maps/TB_KidsRoom")
+	                                                                                    : TEXT("/Game/Maps/Arena");
+	UGameplayStatics::OpenLevel(GetGameInstance(), FName(Lobby), true);
 	Message(TEXT("Offline. Last match ended; TBHost / TBFind for a new lobby."));
 }
 
@@ -428,5 +475,6 @@ void UTBSession::TravelFailed(UWorld* World, ETravelFailure::Type Type, const FS
 	{
 		return;
 	}
-	Message(FString::Printf(TEXT("Travel failed: %s. Check Arena is saved/cooked; TBLeave cleans session."), *Error));
+	Message(FString::Printf(
+	    TEXT("Travel failed: %s. Check the destination map is saved/cooked; TBLeave cleans session."), *Error));
 }

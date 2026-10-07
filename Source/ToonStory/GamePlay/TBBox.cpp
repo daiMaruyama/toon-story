@@ -6,13 +6,13 @@
 #include "Core/TBGameHelpers.h"
 #include "GamePlay/TBRuleMath.h"
 #include "Components/StaticMeshComponent.h"
+#include "Components/BoxComponent.h"
+#include "Components/CapsuleComponent.h"
 #include "Components/PointLightComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
-#include "Kismet/GameplayStatics.h"
 #include "Net/UnrealNetwork.h"
-#include "Sound/SoundBase.h"
 #include "UObject/ConstructorHelpers.h"
 
 ATBBox::ATBBox()
@@ -23,55 +23,52 @@ ATBBox::ATBBox()
 	SetNetUpdateFrequency(10);
 	Root = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
 	SetRootComponent(Root);
-	auto* Light = CreateDefaultSubobject<UPointLightComponent>(TEXT("InteriorLight"));
-	Light->SetupAttachment(Root);
+	Visual = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("ChestVisual"));
+	Visual->SetupAttachment(Root);
+	Visual->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	InteractionPoint = CreateDefaultSubobject<USceneComponent>(TEXT("Interaction"));
+	InteractionPoint->SetupAttachment(Root);
+	InteractionPoint->SetRelativeLocation(FVector(-40, 0, 25));
+	// 木箱の底・四方の板・閉じた蓋に合わせた単純衝突。前方は-X。
+	const FVector Centers[] = {{43, 0, 3}, {1, 0, 50}, {86, 0, 50}, {43, -78, 50}, {43, 78, 50}, {43, 0, 99}};
+	const FVector Extents[] = {{43, 80, 3}, {3, 80, 49}, {3, 80, 49}, {43, 3, 49}, {43, 3, 49}, {43, 80, 4}};
+	for (int32 Index = 0; Index < UE_ARRAY_COUNT(Centers); ++Index)
+	{
+		auto* Collision = CreateDefaultSubobject<UBoxComponent>(*FString::Printf(TEXT("ChestCollision%d"), Index));
+		Collision->SetupAttachment(Root);
+		Collision->SetRelativeLocation(Centers[Index]);
+		Collision->SetBoxExtent(Extents[Index]);
+		Collision->SetCollisionProfileName(TEXT("BlockAll"));
+	}
+	StorageRoom = CreateDefaultSubobject<USceneComponent>(TEXT("StorageRoom"));
+	StorageRoom->SetupAttachment(Root);
+	StorageRoom->SetRelativeLocation(FVector(3000, 0, 0));
+	auto* Light = CreateDefaultSubobject<UPointLightComponent>(TEXT("StorageRoomLight"));
+	Light->SetupAttachment(StorageRoom);
 	Light->SetRelativeLocation(FVector(400, 0, 250));
 	Light->SetIntensity(5000.f);
 	Light->SetAttenuationRadius(900.f);
-	InteractionPoint = CreateDefaultSubobject<USceneComponent>(TEXT("Interaction"));
-	InteractionPoint->SetupAttachment(Root);
-	InteractionPoint->SetRelativeLocation(FVector(-120, 220, 60));
+	// 収納後は従来の別室へ移動する。木箱の見た目や大きさから独立させる。
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> Cube(TEXT("/Engine/BasicShapes/Cube.Cube"));
-	auto* Marker = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("InteractMarker"));
-	Marker->SetupAttachment(Root);
-	if (Cube.Succeeded())
+	const FVector RoomCenters[] = {{400, 0, -10},    {0, -210, 160},  {0, 210, 160}, {0, 0, 280}, {800, 0, 160},
+	                               {400, -300, 160}, {400, 300, 160}, {400, 0, 330}, {0, 0, 120}};
+	const FVector RoomScales[] = {{8, 6, .2},   {.2, 1.8, 3.2}, {.2, 1.8, 3.2}, {.2, 2.4, .8}, {.2, 6, 3.2},
+	                              {8, .2, 3.2}, {8, .2, 3.2},   {8, 6, .2},     {.2, 2.4, 2.4}};
+	for (int32 Index = 0; Index < UE_ARRAY_COUNT(RoomCenters); ++Index)
 	{
-		Marker->SetStaticMesh(Cube.Object);
+		auto* Wall = CreateDefaultSubobject<UStaticMeshComponent>(*FString::Printf(TEXT("StorageRoomWall%d"), Index));
+		Wall->SetupAttachment(StorageRoom);
+		Wall->SetStaticMesh(Cube.Object);
+		Wall->SetRelativeLocation(RoomCenters[Index]);
+		Wall->SetRelativeScale3D(RoomScales[Index]);
+		Wall->SetCollisionProfileName(TEXT("BlockAll"));
 	}
-	Marker->SetRelativeLocation(FVector(-120, 220, 20));
-	Marker->SetRelativeScale3D(FVector(.4, .4, .4));
-	Marker->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	const FVector Pos[] = {{400, 0, -10}, {0, -210, 160},   {0, 210, 160},   {0, 0, 280},
-	                       {800, 0, 160}, {400, -300, 160}, {400, 300, 160}, {400, 0, 330}};
-	const FVector Scale[] = {{8, 6, .2},   {.2, 1.8, 3.2}, {.2, 1.8, 3.2}, {.2, 2.4, .8},
-	                         {.2, 6, 3.2}, {8, .2, 3.2},   {8, .2, 3.2},   {8, 6, .2}};
-	for (int32 N = 0; N < 8; ++N)
-	{
-		auto* M = CreateDefaultSubobject<UStaticMeshComponent>(*FString::Printf(TEXT("Wall%d"), N));
-		M->SetupAttachment(Root);
-		if (Cube.Succeeded())
-		{
-			M->SetStaticMesh(Cube.Object);
-		}
-		M->SetRelativeLocation(Pos[N]);
-		M->SetRelativeScale3D(Scale[N]);
-		M->SetCollisionProfileName(TEXT("BlockAll"));
-	}
-	// 前面は固定壁。救助は開閉を行わず、箱外への移動で成立する。
-	auto* FrontWall = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("FrontWall"));
-	FrontWall->SetupAttachment(Root);
-	if (Cube.Succeeded())
-	{
-		FrontWall->SetStaticMesh(Cube.Object);
-	}
-	FrontWall->SetRelativeLocation(FVector(0, 0, 120));
-	FrontWall->SetRelativeScale3D(FVector(.2, 2.4, 2.4));
-	FrontWall->SetCollisionProfileName(TEXT("BlockAll"));
 }
 
 void ATBBox::BeginPlay()
 {
 	Super::BeginPlay();
+	Visual->SetStaticMesh(BoxMesh.LoadSynchronous());
 	if (auto* GameMode = GetWorld()->GetAuthGameMode<ATBGameMode>())
 	{
 		AddTickPrerequisiteActor(GameMode);
@@ -83,7 +80,6 @@ void ATBBox::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimePr
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(ATBBox, RescueProgress);
 	DOREPLIFETIME(ATBBox, Rescuers);
-	DOREPLIFETIME(ATBBox, AlarmUntil);
 }
 
 bool ATBBox::InRange(const ATBCharacter* ToyCharacter) const
@@ -111,6 +107,24 @@ bool ATBBox::HasPrisoners() const
 	return false;
 }
 
+bool ATBBox::CanStoreFrom(const ATBCharacter* Character) const
+{
+	if (!Character)
+	{
+		return false;
+	}
+	// 収納は小さな救助マーカーではなく、箱の正面全体で受け付ける。
+	const FVector Local = GetActorTransform().InverseTransformPosition(Character->GetActorLocation());
+	if (Local.X >= 0.f || Local.X < -180.f || FMath::Abs(Local.Y) > 140.f || Local.Z < 0.f || Local.Z > 220.f)
+	{
+		return false;
+	}
+	const FVector Target = GetActorTransform().TransformPosition(FVector(-10, FMath::Clamp(Local.Y, -75.f, 75.f), 60));
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(TBBoxStorage), false, Character);
+	Params.AddIgnoredActor(this);
+	return !GetWorld()->LineTraceTestByChannel(Character->GetPawnViewLocation(), Target, ECC_Visibility, Params);
+}
+
 // 収納の最終確認を行い、箱内へ移してから勝敗を確認する。
 bool ATBBox::Store(ATBCharacter* Toy)
 {
@@ -124,10 +138,13 @@ bool ATBBox::Store(ATBCharacter* Toy)
 	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(TBStorage), false, Toy);
 	for (int32 Slot = 0; Slot < 9; ++Slot)
 	{
-		const FVector Candidate =
-		    GetActorTransform().TransformPosition(FVector(200 + (Slot % 3) * 180, -170 + (Slot / 3) * 170, 60));
-		if (!GetWorld()->OverlapBlockingTestByChannel(Candidate, FQuat::Identity, ECC_GameTraceChannel1,
-		                                              FCollisionShape::MakeCapsule(20.f, 35.f), QueryParams))
+		const FVector Candidate = StorageRoom->GetComponentTransform().TransformPosition(
+		    FVector(200 + (Slot % 3) * 180, -170 + (Slot / 3) * 170, 60));
+		if (!GetWorld()->OverlapBlockingTestByChannel(
+		        Candidate, FQuat::Identity, ECC_GameTraceChannel1,
+		        FCollisionShape::MakeCapsule(Toy->GetCapsuleComponent()->GetScaledCapsuleRadius(),
+		                                     Toy->GetCapsuleComponent()->GetScaledCapsuleHalfHeight()),
+		        QueryParams))
 		{
 			StoragePosition = Candidate;
 			bFoundPosition = true;
@@ -191,11 +208,6 @@ void ATBBox::Tick(float DeltaSeconds)
 		RescueProgress = 0;
 		return;
 	}
-	if (Rescuers == 0)
-	{
-		AlarmUntil = GetWorld()->GetTimeSeconds() + 3;
-		MulticastAlarm();
-	}
 	Rescuers = RescueCount;
 	RescueProgress =
 	    FMath::Min(1.f, RescueProgress + DeltaSeconds * TBRuleMath::RescueRate(RescueCount, BaseRescueSeconds,
@@ -222,7 +234,7 @@ void ATBBox::ReleasePrisoners()
 			continue;
 		}
 		const FVector Exit =
-		    GetActorTransform().TransformPosition(FVector(-240 - (Slot / 5) * 100, -240 + (Slot % 5) * 100, 60));
+		    GetActorTransform().TransformPosition(FVector(-65 - (Slot / 3) * 35, -50 + (Slot % 3) * 50, 60));
 		++Slot;
 		if (Toy->TeleportTo(Exit, GetActorRotation()))
 		{
@@ -240,14 +252,4 @@ void ATBBox::ReleasePrisoners()
 		}
 	}
 	ForceNetUpdate();
-}
-
-void ATBBox::MulticastAlarm_Implementation()
-{
-	// 全員に警報を届けるため、距離減衰のない2D音声を使う。
-	if (GetNetMode() != NM_DedicatedServer && AlarmSound)
-	{
-		UGameplayStatics::PlaySound2D(this, AlarmSound);
-	}
-	AlarmVisual();
 }

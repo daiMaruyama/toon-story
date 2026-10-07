@@ -4,12 +4,13 @@
 #include "Data/TBTypes.h"
 #include "TBBox.generated.h"
 
-class USoundBase;
 class ATBCharacter;
 class ATBBox;
+class UStaticMesh;
+class UStaticMeshComponent;
 
 /** 固定された箱への収納と、箱外への救助をサーバーで管理する。 */
-UCLASS()
+UCLASS(Config = Game)
 class TOONSTORY_API ATBBox : public AActor
 {
 	GENERATED_BODY()
@@ -22,9 +23,14 @@ public:
 	TObjectPtr<USceneComponent> Root;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	TObjectPtr<USceneComponent> InteractionPoint;
+	UPROPERTY(Config, EditDefaultsOnly, Category = "Appearance")
+	TSoftObjectPtr<UStaticMesh> BoxMesh;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	TObjectPtr<UStaticMeshComponent> Visual;
+	// 見える木箱とは独立した、従来の収納先の部屋。
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	TObjectPtr<USceneComponent> StorageRoom;
 	void ReleasePrisoners();
-	UPROPERTY(EditAnywhere, BlueprintReadOnly)
-	TObjectPtr<USoundBase> AlarmSound;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	float BaseRescueSeconds = 10.f;
 	// 追加の救助者1人あたりの基準速度に対する加算割合。
@@ -36,13 +42,8 @@ public:
 	float RescueProgress = 0.f;
 	UPROPERTY(Replicated, BlueprintReadOnly)
 	int32 Rescuers = 0;
-	UPROPERTY(Replicated, BlueprintReadOnly)
-	double AlarmUntil = 0;
 	bool InRange(const ATBCharacter* C) const;
+	bool CanStoreFrom(const ATBCharacter* Character) const;
 	bool Store(ATBCharacter* Toy);
 	bool HasPrisoners() const;
-	UFUNCTION(NetMulticast, Reliable)
-	void MulticastAlarm();
-	UFUNCTION(BlueprintImplementableEvent)
-	void AlarmVisual();
 };

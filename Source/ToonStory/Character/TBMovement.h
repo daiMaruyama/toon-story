@@ -10,6 +10,11 @@ class TOONSTORY_API UTBMovement : public UCharacterMovementComponent
 {
 	GENERATED_BODY()
 public:
+	// 移動パケットのカスタムフラグでダッシュ入力を予測・再送する。
+	bool bWantsToSprint = false;
+	virtual float GetMaxSpeed() const override;
+	virtual void UpdateFromCompressedFlags(uint8 Flags) override;
+	virtual FNetworkPredictionData_Client* GetPredictionData_Client() const override;
 	virtual void PerformMovement(float DeltaSeconds) override;
 	virtual void PhysCustom(float DeltaTime, int32 Iterations) override;
 	virtual void MoveAutonomous(float ClientTimeStamp, float DeltaTime, uint8 CompressedFlags,

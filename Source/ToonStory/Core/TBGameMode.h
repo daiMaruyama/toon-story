@@ -14,6 +14,7 @@ class TOONSTORY_API ATBGameMode : public AGameModeBase
 	GENERATED_BODY()
 public:
 	ATBGameMode();
+	virtual void InitGame(const FString& MapName, const FString& Options, FString& ErrorMessage) override;
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaSeconds) override;
 	virtual void PreLogin(const FString& Options, const FString& Address, const FUniqueNetIdRepl& UniqueId,
@@ -32,6 +33,7 @@ public:
 	bool IsHost(const APlayerController* PlayerController) const;
 	void SetRules(APlayerController* PlayerController, const FTBSettings& Rules);
 	void StartRound(APlayerController* PlayerController);
+	void ReturnToLobby(APlayerController* PlayerController);
 	void CheckWin();
 	void Finish(ETBWinner Winner, const FString& Why, bool bAbort = false);
 	bool Watched(ATBCharacter* Toy, ATBCharacter* Human) const;
@@ -39,6 +41,8 @@ public:
 	TArray<TObjectPtr<AActor>> SpawnPoints;
 
 private:
+	void DestroyRoundCharacters();
+	void ResetStageInteractions();
 	void BuildArena();
 	void EvaluateGaze();
 	int32 SpawnCursor = 0;
