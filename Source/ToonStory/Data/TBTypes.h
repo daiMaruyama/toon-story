@@ -1,7 +1,6 @@
 #pragma once
 #include "CoreMinimal.h"
 #include "TBTypes.generated.h"
-#include <sys/param.h>
 
 UENUM(BlueprintType)
 enum class ETBTeam : uint8
