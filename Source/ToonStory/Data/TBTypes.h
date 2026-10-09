@@ -1,6 +1,7 @@
 #pragma once
 #include "CoreMinimal.h"
 #include "TBTypes.generated.h"
+#include <sys/param.h>
 
 UENUM(BlueprintType)
 enum class ETBTeam : uint8
@@ -32,6 +33,13 @@ enum class ETBWinner : uint8
 	None,
 	Humans,
 	Toys
+};
+UENUM(BlueprintType)
+enum class ETBRemoteKey : uint8
+{
+	Digit,
+	Next,
+	Prev
 };
 
 USTRUCT(BlueprintType)
