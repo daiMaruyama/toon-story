@@ -8,10 +8,13 @@
 #include "Core/TBPlayerState.h"
 #include "GamePlay/TBBox.h"
 #include "GamePlay/TBBoxTV.h"
+#include "GamePlay/TBTVButton.h"
 #include "GamePlay/TBTVCamera.h"
+#include "GamePlay/TBTVRemote.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
 #include "Kismet/GameplayStatics.h"
 #include "Materials/MaterialInstanceDynamic.h"
 
@@ -157,6 +160,42 @@ bool FTBTVTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("Power can be turned on"), TV->TogglePower(Viewer) && TV->IsPowerOn());
 		TV->Tick(0);
 		TestTrue(TEXT("Powered on television captures again"), TV->IsCapturing());
+		// レベルに置いたリモコンで、先客がいるボタンは押されないことを確かめる。
+		TActorIterator<ATBTVRemote> RemoteIt(World);
+		if (RemoteIt && IsValid(RemoteIt->TV))
+		{
+			auto* Remote = *RemoteIt;
+			TArray<UTBTVButton*> Buttons;
+			Remote->GetComponents(Buttons);
+			auto FindDigit = [&Buttons](int32 Digit) -> UTBTVButton*
+			{
+				auto* const* Found = Buttons.FindByPredicate([Digit](const UTBTVButton* Button)
+				                                             { return Button->CurrentKey == ETBRemoteKey::Digit && Button->Digit == Digit; });
+				return Found ? *Found : nullptr;
+			};
+			auto* One = FindDigit(1);
+			auto* Two = FindDigit(2);
+			if (TestNotNull(TEXT("Remote has digit 1"), One) && TestNotNull(TEXT("Remote has digit 2"), Two))
+			{
+				auto Put = [](ATBCharacter* Character, const FVector& Location)
+				{ Character->SetActorLocation(Location, false, nullptr, ETeleportType::TeleportPhysics); };
+				const FVector ViewerHome = Viewer->GetActorLocation();
+				const FVector TargetHome = Target->GetActorLocation();
+				const int32 Before = Remote->TV->GetChannel().Number;
+				Put(Target, One->GetComponentLocation());
+				Put(Viewer, One->GetComponentLocation());
+				TestEqual(TEXT("Occupied button is not pressed again"), Remote->TV->GetChannel().Number, Before);
+				Put(Target, TargetHome);
+				Put(Viewer, ViewerHome);
+				Put(Viewer, Two->GetComponentLocation());
+				TestEqual(TEXT("Stepping on an empty button presses it"), Remote->TV->GetChannel().Number, 2);
+				Put(Viewer, ViewerHome);
+			}
+		}
+		else
+		{
+			AddInfo(TEXT("No remote in this level; skipped remote button check"));
+		}
 		TV->SelectChannel(Viewer, 0);
 		TestEqual(TEXT("Switching starts static"), Noise(), 1.f);
 		// 実フレームでタイマーを動かす。同期テスト内のWorld::Tick連打ではタイマーは進まない。

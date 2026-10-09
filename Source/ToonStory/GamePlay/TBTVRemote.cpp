@@ -35,6 +35,13 @@ void ATBTVRemote::OnButtonOverlap(UPrimitiveComponent* Component, AActor* OtherA
 	{
 		return;
 	}
+	// 誰も乗っていないボタンに乗ったときだけ押す。通知時点で本人は一覧に含まれている。
+	TArray<AActor*> Riders;
+	Button->GetOverlappingActors(Riders, ATBCharacter::StaticClass());
+	if (Riders.Num() > 1)
+	{
+		return;
+	}
 	bool bHandled = false;
 	switch (Button->CurrentKey)
 	{
