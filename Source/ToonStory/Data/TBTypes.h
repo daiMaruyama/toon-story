@@ -38,7 +38,8 @@ enum class ETBRemoteKey : uint8
 {
 	Digit,
 	Next,
-	Prev
+	Prev,
+	Power
 };
 
 USTRUCT(BlueprintType)
