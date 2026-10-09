@@ -35,20 +35,25 @@ void ATBTVRemote::OnButtonOverlap(UPrimitiveComponent* Component, AActor* OtherA
 	{
 		return;
 	}
-	LastPressTime = Now;
+	bool bHandled = false;
 	switch (Button->CurrentKey)
 	{
 		case ETBRemoteKey::Digit:
-			TV->SelectChannel(Viewer, Button->Digit);
+			bHandled = TV->SelectChannel(Viewer, Button->Digit);
 			break;
 		case ETBRemoteKey::Next:
-			TV->StepChannel(Viewer, 1);
+			bHandled = TV->StepChannel(Viewer, 1);
 			break;
 		case ETBRemoteKey::Prev:
-			TV->StepChannel(Viewer, -1);
+			bHandled = TV->StepChannel(Viewer, -1);
 			break;
 		case ETBRemoteKey::Power:
-			TV->TogglePower(Viewer);
+			bHandled = TV->TogglePower(Viewer);
 			break;
+	}
+	// 断られた操作（電源OFF中の番号など）では連打防止を始めない。
+	if (bHandled)
+	{
+		LastPressTime = Now;
 	}
 }
