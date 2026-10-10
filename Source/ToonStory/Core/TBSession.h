@@ -5,6 +5,7 @@
 #include "OnlineSessionSettings.h"
 #include "Engine/EngineBaseTypes.h"
 #include "TimerManager.h"
+#include "Containers/Ticker.h"
 #include "TBSession.generated.h"
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FTBSessionChanged);
@@ -28,12 +29,14 @@ public:
 	void Join(int32 Index);
 	UFUNCTION(BlueprintCallable)
 	void Leave();
+	UFUNCTION(BlueprintPure)
+	bool HasSession() const;
 	// 現在のPhaseに合わせ、検索・招待からの参加を開閉する（サーバー専用）。
 	void RefreshLobbyAvailability();
 	UFUNCTION(BlueprintPure)
 	bool IsBusy() const
 	{
-		return CurrentOperation != ESessionOperation::Idle;
+		return CurrentOperation != ESessionOperation::Idle || bReturnRequested || bReturningToTitle;
 	}
 	UPROPERTY(BlueprintReadOnly)
 	FString Status = TEXT("Create a room or find friends to begin.");
@@ -43,12 +46,14 @@ public:
 	FTBSessionChanged Changed;
 
 private:
+	friend class FTitleNetworkPeer; // Development-only transport regression in TBTitleNetworkTests.cpp.
 	enum class ESessionOperation : uint8
 	{
 		Idle,
 		Creating,
 		Finding,
 		Joining,
+		Travelling,
 		Closing
 	};
 	ESessionOperation CurrentOperation = ESessionOperation::Idle;
@@ -58,7 +63,13 @@ private:
 	// 登録した完了通知を、終了時に解除するための識別子。
 	FDelegateHandle CreateSessionHandle, FindSessionsHandle, JoinSessionHandle, DestroySessionHandle,
 	    InviteAcceptedHandle, NetworkFailureHandle, TravelFailureHandle, UpdateSessionHandle;
-	FTimerHandle CloseTimer;
+	FTSTicker::FDelegateHandle ReturnTicker;
+	FTSTicker::FDelegateHandle CleanupTimeout;
+	bool bReturnRequested = false;
+	bool bReturningToTitle = false;
+	FString ReturnReason;
+	void RequestReturn(const FString& Reason);
+	void BeginReturn();
 	FTimerHandle LobbyUpdateTimer;
 	bool bLobbyUpdateInFlight = false;
 	bool bUpdatingLobbyOpen = false;

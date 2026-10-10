@@ -13,6 +13,8 @@ public:
 	virtual void BeginPlay() override;
 	virtual void PlayerTick(float DeltaTime) override;
 	virtual void SetupInputComponent() override;
+	bool IsLeaveMenuOpen() const { return bLeaveMenuOpen; }
+	void ToggleLeaveMenu();
 	UFUNCTION(Exec)
 	void TBHost();
 	UFUNCTION(Exec)
@@ -50,6 +52,7 @@ private:
 	void UpdateLobbyCamera(bool InLobby);
 	void UpdateMenuInput(bool ShowMenu);
 	bool bLobbyInput = false;
+	bool bLeaveMenuOpen = false;
 	bool bLobbyCameraActive = false;
 	bool bLobbyCameraSearched = false;
 	TWeakObjectPtr<AActor> LobbyCamera;

@@ -17,6 +17,4 @@ private:
 	void DrawMatch(const class ATBGameState& MatchState, class ATBController& Controller);
 	void DrawLobby();
 	void DrawDebugHUD();
-	bool bBrowsingRooms = false;
-	int32 RoomPage = 0;
 };
