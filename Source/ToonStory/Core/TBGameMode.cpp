@@ -5,6 +5,7 @@
 #include "Core/TBSession.h"
 #include "Core/TBGameHelpers.h"
 #include "Character/TBCharacter.h"
+#include "Character/TBToyCharacter.h"
 #include "GamePlay/TBBox.h"
 #include "GamePlay/TBPickup.h"
 #include "GamePlay/TBBlock.h"
@@ -33,7 +34,7 @@ ATBGameMode::ATBGameMode()
 	PlayerStateClass = ATBPlayerState::StaticClass();
 	GameStateClass = ATBGameState::StaticClass();
 	PlayerControllerClass = ATBController::StaticClass();
-	DefaultPawnClass = ATBCharacter::StaticClass();
+	DefaultPawnClass = ATBToyCharacter::StaticClass();
 	HUDClass = ATBHUD::StaticClass();
 	BoxClass = ATBBox::StaticClass();
 }

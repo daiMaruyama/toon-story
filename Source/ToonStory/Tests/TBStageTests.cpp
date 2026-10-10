@@ -6,6 +6,8 @@
 #include "EngineUtils.h"
 #include "GameFramework/PlayerStart.h"
 #include "Character/TBCharacter.h"
+#include "Character/TBToyCharacter.h"
+#include "Data/TBToyDefinition.h"
 #include "Character/TBMovement.h"
 #include "GamePlay/TBBox.h"
 #include "GamePlay/TBPickup.h"
@@ -18,6 +20,7 @@
 #include "Components/CapsuleComponent.h"
 #include "Camera/CameraComponent.h"
 #include "Animation/AnimSequence.h"
+#include "Animation/BlendSpace.h"
 #include "Animation/AnimSingleNodeInstance.h"
 #include "GameFramework/CharacterMovementComponent.h"
 
@@ -76,6 +79,7 @@ bool FTBResidentialStageTest::RunTest(const FString& Parameters)
 			const ETBTeam OriginalTeam = Player->Team;
 			Player->Team = ETBTeam::Human;
 			It->ApplyState();
+			if (auto* Toy = Cast<ATBToyCharacter>(*It)) Toy->RefreshToyPresentation();
 			TestNotNull(TEXT("Child skeletal mesh loaded"), It->GetMesh()->GetSkeletalMeshAsset());
 			TestTrue(TEXT("Child uses the configured model"),
 			         It->ChildMesh.Get() && It->GetMesh()->GetSkeletalMeshAsset() == It->ChildMesh.Get());
@@ -143,11 +147,22 @@ bool FTBResidentialStageTest::RunTest(const FString& Parameters)
 			ChildMovement->SetMovementMode(ChildMode);
 			Player->Team = ETBTeam::Toy;
 			It->ApplyState();
-			TestTrue(TEXT("Toy uses animated robot"),
-			         It->ToySkeletalMesh.Get() && It->GetMesh()->GetSkeletalMeshAsset() == It->ToySkeletalMesh.Get());
-			TestNotNull(TEXT("Toy idle animation loaded"), It->ToyIdleAnimation.Get());
-			TestNotNull(TEXT("Toy walk animation loaded"), It->ToyWalkAnimation.Get());
-			TestNotNull(TEXT("Toy jump animation loaded"), It->ToyJumpAnimation.Get());
+			if (auto* Toy = Cast<ATBToyCharacter>(*It)) Toy->RefreshToyPresentation();
+			if (auto* Toy = Cast<ATBToyCharacter>(*It); Toy && Toy->GetToyDefinition())
+			{
+				Toy->RefreshToyPresentation();
+				auto* Definition = Toy->GetToyDefinition();
+				TestEqual(TEXT("Toy uses its definition mesh"), It->GetMesh()->GetSkeletalMeshAsset(), Definition->SkeletalMesh.Get());
+				TestNotNull(TEXT("Toy locomotion loaded"), Definition->Locomotion.Get());
+			}
+			else
+			{
+				TestTrue(TEXT("Legacy toy uses configured mesh"), It->ToySkeletalMesh.Get() &&
+					It->GetMesh()->GetSkeletalMeshAsset() == It->ToySkeletalMesh.Get());
+				TestNotNull(TEXT("Legacy toy idle loaded"), It->ToyIdleAnimation.Get());
+				TestNotNull(TEXT("Legacy toy walk loaded"), It->ToyWalkAnimation.Get());
+				TestNotNull(TEXT("Legacy toy jump loaded"), It->ToyJumpAnimation.Get());
+			}
 			TestEqual(TEXT("Toy view is 20 cm above capsule bottom"),
 			          It->Camera->GetRelativeLocation().Z + It->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight(),
 			          20.0);
@@ -175,7 +190,11 @@ bool FTBResidentialStageTest::RunTest(const FString& Parameters)
 			auto* Animation = It->GetMesh()->GetSingleNodeInstance();
 			if (TestNotNull(TEXT("Robot animation instance exists"), Animation))
 			{
-				TestTrue(TEXT("Moving robot plays walk"), Animation->GetCurrentAsset() == It->ToyWalkAnimation.Get());
+				auto* Toy = Cast<ATBToyCharacter>(*It);
+				auto* Definition = Toy ? Toy->GetToyDefinition() : nullptr;
+				UAnimationAsset* Expected = Definition && Definition->Locomotion
+					? static_cast<UAnimationAsset*>(Definition->Locomotion.Get()) : It->ToyWalkAnimation.Get();
+				TestTrue(TEXT("Moving toy plays locomotion"), Animation->GetCurrentAsset() == Expected);
 				Player->bFrozen = true;
 				It->Tick(0.f);
 				TestEqual(TEXT("Sprint cannot bypass freeze"), Movement->GetMaxSpeed(), 0.f);
@@ -184,11 +203,11 @@ bool FTBResidentialStageTest::RunTest(const FString& Parameters)
 				TestTrue(TEXT("Held sprint survives frozen move replay"), ToyMovement->bWantsToSprint);
 				It->SetActorLocation(FrozenPosition, false, nullptr, ETeleportType::TeleportPhysics);
 				TestTrue(TEXT("Gaze freeze preserves current clip"),
-				         Animation->GetCurrentAsset() == It->ToyWalkAnimation.Get());
-				TestEqual(TEXT("Gaze freeze stops pose"), It->GetMesh()->GlobalAnimRateScale, 0.f);
+				         Animation->GetCurrentAsset() == Expected);
+				TestTrue(TEXT("Gaze freeze stops pose"), It->GetMesh()->bPauseAnims || It->GetMesh()->GlobalAnimRateScale == 0.f);
 				Player->bFrozen = false;
 				It->Tick(0.f);
-				TestEqual(TEXT("Unfreeze resumes animation"), It->GetMesh()->GlobalAnimRateScale, 1.f);
+				TestTrue(TEXT("Unfreeze resumes animation"), !It->GetMesh()->bPauseAnims && It->GetMesh()->GlobalAnimRateScale > 0.f);
 			}
 			Player->bFrozen = OriginalFrozen;
 			It->SetSprintRequested(false);
@@ -196,6 +215,7 @@ bool FTBResidentialStageTest::RunTest(const FString& Parameters)
 			Movement->Velocity = OriginalVelocity;
 			Player->Team = OriginalTeam;
 			It->ApplyState();
+			if (auto* Toy = Cast<ATBToyCharacter>(*It)) Toy->RefreshToyPresentation();
 		}
 	}
 	TestTrue(TEXT("At least one character appearance was checked"), VerifiedCharacters > 0);

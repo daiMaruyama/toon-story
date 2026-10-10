@@ -23,6 +23,20 @@ public class ToonStory : ModuleRules
 		PublicIncludePaths.AddRange(new string[] {
 			"ToonStory"
 		});
+		if (Target.bBuildEditor)
+		{
+			PrivateDependencyModuleNames.Add("AssetRegistry");
+		}
+		// Keep downloaded toy attribution alongside packaged builds when this optional Content is present.
+		if (Target.ProjectFile != null)
+		{
+			string ToyNotices = System.IO.Path.Combine(Target.ProjectFile.Directory.FullName,
+				"Content", "ThirdPartyNotices", "ToyAssets.txt");
+			if (System.IO.File.Exists(ToyNotices))
+			{
+				RuntimeDependencies.Add(ToyNotices, StagedFileType.NonUFS);
+			}
+		}
 
 	}
 }
