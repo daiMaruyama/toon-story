@@ -8,10 +8,15 @@
 #include "Core/TBPlayerState.h"
 #include "Core/TBController.h"
 #include "UI/TBTitleMenu.h"
+#include "UI/TBHUD.h"
 #include "Blueprint/WidgetBlueprintLibrary.h"
+#include "Blueprint/WidgetTree.h"
+#include "Components/Button.h"
+#include "Components/ComboBoxString.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "Engine/GameInstance.h"
+#include "Engine/LocalPlayer.h"
 #include "Kismet/GameplayStatics.h"
 #include "OnlineSubsystem.h"
 #include "OnlineSubsystemUtils.h"
@@ -19,106 +24,281 @@
 
 namespace
 {
-bool HasSession(UWorld* World)
-{
-	const auto* Online = Online::GetSubsystem(World);
-	const auto Sessions = Online ? Online->GetSessionInterface() : nullptr;
-	return Sessions.IsValid() && Sessions->GetNamedSession(NAME_GameSession) != nullptr;
-}
-// Real map travel + a real Null session. A second local player exercises the
-// existing match/rematch logic. No network implementation is modified for this test.
-class FTitleFlow : public IAutomationLatentCommand
-{
-public:
-	explicit FTitleFlow(FAutomationTestBase* InTest, UGameInstance* Instance)
-	    : Test(InTest), GI(Instance), Deadline(FPlatformTime::Seconds() + 180) {}
-	virtual bool Update() override
+	bool HasSession(UWorld* World)
 	{
-		if (!GI.IsValid()) { Test->AddError(TEXT("Game instance lost during travel")); return true; }
-		if (FPlatformTime::Seconds() > Deadline) { Test->AddError(FString::Printf(TEXT("Title flow timed out at step %d"), Step)); return true; }
-		UWorld* World = GI->GetWorld();
-		if (!World || !World->HasBegunPlay()) return false;
-		auto* Session = GI->GetSubsystem<UTBSession>();
-		if (Step == 0)
+		const auto* Online = Online::GetSubsystem(World);
+		const auto Sessions = Online ? Online->GetSessionInterface() : nullptr;
+		return Sessions.IsValid() && Sessions->GetNamedSession(NAME_GameSession) != nullptr;
+	}
+
+	// Exercises UI event bindings and a real timed match. Two local players do not
+	// substitute for the separate-process/PIE network acceptance test.
+	class FTitleFlow : public IAutomationLatentCommand
+	{
+	public:
+		explicit FTitleFlow(FAutomationTestBase* InTest, UGameInstance* Instance)
+		    : Test(InTest), GI(Instance), Deadline(FPlatformTime::Seconds() + 180)
 		{
-			CheckTitle(World);
-			Session->Host();
-			Step = 1;
 		}
-		else if (Step == 1)
+
+		bool Update() override
 		{
-			auto* Mode = World->GetAuthGameMode<ATBGameMode>();
-			if (!Mode || Session->IsBusy()) return false;
-			Test->TestTrue(TEXT("Hosted session survives Title -> stage"), HasSession(World));
-			auto* Host = Cast<ATBController>(World->GetFirstPlayerController());
-			auto* Second = Cast<ATBController>(UGameplayStatics::CreatePlayer(World, -1, true));
-			if (!Host || !Second) { Test->AddError(TEXT("Two controllers required")); return true; }
-			FTBSettings Rules;
-			Rules.Humans = 1; Rules.Toys = 1; Rules.Duration = 10; Rules.RequiredItems = 5;
-			Mode->SetRules(Host, Rules);
-			for (auto* PC : {Host, Second}) PC->GetPlayerState<ATBPlayerState>()->bReady = true;
-			Mode->StartRound(Host);
+			if (!GI.IsValid())
+			{
+				Test->AddError(TEXT("Game instance lost during travel"));
+				return true;
+			}
+			if (FPlatformTime::Seconds() > Deadline)
+			{
+				Test->AddError(FString::Printf(TEXT("Title flow timed out at step %d"), Step));
+				return true;
+			}
+			UWorld* World = GI->GetWorld();
+			if (!World || !World->HasBegunPlay())
+			{
+				return false;
+			}
+			auto* Session = GI->GetSubsystem<UTBSession>();
 			auto* State = World->GetGameState<ATBGameState>();
-			Test->TestEqual(TEXT("Starts playing"), State->Phase, ETBPhase::Playing);
-			Mode->Finish(ETBWinner::Humans, TEXT("Title flow regression"));
-			Test->TestEqual(TEXT("Shows results"), State->Phase, ETBPhase::Results);
-			Mode->ReturnToLobby(Host);
-			Test->TestEqual(TEXT("Rematch returns to lobby"), State->Phase, ETBPhase::Lobby);
-			Test->TestTrue(TEXT("Rematch retains world and session"), GI->GetWorld() == World && HasSession(World));
-			Test->TestFalse(TEXT("Ready reset"), Host->GetPlayerState<ATBPlayerState>()->bReady);
-			UGameplayStatics::RemovePlayer(Second, true);
-			Session->Leave();
-			Step = 2;
+			auto* Host = Cast<ATBController>(World->GetFirstPlayerController());
+			auto* HUD = Host ? Cast<ATBHUD>(Host->GetHUD()) : nullptr;
+
+			switch (Step)
+			{
+				case 0:
+					if (!CheckTitle(World) || !ClickTitle(TEXT("Find")))
+					{
+						return true;
+					}
+					++Step;
+					break;
+				case 1:
+					if (Session->IsBusy())
+					{
+						return false;
+					}
+					if (!CheckTitle(World))
+					{
+						return true;
+					}
+					{
+						auto* Menu = GetTitle();
+						auto* Rooms = Cast<UComboBoxString>(Menu->WidgetTree->FindWidget(TEXT("Rooms")));
+						auto* Join = Cast<UButton>(Menu->WidgetTree->FindWidget(TEXT("Join")));
+						if (!Rooms || !Join)
+						{
+							Test->AddError(TEXT("Room selection UI missing"));
+							return true;
+						}
+						Test->TestEqual(TEXT("Room list reflects session results"), Rooms->GetOptionCount(),
+						                Session->Rooms.Num());
+						Test->TestEqual(TEXT("Join requires a selected result"), Join->GetIsEnabled(),
+						                !Session->Rooms.IsEmpty());
+					}
+					if (!ClickTitle(TEXT("Host")))
+					{
+						return true;
+					}
+					++Step;
+					break;
+				case 2:
+					if (!World->GetAuthGameMode<ATBGameMode>() || Session->IsBusy())
+					{
+						return false;
+					}
+					if (!Host || !HUD)
+					{
+						Test->AddError(TEXT("Stage controller/HUD missing"));
+						return true;
+					}
+					Test->TestNull(TEXT("Title UI removed on entering the stage"), GetTitle());
+					Test->TestTrue(TEXT("Hosted session survives Title -> stage"), HasSession(World));
+					Second = Cast<ATBController>(UGameplayStatics::CreatePlayer(World, -1, true));
+					if (!Second.IsValid())
+					{
+						Test->AddError(TEXT("Second local controller missing"));
+						return true;
+					}
+					RoundWorld = World;
+					Host->TBRules(1, 1, 10.f, 5);
+					HUD->NotifyHitBoxClick(TEXT("Ready"));
+					Second->TBReady();
+					HUD->NotifyHitBoxClick(TEXT("Start"));
+					if (!Test->TestEqual(TEXT("Start action begins match"), State->Phase, ETBPhase::Playing))
+					{
+						return true;
+					}
+					Host->ToggleLeaveMenu();
+					++Step;
+					break;
+				case 3:
+					if (!Host || !HUD)
+					{
+						Test->AddError(TEXT("Host lost during match"));
+						return true;
+					}
+					Test->TestTrue(TEXT("Leave menu opens during play"), Host->IsLeaveMenuOpen());
+					Test->TestTrue(TEXT("Menu blocks movement and look"),
+					               Host->IsMoveInputIgnored() && Host->IsLookInputIgnored());
+					Test->TestFalse(TEXT("Menu does not pause the match"), UGameplayStatics::IsGamePaused(World));
+					HUD->NotifyHitBoxClick(TEXT("Resume"));
+					++Step;
+					break;
+				case 4:
+					if (!Host)
+					{
+						Test->AddError(TEXT("Host lost after resume"));
+						return true;
+					}
+					Test->TestFalse(TEXT("Resume closes menu"), Host->IsLeaveMenuOpen());
+					Test->TestFalse(TEXT("Resume restores movement and look"),
+					                Host->IsMoveInputIgnored() || Host->IsLookInputIgnored());
+					++Step;
+					break;
+				case 5:
+					if (!State || State->Phase != ETBPhase::Results)
+					{
+						return false;
+					}
+					if (!HUD || !Second.IsValid())
+					{
+						Test->AddError(TEXT("Players/HUD lost at results"));
+						return true;
+					}
+					Test->TestEqual(TEXT("Match ends through the game timer"), State->Reason,
+					                FString(TEXT("Time expired")));
+					HUD->NotifyHitBoxClick(TEXT("ReturnToLobby"));
+					Test->TestEqual(TEXT("Rematch action returns to lobby"), State->Phase, ETBPhase::Lobby);
+					Test->TestTrue(TEXT("Rematch retains world, players and session"),
+					               World == RoundWorld.Get() && State->PlayerArray.Num() == 2 && HasSession(World));
+					Test->TestFalse(TEXT("Host ready reset"), Host->GetPlayerState<ATBPlayerState>()->bReady);
+					Test->TestFalse(TEXT("Second ready reset"), Second->GetPlayerState<ATBPlayerState>()->bReady);
+					HUD->NotifyHitBoxClick(TEXT("Ready"));
+					Second->TBReady();
+					HUD->NotifyHitBoxClick(TEXT("Start"));
+					if (!Test->TestEqual(TEXT("Can start the rematch"), State->Phase, ETBPhase::Playing))
+					{
+						return true;
+					}
+					Host->ToggleLeaveMenu();
+					++Step;
+					break;
+				case 6:
+					if (!Host || !HUD)
+					{
+						Test->AddError(TEXT("Host lost before leaving"));
+						return true;
+					}
+					Test->TestTrue(TEXT("In-match leave menu open"), Host->IsLeaveMenuOpen());
+					HUD->NotifyHitBoxClick(TEXT("Leave"));
+					++Step;
+					break;
+				case 7:
+					if (!World->GetAuthGameMode<ATBTitleGameMode>() || Session->IsBusy())
+					{
+						return false;
+					}
+					// Remove the synthetic split-screen participant after travel, so the
+					// tested Leave action still originates in Playing, not in Results.
+					if (auto* Player = GI->GetLocalPlayerByIndex(1))
+					{
+						UGameplayStatics::RemovePlayer(Player->GetPlayerController(World), true);
+					}
+					if (!CheckTitle(World))
+					{
+						return true;
+					}
+					Test->TestFalse(TEXT("In-match leave destroys session"), HasSession(World));
+					if (!ClickTitle(TEXT("Host")))
+					{
+						return true;
+					}
+					++Step;
+					break;
+				case 8:
+					if (!World->GetAuthGameMode<ATBGameMode>() || Session->IsBusy())
+					{
+						return false;
+					}
+					if (!HUD)
+					{
+						Test->AddError(TEXT("Lobby HUD missing on rehost"));
+						return true;
+					}
+					Test->TestTrue(TEXT("Can host again"), HasSession(World));
+					Test->TestEqual(TEXT("Rehost begins in lobby"), State->Phase, ETBPhase::Lobby);
+					HUD->NotifyHitBoxClick(TEXT("Leave"));
+					++Step;
+					break;
+				case 9:
+					if (!World->GetAuthGameMode<ATBTitleGameMode>() || Session->IsBusy())
+					{
+						return false;
+					}
+					CheckTitle(World);
+					Test->TestFalse(TEXT("Lobby leave destroys session"), HasSession(World));
+					return true;
+			}
+			return false;
 		}
-		else if (Step == 2)
+
+	private:
+		UTBTitleMenu* GetTitle()
 		{
-			if (!World->GetAuthGameMode<ATBTitleGameMode>() || Session->IsBusy()) return false;
-			CheckTitle(World);
-			Test->TestFalse(TEXT("Leaving destroys session"), HasSession(World));
-			Session->Host(); // Must be possible to host again after a complete round trip.
-			Step = 3;
+			TArray<UUserWidget*> Widgets;
+			UWidgetBlueprintLibrary::GetAllWidgetsOfClass(GI->GetWorld(), Widgets, UTBTitleMenu::StaticClass(), true);
+			for (auto* Widget : Widgets)
+			{
+				if (Widget->GetOwningPlayer() == GI->GetWorld()->GetFirstPlayerController())
+				{
+					return Cast<UTBTitleMenu>(Widget);
+				}
+			}
+			return nullptr;
 		}
-		else if (Step == 3)
+		bool ClickTitle(FName Name)
 		{
-			if (!World->GetAuthGameMode<ATBGameMode>() || Session->IsBusy()) return false;
-			Test->TestTrue(TEXT("Can host again"), HasSession(World));
-			Session->Leave();
-			Step = 4;
-		}
-		else if (Step == 4)
-		{
-			if (!World->GetAuthGameMode<ATBTitleGameMode>() || Session->IsBusy()) return false;
-			Test->TestFalse(TEXT("Second leave destroys session"), HasSession(World));
-			CheckTitle(World);
+			auto* Menu = GetTitle();
+			auto* Button = Menu ? Cast<UButton>(Menu->WidgetTree->FindWidget(Name)) : nullptr;
+			if (!Button || !Button->GetIsEnabled())
+			{
+				Test->AddError(FString::Printf(TEXT("Title button missing/disabled: %s"), *Name.ToString()));
+				return false;
+			}
+			Button->OnClicked.Broadcast();
 			return true;
 		}
-		return false;
-	}
-private:
-	void CheckTitle(UWorld* World)
-	{
-		Test->TestNotNull(TEXT("Title game mode"), World->GetAuthGameMode<ATBTitleGameMode>());
-		auto* PC = World->GetFirstPlayerController();
-		Test->TestTrue(TEXT("Title controller has no pawn"), PC && PC->IsA<ATBTitleController>() && !PC->GetPawn());
-		TArray<UUserWidget*> Widgets;
-		UWidgetBlueprintLibrary::GetAllWidgetsOfClass(World, Widgets, UTBTitleMenu::StaticClass(), true);
-		Test->TestEqual(TEXT("Exactly one title menu"), Widgets.Num(), 1);
-	}
-	FAutomationTestBase* Test;
-	TWeakObjectPtr<UGameInstance> GI;
-	double Deadline;
-	int32 Step = 0;
-};
-}
+		bool CheckTitle(UWorld* World)
+		{
+			auto* PC = World->GetFirstPlayerController();
+			bool Valid = Test->TestNotNull(TEXT("Title game mode"), World->GetAuthGameMode<ATBTitleGameMode>());
+			Valid &= Test->TestTrue(TEXT("Title controller has no pawn"),
+			                        PC && PC->IsA<ATBTitleController>() && !PC->GetPawn());
+			TArray<UUserWidget*> Widgets;
+			UWidgetBlueprintLibrary::GetAllWidgetsOfClass(World, Widgets, UTBTitleMenu::StaticClass(), true);
+			Valid &= Test->TestEqual(TEXT("Exactly one title menu"), Widgets.Num(), 1);
+			return Valid;
+		}
+		FAutomationTestBase* Test;
+		TWeakObjectPtr<UGameInstance> GI;
+		TWeakObjectPtr<ATBController> Second;
+		TWeakObjectPtr<UWorld> RoundWorld;
+		double Deadline;
+		int32 Step = 0;
+	};
+} // namespace
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBTitleFlowTest, "ToonStory.Title.RoundTrip",
-    EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+                                 EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
 bool FTBTitleFlowTest::RunTest(const FString& Parameters)
 {
 	for (const auto& Context : GEngine->GetWorldContexts())
 	{
 		UWorld* World = Context.World();
-		if (Context.WorldType != EWorldType::Game || !World || !World->GetAuthGameMode<ATBTitleGameMode>()) continue;
+		if (Context.WorldType != EWorldType::Game || !World || !World->GetAuthGameMode<ATBTitleGameMode>())
+		{
+			continue;
+		}
 		auto* Online = Online::GetSubsystem(World);
 		if (!Online || Online->GetSubsystemName() != FName(TEXT("NULL")))
 		{
