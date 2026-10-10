@@ -9,6 +9,7 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "Camera/CameraActor.h"
+#include "UI/TBScreenTransition.h"
 
 void ATBController::PlayerTick(float DeltaTime)
 {
@@ -22,6 +23,33 @@ void ATBController::PlayerTick(float DeltaTime)
 	const bool ShowMenu = State && State->Phase != ETBPhase::Playing;
 	UpdateLobbyCamera(InLobby);
 	UpdateMenuInput(ShowMenu);
+	UpdateScreenTransition();
+}
+
+// 切替はサーバーで確定して届くので、自分の状態を見てから演出を出す。
+void ATBController::UpdateScreenTransition()
+{
+	const auto* State = TB::GS(GetWorld());
+	const auto* Info = GetPlayerState<ATBPlayerState>();
+	if (!State || !Info)
+	{
+		return;
+	}
+	// ロビーに戻る
+	const bool bReturnedToLobby = State->Phase == ETBPhase::Lobby && LastPhase != ETBPhase::Lobby;
+	// 箱に入れられる、助け出される、はどちらも箱の部屋との間を瞬間移動する。
+	const bool bBoxed = Info->ToyState == ETBToyState::Boxed;
+	const bool bWasBoxed = LastToyState == ETBToyState::Boxed;
+	// 最後の1体の収納はそのまま試合終了になるので、ロビー以外なら出す。
+	const bool bEnteredBox = bBoxed && !bWasBoxed && State->Phase != ETBPhase::Lobby;
+	// 救助は試合中だけ。ロビーへ戻る時の状態リセットが先に届いても出さない（二重の暗転を防ぐ）。
+	const bool bLeftBox = !bBoxed && bWasBoxed && State->Phase == ETBPhase::Playing;
+	if (bReturnedToLobby || bEnteredBox || bLeftBox)
+	{
+		TBScreen::PlayTransition(this);
+	}
+	LastPhase = State->Phase;
+	LastToyState = Info->ToyState;
 }
 
 void ATBController::UpdateLobbyCamera(bool InLobby)
