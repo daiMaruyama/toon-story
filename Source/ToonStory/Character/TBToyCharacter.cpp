@@ -66,6 +66,7 @@ void ATBToyCharacter::RefreshToyPresentation()
 	if (!bPresentationReady || !TBPS()) return;
 	const bool bToy = TBPS()->Team == ETBTeam::Toy;
 	Appearance->Apply(*this, *ToyAnimation, bToy);
+	Appearance->UpdateGrounding(*this);
 	if (bToy) ToyAnimation->Update(GetVelocity().Size2D(), GetCharacterMovement()->IsFalling(), IsMovementLocked());
 }
 

@@ -4,6 +4,9 @@
 #include "Character/TBCharacter.h"
 #include "Character/TBToyCharacter.h"
 #include "Character/TBToyAnimationComponent.h"
+#include "Character/TBCharacterAppearanceComponent.h"
+#include "Components/CapsuleComponent.h"
+#include "Engine/SkeletalMesh.h"
 #include "Core/TBController.h"
 #include "Core/TBGameMode.h"
 #include "Core/TBGameState.h"
@@ -74,6 +77,9 @@ bool FTBToyAppearanceTest::RunTest(const FString& Parameters)
 		{
 			auto* Material = Toy->GetMesh()->GetMaterial(Index);
 			if (!TestNotNull(TEXT("Material exists"), Material)) continue;
+			auto* Expected = Definition->MaterialOverrides.IsValidIndex(Index) && Definition->MaterialOverrides[Index]
+				? Definition->MaterialOverrides[Index].Get() : Definition->SkeletalMesh->GetMaterials()[Index].MaterialInterface.Get();
+			TestEqual(TEXT("Every material slot matches the selected toy"), Material, Expected);
 			TestTrue(TEXT("Saved material supports skeletal rendering"),
 			         Material->GetMaterial()->GetUsageByFlag(MATUSAGE_SkeletalMesh));
 		}
@@ -81,6 +87,29 @@ bool FTBToyAppearanceTest::RunTest(const FString& Parameters)
 	CheckMaterials();
 	// StartRound spawns above the floor; this synchronous check exercises grounded locomotion.
 	Toy->GetCharacterMovement()->SetMovementMode(MOVE_Walking);
+	{
+		auto* Appearance = Toy->FindComponentByClass<UTBCharacterAppearanceComponent>();
+		auto* Movement = Toy->GetCharacterMovement();
+		const auto PreviousFloor = Movement->CurrentFloor;
+		FHitResult Floor;
+		Floor.bBlockingHit = true;
+		Floor.ImpactNormal = FVector::UpVector;
+		Movement->CurrentFloor.SetFromSweep(Floor, 2.2f, true);
+		Appearance->UpdateGrounding(*Toy);
+		const auto Bounds = Definition->SkeletalMesh->GetBounds();
+		const double MeshBottom = Toy->GetMesh()->GetRelativeLocation().Z +
+			(Bounds.Origin.Z - Bounds.BoxExtent.Z) * Toy->GetMesh()->GetRelativeScale3D().Z;
+		TestTrue(TEXT("Toy bottom compensates capsule floor clearance"),
+			FMath::IsNearlyEqual(MeshBottom, -double(Toy->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight()) - 2.2, .001));
+		const FVector BeforeSmoothing = Toy->GetMesh()->GetRelativeLocation();
+		Toy->GetMesh()->AddLocalOffset(FVector(0, 0, .5));
+		Appearance->UpdateGrounding(*Toy);
+		TestTrue(TEXT("Grounding preserves network smoothing when clearance is unchanged"),
+			Toy->GetMesh()->GetRelativeLocation().Equals(BeforeSmoothing + FVector(0, 0, .5), .001));
+		Toy->GetMesh()->SetRelativeLocation(BeforeSmoothing);
+		Movement->CurrentFloor = PreviousFloor;
+		Appearance->UpdateGrounding(*Toy);
+	}
 	if (Definition->Locomotion)
 	{
 		auto* Player = Toy->GetMesh()->GetSingleNodeInstance();

@@ -17,10 +17,13 @@ public:
 	void SetDefinition(UTBToyDefinition* Definition);
 	UTBToyDefinition* GetDefinition() const { return LoadedToyDefinition; }
 	void Apply(ATBCharacter& Character, UTBToyAnimationComponent& Animation, bool bToy);
+	void UpdateGrounding(ATBCharacter& Character);
 
 private:
 	UPROPERTY(Transient)
 	TObjectPtr<UTBToyDefinition> LoadedToyDefinition;
 	bool bAppearanceInitialized = false;
 	bool bShowingToy = false;
+	FVector MeshBaseLocation = FVector::ZeroVector;
+	float AppliedClearance = 0.f;
 };

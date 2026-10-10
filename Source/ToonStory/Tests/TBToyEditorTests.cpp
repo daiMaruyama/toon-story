@@ -5,6 +5,10 @@
 #include "Animation/BlendSpace.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "UObject/Package.h"
+#include "Animation/AnimSequence.h"
+#include "Animation/AnimData/IAnimationDataModel.h"
+#include "Engine/SkeletalMesh.h"
+#include "Materials/Material.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBToyEditorSetupTest, "ToonStory.Appearance.EditorSetup",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -49,6 +53,42 @@ bool FTBToyEditorSetupTest::RunTest(const FString& Parameters)
 		Blend->ClearFlags(RF_Public | RF_Standalone);
 	}
 	Package->SetDirtyFlag(false);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBToySeatedIdleTest, "ToonStory.Appearance.SeatedIdle",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FTBToySeatedIdleTest::RunTest(const FString& Parameters)
+{
+	auto* Bear = LoadObject<UTBToyDefinition>(nullptr,
+		TEXT("/Game/Characters/ToyDefinitions/DA_TeddyBear_Realistic.DA_TeddyBear_Realistic"));
+	if (!TestNotNull(TEXT("Bear definition"), Bear) || !Bear->Idle || !Bear->Locomotion) return false;
+	const auto* Model = Bear->Idle->GetDataModel();
+	const auto& Ref = Bear->SkeletalMesh->GetRefSkeleton();
+	TArray<FTransform> Pose;
+	for (int32 Bone = 0; Bone < Ref.GetNum(); ++Bone)
+	{
+		const FName Name = Ref.GetBoneName(Bone);
+		if (!TestTrue(TEXT("Seated idle animates every bone"), Model->IsValidBoneTrackName(Name))) return false;
+		auto Transform = Model->GetBoneTrackTransform(Name, FFrameNumber(0));
+		TestTrue(TEXT("Idle loop closes without a pose jump"), Transform.Equals(
+			Model->GetBoneTrackTransform(Name, FFrameNumber(Model->GetNumberOfFrames())), .001f));
+		if (Ref.GetParentIndex(Bone) >= 0) Transform *= Pose[Ref.GetParentIndex(Bone)];
+		Pose.Add(Transform);
+	}
+	const int32 Hip = Ref.FindBoneIndex(TEXT("pelvis"));
+	for (const TCHAR* FootName : {TEXT("foot_L"), TEXT("foot_R")})
+	{
+		const int32 Foot = Ref.FindBoneIndex(FootName);
+		if (Hip == INDEX_NONE || Foot == INDEX_NONE) return false;
+		TestTrue(TEXT("Seated feet extend ahead of hips"), Pose[Foot].GetLocation().X - Pose[Hip].GetLocation().X > 2.f);
+	}
+	TArray<FBlendSampleData> Samples; int32 Segment = INDEX_NONE;
+	Bear->Locomotion->GetSamplesFromBlendInput(FVector::ZeroVector, Samples, Segment, true);
+	if (!TestEqual(TEXT("Rest has one idle sample"), Samples.Num(), 1)) return false;
+	TestEqual(TEXT("Rest plays the saved seated clip"), Bear->Locomotion->GetBlendSample(Samples[0].SampleDataIndex).Animation.Get(), Bear->Idle.Get());
+	TestTrue(TEXT("Body uses cloth shading"), Bear->SkeletalMesh->GetMaterials()[0].MaterialInterface->GetMaterial()->GetShadingModels().HasShadingModel(MSM_Cloth));
 	return true;
 }
 #endif

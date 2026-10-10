@@ -25,7 +25,7 @@ public class ToonStory : ModuleRules
 		});
 		if (Target.bBuildEditor)
 		{
-			PrivateDependencyModuleNames.Add("AssetRegistry");
+			PrivateDependencyModuleNames.AddRange(new string[] { "AssetRegistry", "ImageCore", "RenderCore", "RHI" });
 		}
 		// Keep downloaded toy attribution alongside packaged builds when this optional Content is present.
 		if (Target.ProjectFile != null)
