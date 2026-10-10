@@ -51,7 +51,7 @@ void UTBTitleMenu::NativeOnInitialized()
 	RoomList = WidgetTree->ConstructWidget<UComboBoxString>(UComboBoxString::StaticClass(), TEXT("Rooms"));
 	Column->AddChildToVerticalBox(RoomList)->SetPadding(FMargin(8, 6));
 	JoinButton = AddButton(TEXT("Join"), TEXT("Join selected room"));
-	CleanupButton = AddButton(TEXT("Cleanup"), TEXT("Retry connection cleanup"));
+	CleanupButton = AddButton(TEXT("Cleanup"), TEXT("Leave / Reset room"));
 	StatusText = AddText(TEXT(""), 16);
 	HostButton->OnClicked.AddDynamic(this, &ThisClass::Host);
 	FindButton->OnClicked.AddDynamic(this, &ThisClass::Find);
@@ -77,7 +77,7 @@ void UTBTitleMenu::NativeDestruct()
 void UTBTitleMenu::Refresh()
 {
 	if (!Session) return;
-	const bool Ready = !Session->IsBusy() && !Session->HasSession();
+	const bool Ready = !Session->IsBusy();
 	HostButton->SetIsEnabled(Ready);
 	FindButton->SetIsEnabled(Ready);
 	RoomList->SetIsEnabled(Ready && !Session->Rooms.IsEmpty());
@@ -88,14 +88,13 @@ void UTBTitleMenu::Refresh()
 		RoomList->AddOption(FString::Printf(TEXT("%d  %s"), Index + 1, *Session->Rooms[Index]));
 	if (!Session->Rooms.IsEmpty()) RoomList->SetSelectedIndex(FMath::Clamp(Previous, 0, Session->Rooms.Num() - 1));
 	JoinButton->SetIsEnabled(Ready && Session->Rooms.IsValidIndex(RoomList->GetSelectedIndex()));
-	CleanupButton->SetVisibility(Session->HasSession() ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
 	CleanupButton->SetIsEnabled(!Session->IsBusy());
 	StatusText->SetText(FText::FromString(Session->Status));
 }
 
 void UTBTitleMenu::SelectionChanged(FString Item, ESelectInfo::Type SelectionType)
 {
-	if (Session) JoinButton->SetIsEnabled(!Session->IsBusy() && !Session->HasSession() && Session->Rooms.IsValidIndex(RoomList->GetSelectedIndex()));
+	if (Session) JoinButton->SetIsEnabled(!Session->IsBusy() && Session->Rooms.IsValidIndex(RoomList->GetSelectedIndex()));
 }
 void UTBTitleMenu::Host() { if (Session) Session->Host(); }
 void UTBTitleMenu::Find() { if (Session) Session->Find(); }

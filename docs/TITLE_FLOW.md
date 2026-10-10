@@ -1,66 +1,48 @@
 # Titleと画面遷移
 
-ゲームは `/Game/Maps/Title` から起動します。Titleは独立したレベルで、Pawnを生成しません。デザインは仮の背景・文字・UMGメニューです。エディタの起動先は引き続きTB_KidsRoomです。
+ゲームの起動先は `/Game/Maps/Title` です。TitleはPawnを生成しない独立したレベルで、背景・文字・UMGメニューは仮デザインです。エディタの起動先は引き続きTB_KidsRoomです。
 
-## 操作
+## 担当範囲
 
-1. TitleでHost roomを押す、またはFind roomsで検索して一覧から選びJoin selected roomを押す。
-2. ステージ内のロビーで役割希望・人数設定・Readyをそろえ、ホストがStart matchを押す。
-3. 結果からReturn together to lobbyで同じ部屋のまま再戦する。
-4. ロビー・結果のLeave room / Close roomでTitleへ戻る。試合中はEscのメニューから退出できる。ホストの退出は部屋を閉じる。
+Title UIから既存のUTBSessionのHost / Find / Join / Leaveを呼び、Rooms・Status・IsBusyを表示に使い、Changedで表示を更新します。通信処理の内部は別担当のため変更しません。
 
-試合中のメニューはゲームを一時停止しません。PIEではEscがPlay終了に割り当てられていることがあるため、その場合はF10コンソールのTBLeaveで退出処理を確認してください。
+UTBSessionの変更は、ReturnOfflineの移動先をTB_KidsRoom（未配置時はArena）からTitleへ変更する箇所だけです。検索条件、オンライン設定、作成・参加・退出の非同期制御、切断・移動失敗処理は実装前のものを維持しています。待機・試合・結果は従来どおり同じステージのETBPhaseで扱い、再戦のReturnToLobbyも変更していません。
 
-部屋作成・検索・参加はUTBSessionの既存処理を使います。Titleの一覧はRoomsを読み、Changedを購読して更新します。待機・試合・結果は従来どおり同じステージのETBPhaseで扱い、再戦のReturnToLobbyは変更していません。
+初回コミット9f3e027で追加していた通信状態管理、失敗時の自動後始末、タイムアウト処理、内部セッションにアクセスするNetworkPeerテストは取り消しました。以前の通信テスト結果は取り消し前の実装の記録であり、現在の切断処理の検証結果としては扱いません。
 
-## 失敗時
+## 手動確認
 
-作成・検索の失敗はTitleで理由を表示して再試行できます。参加失敗・接続失敗・移動失敗ではセッションを片付け、Titleへ戻して理由を表示します。接続している人の退出だけでは、ホストや残る参加者をTitleへ戻しません。
+1. コンテンツブラウザでMaps/Titleを開き、Standalone Game・Play Standaloneで再生する。
+2. Host roomでステージ内のロビーへ移動し、Close room / TitleでTitleへ戻る。再度作成できることを確認する。
+3. 2人で確認する場合は、もう一方がFind roomsで検索し、一覧から選んでJoin selected roomを押す。
+4. ロビーで役割希望・人数設定・Readyをそろえ、ホストがStart matchを押す。2人の短時間試験ならホストで `TBRules 1 1 10 5` を使う。
+5. 結果からReturn together to lobbyを選び、同じ部屋のまま再戦できることを確認する。
+6. ロビー・結果のLeave room / Close room、または試合中のEscメニューから退出してTitleへ戻る。
 
-セッション破棄が失敗・タイムアウトした場合もTitleへ戻ります。残るセッションがある間は新しい作成・検索・参加を無効にし、Retry connection cleanupを表示します。ローカルの記録だけを消して破棄成功扱いにする処理はありません。
+試合中のメニューはゲームを一時停止しません。PIEではEscがPlay終了に割り当てられている場合があるため、その場合はF10コンソールのTBLeaveで退出を確認してください。
 
-## 確認手順
+TitleのLeave / Reset roomは既存のLeaveを呼ぶためのボタンです。失敗時の扱い・再試行は既存処理に従い、画面にStatusを表示します。Title側で独自の切断監視や自動再接続、セッション破棄は行いません。
 
-1台のTitle試験ではSteamを使わず、エディタを終了してSetOnlineMode.ps1でLANへ切り替えます。Titleを開き、互いに自動接続しない2つのStandalone実行から作成・検索・参加してください。PIEのPlay As Listen Serverによる自動接続だけではTitleの入室経路を検証できません。
+切断・参加失敗・移動失敗の挙動調整が必要な場合はネットワーク担当者と連携します。同一PC・Null/LANの試験では検索結果が0件だったため、検索経由の入室は未確認です。原因の断定や検索処理・Windowsネットワーク設定の変更は行っていません。
 
-- ホストが部屋作成、もう一方が検索・参加できること。
-- 2人の場合はホストで `TBRules 1 1 10 5`。全員Ready、ホストStartで試合開始・時間切れ結果へ進むこと。
-- 再戦ロビー復帰時に接続を維持し、Readyが解除され、2試合目を開始できること。
-- 参加者が退出するとTitleへ戻り、ホストは部屋に残ること。
-- ホストが部屋を閉じる、またはプロセスを終了すると、参加者が切断検出後にTitleへ戻ること。
-- Titleに戻った後、作成・検索・参加を再度実行できること。
-- 存在しない接続先・マップで失敗した場合、Titleで理由が表示され、操作を再開できること。
+## 自動確認
 
-自動テスト `ToonStory.Title.RoundTrip` はNull環境のTitleから実際にセッション作成・マップ移動を行い、2人目のローカルプレイヤーで試合・結果・再戦を通し、退出、再ホスト、移動失敗からのTitle復帰を確認します。別プロセス間の通信試験とは別です。
+`ToonStory.Title.RoundTrip` は既存APIを使い、Titleから部屋作成・ステージ移動、2人目のローカルプレイヤーで試合・結果・再戦、退出、再作成・再退出を確認します。ネットワーク障害処理や別プロセス通信の試験は含みません。
 
-### 自動テストの起動方法
-
-エディタを終了し、Editorターゲットをビルドしてから、プロジェクト直下で実行します。レポート内のfailedを確認してください。プロセスの終了コードだけではテスト成功を判断できません。
+エディタを終了し、Editorターゲットをビルドしてから、Null/LAN設定のプロジェクト直下で実行します。
 
 ```powershell
 $UE = 'E:/Epic/UE_5.8/Engine/Binaries/Win64/UnrealEditor.exe'
 $Project = (Resolve-Path ./ToonStory.uproject).Path
-& $UE $Project /Game/Maps/Title -game -NullRHI -nosound -nosteam -unattended -nop4 '-ExecCmds=Automation RunTests ToonStory.Title.RoundTrip' '-TestExit=Automation Test Queue Empty' "-ReportExportPath=$PWD/Saved/Automation/TitleRoundTrip"
+& $UE $Project /Game/Maps/Title -game -NullRHI -nosound -nosteam -unattended -nop4 '-ExecCmds=Automation RunTests ToonStory.Title.RoundTrip' '-TestExit=Automation Test Queue Empty' "-ReportExportPath=$PWD/Saved/Automation/TitleExistingApi"
 ```
 
-`ToonStory.Title.NetworkPeer` は2つのゲームプロセスで使います。上のテスト名を置き換え、ホスト側に `-TitlePeer=Host -TitleRun=任意の試験ID`、参加側に `-TitlePeer=Client -TitleRun=同じ試験ID` を付け、それぞれ異なるレポート保存先を指定します。ホスト側のロビーが開いてから参加側を起動してください。試験ID付きの部屋だけを選び、10秒の試合を2回行った後、ホスト退出と参加者のTitle復帰を検証します。
+プロセスの終了コードだけではなく、Saved/Automation/TitleExistingApi/index.jsonのfailedが0であることを確認してください。Saved以下はGit管理外です。
 
-LAN検索と参加後の通信を切り分ける場合に限り、参加側へ `-TitleDirectAddress=127.0.0.1:7777` を追加できます。この診断ではFind/JoinSessionを通らないため、検索・一覧からの参加や参加側のオンラインセッション破棄を検証したことにはなりません。
-
-### 2026-10-10の確認記録
-
-- UE 5.8 / Win64 DevelopmentでEditor・ゲーム本体の両ターゲットをビルド成功。Cook・配布パッケージの作成は未実施。
-- Titleの画面を描画して仮UIの配置を確認。
-- `RoundTrip` 成功（failed=0）。意図して発生させた移動失敗の警告が1件あるため、レポートはSucceeded With Warnings。
-- 同一PCの2プロセスを直接接続した `NetworkPeer` 成功（ホスト・参加者ともfailed=0）。2試合、再戦時の接続維持・Ready解除、ホストの部屋終了後の両者のTitle復帰を確認。参加者側は意図した切断の警告が残るためSucceeded With Warnings。
-- 同一PC・Null/LANの検索経由試験では、作成した部屋が検索結果に出ずタイムアウト。検索経由での入室は未確認。原因は特定しておらず、今回の変更では検索処理の内部やWindowsのネットワーク設定を変更していない。
-
-Steam・別PCからの検索／参加、参加者自身の退出後に残ったプレイヤーが継続できること、破棄失敗・タイムアウト時の再試行ボタンは追加の実機確認が必要です。
-
-ローカルの詳細レポートは `Saved/Automation/TitleRoundTripVerified/index.json`、直接接続試験は `Saved/Automation/TitleDirectHostVerified/index.json` と `TitleDirectClientVerified/index.json`、検索試験は `Saved/Automation/TitleNetworkHost/index.json` と `TitleNetworkClient/index.json` に保存しています。Saved以下はGit管理外です。
+2026-10-10の担当範囲修正後は、Live Codingが有効なため再ビルドが停止しました。修正後のビルド・自動テストは未確認です。現在開いているエディタを終了してから再実行してください。
 
 ## 配置とパッケージ
 
-Title.umapはContentリポジトリ、コードと設定は親リポジトリです。TitleのGameMode OverrideはTBTitleGameMode、UIはTBTitleMenu、操作担当はTBTitleControllerです。MapsToCookにもTitleを登録しています。
+Title.umapはContentリポジトリ、コードと設定は親リポジトリです。TitleのGameMode OverrideはTBTitleGameMode、UIはTBTitleMenu、操作担当はTBTitleControllerです。MapsToCookにもTitleを登録しています。Cook・配布パッケージの作成確認は未実施です。
 
 Scripts/CreateTitleMap.pyは新規Titleを一度だけ作るための補助で、存在するTitleは上書きしません。保存済みTitleは他のマップと同じようにエディタから編集してください。本番ステージの再生成には使用しません。

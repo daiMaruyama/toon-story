@@ -32,10 +32,9 @@ void UTBSession::Initialize(FSubsystemCollectionBase& Collection)
 
 void UTBSession::Deinitialize()
 {
-	FTSTicker::GetCoreTicker().RemoveTicker(ReturnTicker);
-	FTSTicker::GetCoreTicker().RemoveTicker(CleanupTimeout);
 	if (UWorld* World = GetWorld())
 	{
+		World->GetTimerManager().ClearTimer(CloseTimer);
 		World->GetTimerManager().ClearTimer(LobbyUpdateTimer);
 	}
 	if (Sessions.IsValid())
@@ -94,21 +93,13 @@ bool UTBSession::Acquire()
 
 void UTBSession::Activate()
 {
-	if (CurrentOperation == ESessionOperation::Travelling) CurrentOperation = ESessionOperation::Idle;
-	bReturningToTitle = false;
 	Acquire();
-	Changed.Broadcast();
-}
-
-bool UTBSession::HasSession() const
-{
-	return Sessions.IsValid() && Sessions->GetNamedSession(NAME_GameSession) != nullptr;
 }
 
 // 部屋作成を依頼する。作成成功後のマップ移動はCreatedで行う。
 void UTBSession::Host()
 {
-	if (IsBusy() || !Acquire())
+	if (CurrentOperation != ESessionOperation::Idle || !Acquire())
 	{
 		return;
 	}
@@ -156,13 +147,11 @@ void UTBSession::Created(FName Name, bool bSucceeded)
 		return;
 	}
 	CurrentOperation = ESessionOperation::Idle;
-	if (bReturnRequested) { BeginReturn(); return; }
 	if (!bSucceeded)
 	{
 		Message(TEXT("Room creation failed."));
 		return;
 	}
-	CurrentOperation = ESessionOperation::Travelling;
 	Message(TEXT("Room created. Opening listen server..."));
 	TArray<FName> Stages;
 	for (const TCHAR* Map : {TEXT("/Game/Maps/TB_ArchViz"), TEXT("/Game/Maps/TB_KidsRoom")})
@@ -185,7 +174,7 @@ void UTBSession::Created(FName Name, bool bSucceeded)
 // 同じビルド識別子の部屋を検索する。表示用文字列と参加用結果は分けて保持する。
 void UTBSession::Find()
 {
-	if (IsBusy() || !Acquire())
+	if (CurrentOperation != ESessionOperation::Idle || !Acquire())
 	{
 		return;
 	}
@@ -283,7 +272,6 @@ void UTBSession::Found(bool bSucceeded)
 		return;
 	}
 	CurrentOperation = ESessionOperation::Idle;
-	if (bReturnRequested) { BeginReturn(); return; }
 	Results.Reset();
 	Rooms.Reset();
 	if (!bSucceeded || !Search.IsValid())
@@ -311,7 +299,7 @@ void UTBSession::Found(bool bSucceeded)
 
 void UTBSession::Join(int32 Index)
 {
-	if (IsBusy() || !Acquire())
+	if (CurrentOperation != ESessionOperation::Idle || !Acquire())
 	{
 		return;
 	}
@@ -325,7 +313,7 @@ void UTBSession::Join(int32 Index)
 
 void UTBSession::BeginJoin(const FOnlineSessionSearchResult& SearchResult)
 {
-	if (IsBusy() || !SearchResult.IsValid() || !Sessions.IsValid())
+	if (CurrentOperation != ESessionOperation::Idle || !SearchResult.IsValid() || !Sessions.IsValid())
 	{
 		return;
 	}
@@ -358,20 +346,18 @@ void UTBSession::Joined(FName Name, EOnJoinSessionCompleteResult::Type Result)
 		return;
 	}
 	CurrentOperation = ESessionOperation::Idle;
-	if (bReturnRequested) { BeginReturn(); return; }
 	if (Result != EOnJoinSessionCompleteResult::Success)
 	{
-		RequestReturn(TEXT("Could not join the room. Please refresh the room list and try again."));
+		Message(TEXT("Join failed. If a local session remains, TBLeave then retry."));
 		return;
 	}
 	FString URL;
 	APlayerController* PlayerController = GetGameInstance()->GetFirstLocalPlayerController();
 	if (!PlayerController || !Sessions->GetResolvedConnectString(NAME_GameSession, URL) || URL.IsEmpty())
 	{
-		RequestReturn(TEXT("Could not resolve the host address. Please try again."));
+		Message(TEXT("Could not resolve connection. TBLeave to clean up."));
 		return;
 	}
-	CurrentOperation = ESessionOperation::Travelling;
 	Message(TEXT("Connecting to host..."));
 	PlayerController->ClientTravel(URL, TRAVEL_Absolute);
 }
@@ -392,98 +378,101 @@ void UTBSession::Accepted(bool bSucceeded, int32 LocalUser, TSharedPtr<const FUn
 	BeginJoin(SearchResult);
 }
 
-// The core ticker survives a failed travel tearing down the old world.
-void UTBSession::RequestReturn(const FString& Reason)
-{
-	if (bReturningToTitle) return;
-	if (!bReturnRequested) ReturnReason = Reason;
-	bReturnRequested = true;
-	Message(ReturnReason);
-	FTSTicker::GetCoreTicker().RemoveTicker(ReturnTicker);
-	ReturnTicker = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateWeakLambda(this, [this](float)
-	{
-		ReturnTicker.Reset();
-		BeginReturn();
-		return false;
-	}));
-}
-
+// 処理中の非同期操作は取り消さず、完了を待ってから退出してもらう。
 void UTBSession::Leave()
 {
-	RequestReturn(TEXT("You left the room."));
-}
-
-void UTBSession::BeginReturn()
-{
-	if (CurrentOperation == ESessionOperation::Closing || bReturningToTitle) return;
-	// An in-flight create/join may still create a session. Its callback resumes cleanup.
-	if (CurrentOperation == ESessionOperation::Creating || CurrentOperation == ESessionOperation::Joining ||
-	    CurrentOperation == ESessionOperation::Finding) return;
-	bReturnRequested = true;
-	CurrentOperation = ESessionOperation::Closing;
-	bLobbyUpdateInFlight = false;
-	if (UWorld* World = GetWorld()) World->GetTimerManager().ClearTimer(LobbyUpdateTimer);
-	if (!HasSession()) { ReturnOffline(); return; }
-	// Do not trap the player in a disconnected stage if a backend never answers.
-	CleanupTimeout = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateWeakLambda(this, [this](float)
+	// 作成・参加の完了を待ち、退出後にセッションが残るのを防ぐ。
+	if (CurrentOperation == ESessionOperation::Closing)
 	{
-		CleanupTimeout.Reset();
-		ReturnReason += TEXT(" Connection cleanup timed out. Retry cleanup on the title screen.");
+		return;
+	}
+	if (CurrentOperation != ESessionOperation::Idle)
+	{
+		Message(TEXT("Online operation still pending. Wait for its completion before leaving."));
+		return;
+	}
+	if (!Acquire())
+	{
 		ReturnOffline();
-		return false;
-	}), 10.f);
-	if (!Sessions->DestroySession(NAME_GameSession))
+		return;
+	}
+	CurrentOperation = ESessionOperation::Closing;
+	if (UWorld* World = GetWorld())
 	{
-		ReturnReason += TEXT(" Connection cleanup could not start. Retry cleanup on the title screen.");
+		World->GetTimerManager().ClearTimer(LobbyUpdateTimer);
+	}
+	Message(TEXT("Leaving room..."));
+	if (Sessions->GetNamedSession(NAME_GameSession))
+	{
+		if (!Sessions->DestroySession(NAME_GameSession))
+		{
+			CurrentOperation = ESessionOperation::Idle;
+			Message(TEXT("DestroySession could not start. Retry TBLeave."));
+		}
+	}
+	else
+	{
 		ReturnOffline();
 	}
 }
 
 void UTBSession::Destroyed(FName Name, bool bSucceeded)
 {
-	if (Name != NAME_GameSession || CurrentOperation != ESessionOperation::Closing) return;
-	if (!bSucceeded) ReturnReason += TEXT(" Connection cleanup failed. Retry cleanup on the title screen.");
+	if (Name != NAME_GameSession || CurrentOperation != ESessionOperation::Closing)
+	{
+		return;
+	}
+	if (!bSucceeded)
+	{
+		CurrentOperation = ESessionOperation::Idle;
+		Message(TEXT("Session cleanup failed; retry TBLeave or restart the game."));
+		return;
+	}
 	ReturnOffline();
 }
 
 void UTBSession::ReturnOffline()
 {
-	FTSTicker::GetCoreTicker().RemoveTicker(CleanupTimeout);
-	CleanupTimeout.Reset();
+	bLobbyUpdateInFlight = false;
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(LobbyUpdateTimer);
+	}
 	CurrentOperation = ESessionOperation::Idle;
-	bReturnRequested = false;
 	Results.Reset();
 	Rooms.Reset();
-	Search.Reset();
-	const bool AlreadyOnTitle = GetWorld() && GetWorld()->GetNetMode() == NM_Standalone &&
-	    UGameplayStatics::GetCurrentLevelName(this, true) == TEXT("Title");
-	Message(ReturnReason.IsEmpty() ? TEXT("Create a room or find friends to begin.") : ReturnReason);
-	ReturnReason.Reset();
-	if (!AlreadyOnTitle)
-	{
-		bReturningToTitle = true;
-		UGameplayStatics::OpenLevel(GetGameInstance(), FName(TEXT("/Game/Maps/Title")), true);
-	}
-	Changed.Broadcast();
+	UGameplayStatics::OpenLevel(GetGameInstance(), FName(TEXT("/Game/Maps/Title")), true);
+	Message(TEXT("Offline. Last match ended; TBHost / TBFind for a new lobby."));
 }
 
+// 自分のWorldの通信失敗だけを扱い、通知後に通常の退出処理へ進む。
 void UTBSession::NetworkFailed(UWorld* World, UNetDriver* Driver, ENetworkFailure::Type Type, const FString& Error)
 {
-	if (!World || World != GetWorld()) return;
-	// One departing client must not eject everyone else from the host's room.
-	if ((World->GetNetMode() == NM_ListenServer || World->GetNetMode() == NM_DedicatedServer) &&
-	    (Type == ENetworkFailure::ConnectionLost || Type == ENetworkFailure::ConnectionTimeout)) return;
-	RequestReturn(FString::Printf(TEXT("Connection lost: %s"), *Error));
+	if (!World || World != GetWorld())
+	{
+		return;
+	}
+	// サーバー側での単一クライアント切断はLogoutが扱う。ホストの部屋は閉じない。
+	if (World->GetNetMode() != NM_Client &&
+	    (Type == ENetworkFailure::ConnectionLost || Type == ENetworkFailure::ConnectionTimeout))
+	{
+		return;
+	}
+	Message(FString::Printf(TEXT("Network failure: %s"), *Error));
+	// 切断理由を表示してから退出する。
+	if (CurrentOperation == ESessionOperation::Idle)
+	{
+		World->GetTimerManager().SetTimer(CloseTimer, FTimerDelegate::CreateUObject(this, &UTBSession::Leave), 2.f,
+		                                  false);
+	}
 }
 
 void UTBSession::TravelFailed(UWorld* World, ETravelFailure::Type Type, const FString& Error)
 {
-	if (!World || World != GetWorld()) return;
-	if (bReturningToTitle)
+	if (World != GetWorld())
 	{
-		bReturningToTitle = false;
-		Message(TEXT("Could not open Title. Check that /Game/Maps/Title is installed and cooked."));
-		return; // Never recurse on a missing/corrupt title map.
+		return;
 	}
-	RequestReturn(FString::Printf(TEXT("Could not open the room: %s"), *Error));
+	Message(FString::Printf(
+	    TEXT("Travel failed: %s. Check the destination map is saved/cooked; TBLeave cleans session."), *Error));
 }
