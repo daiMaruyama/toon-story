@@ -47,6 +47,10 @@ public:
 	FString Notice;
 
 private:
+	void UpdateScreenTransition();
+	// 直前のフレームの状態。変わった瞬間に演出を出す。
+	ETBPhase LastPhase = ETBPhase::Lobby;
+	ETBToyState LastToyState = ETBToyState::Free;
 	void UpdateLobbyCamera(bool InLobby);
 	void UpdateMenuInput(bool ShowMenu);
 	bool bLobbyInput = false;
