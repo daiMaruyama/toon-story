@@ -38,10 +38,13 @@ void ATBController::UpdateScreenTransition()
 	// ロビーに戻る
 	const bool bReturnedToLobby = State->Phase == ETBPhase::Lobby && LastPhase != ETBPhase::Lobby;
 	// 箱に入れられる、助け出される、はどちらも箱の部屋との間を瞬間移動する。
+	const bool bBoxed = Info->ToyState == ETBToyState::Boxed;
+	const bool bWasBoxed = LastToyState == ETBToyState::Boxed;
 	// 最後の1体の収納はそのまま試合終了になるので、ロビー以外なら出す。
-	const bool bBoxChanged = State->Phase != ETBPhase::Lobby &&
-	                         (Info->ToyState == ETBToyState::Boxed) != (LastToyState == ETBToyState::Boxed);
-	if (bReturnedToLobby || bBoxChanged)
+	const bool bEnteredBox = bBoxed && !bWasBoxed && State->Phase != ETBPhase::Lobby;
+	// 救助は試合中だけ。ロビーへ戻る時の状態リセットが先に届いても出さない（二重の暗転を防ぐ）。
+	const bool bLeftBox = !bBoxed && bWasBoxed && State->Phase == ETBPhase::Playing;
+	if (bReturnedToLobby || bEnteredBox || bLeftBox)
 	{
 		TBScreen::PlayTransition(this);
 	}
