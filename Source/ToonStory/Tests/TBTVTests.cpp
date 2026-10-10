@@ -220,12 +220,16 @@ bool FTBTVTest::RunTest(const FString& Parameters)
 				    Target->SetToyState(ETBToyState::Grabbed);
 				    return false;
 			    case 2:
-				    TestEqual(TEXT("Grabbed target stays on air until stored"), Noise(), 0.f);
+				    TestEqual(TEXT("Grabbed target shows static"), Noise(), 1.f);
+				    TestEqual(TEXT("Channel stays on grabbed target"), TV->GetChannel().Number, TargetNumber);
 				    Target->SetToyState(ETBToyState::Free);
+				    return false;
+			    case 3:
+				    TestEqual(TEXT("Released target returns on air"), Noise(), 0.f);
 				    // 映す体が無くなったら砂嵐。両者を箱に入れると試合が終わるので、同じ判定を通るPawn喪失で確かめる。
 				    TargetController->UnPossess();
 				    return false;
-			    case 3:
+			    case 4:
 				    TestEqual(TEXT("Lost target shows static"), Noise(), 1.f);
 				    TestEqual(TEXT("Channel stays on lost target"), TV->GetChannel().Number, TargetNumber);
 				    TargetController->Possess(Target);

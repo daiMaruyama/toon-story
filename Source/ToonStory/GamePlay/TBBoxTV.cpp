@@ -77,13 +77,13 @@ bool ATBBoxTV::HasLocalViewer() const
 	return false;
 }
 
-// 人間はいつでも映せる。おもちゃは掴まれて運ばれている間も映し、箱にしまわれたら砂嵐。
+// 人間はいつでも映せる。おもちゃは掴まれた時点で砂嵐にし、降ろされて自由になれば再び映す。
 bool ATBBoxTV::IsAvailableTarget(const ATBPlayerState* Player) const
 {
 	const auto* State = TB::GS(GetWorld());
 	return IsValid(Player) && State && State->PlayerArray.Contains(Player) &&
 	       IsValid(Player->GetPawn<ATBCharacter>()) &&
-	       (Player->Team == ETBTeam::Human || (Player->Team == ETBTeam::Toy && Player->ToyState != ETBToyState::Boxed));
+	       (Player->Team == ETBTeam::Human || (Player->Team == ETBTeam::Toy && Player->ToyState == ETBToyState::Free));
 }
 
 bool ATBBoxTV::CanOperate(const ATBCharacter* Viewer) const
@@ -93,7 +93,7 @@ bool ATBBoxTV::CanOperate(const ATBCharacter* Viewer) const
 	       Info->ToyState == ETBToyState::Boxed;
 }
 
-// 箱にいるおもちゃを除いた全員を、人間→おもちゃの順に並べる。捕まった人が増えると番号は詰まる。
+// 箱にいるおもちゃを除いた全員を、人間→おもちゃの順に並べる。箱に入る人が増えると番号は詰まる（掴まれただけでは詰めない）。
 TArray<ATBPlayerState*> ATBBoxTV::GetPlayerChannels() const
 {
 	TArray<ATBPlayerState*> Players;
@@ -271,7 +271,7 @@ bool ATBBoxTV::SetCaptureView()
 		Capture->FOVAngle = Camera->FieldOfView;
 		return true;
 	}
-	// 捕まった・切断した・その番号の相手がいない場合は砂嵐。
+	// 掴まれた・箱にいる・切断した・その番号の相手がいない場合は砂嵐。
 	if (!IsAvailableTarget(Channel.Target))
 	{
 		return false;
