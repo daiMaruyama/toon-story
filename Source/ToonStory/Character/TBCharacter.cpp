@@ -351,6 +351,10 @@ void ATBCharacter::UpdateCarryCamera()
 	{
 		return;
 	}
+	// 掴まれた・降ろされた・運ぶ人が替わった、のいずれも直前の視点からつなぐ。
+	CarryBlendDuration = bCarried ? CarryBlendTime : CarryReleaseBlendTime;
+	CarryBlendFrom = LastView;
+	CarryBlendStarted = bHasLastView && CarryBlendDuration > 0 ? GetWorld()->GetTimeSeconds() : -1;
 	AController* PlayerController = GetController();
 	if (bCarried)
 	{
@@ -383,6 +387,31 @@ void ATBCharacter::UpdateCarryCamera()
 	// 抱えられている自分も画面に入れる。
 	Body->SetOwnerNoSee(!bCarried);
 	GetMesh()->SetOwnerNoSee(!bCarried);
+}
+
+// カメラは先に切り替える。寄せる先は毎フレームの最新値なので、運ぶ人の移動や視点操作があっても最後に飛ばない。
+void ATBCharacter::CalcCamera(float DeltaTime, FMinimalViewInfo& OutResult)
+{
+	Super::CalcCamera(DeltaTime, OutResult);
+	// 箱への収納など瞬間移動を伴う切替はつながず、壁越しに視点が流れるのを防ぐ。降ろす位置は1m程度。
+	const FVector ActorLocation = GetActorLocation();
+	if (bHasLastView && FVector::DistSquared(ActorLocation, LastActorLocation) > FMath::Square(300.f))
+	{
+		CarryBlendStarted = -1;
+	}
+	LastActorLocation = ActorLocation;
+	const double Elapsed = GetWorld()->GetTimeSeconds() - CarryBlendStarted;
+	if (CarryBlendStarted >= 0 && Elapsed < CarryBlendDuration)
+	{
+		const float Alpha =
+		    UKismetMathLibrary::Ease(0.f, 1.f, Elapsed / CarryBlendDuration, CarryBlendEase, CarryBlendExp);
+		OutResult.Location = FMath::Lerp(CarryBlendFrom.Location, OutResult.Location, Alpha);
+		OutResult.Rotation =
+		    FQuat::Slerp(CarryBlendFrom.Rotation.Quaternion(), OutResult.Rotation.Quaternion(), Alpha).Rotator();
+		OutResult.FOV = FMath::Lerp(CarryBlendFrom.FOV, OutResult.FOV, Alpha);
+	}
+	LastView = OutResult;
+	bHasLastView = true;
 }
 
 void ATBCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const

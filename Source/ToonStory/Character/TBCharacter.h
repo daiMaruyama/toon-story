@@ -2,6 +2,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
 #include "Data/TBTypes.h"
+#include "Kismet/KismetMathLibrary.h" // EEasingFunc用
 #include "TBCharacter.generated.h"
 
 class UCameraComponent;
@@ -37,6 +38,18 @@ public:
 	// 運ばれている間の見下ろし角。左右には回り込めるが、上下は固定。
 	UPROPERTY(EditDefaultsOnly, Category = "Carry Camera")
 	float CarryViewPitch = -40.f;
+	// 一人称と運搬カメラの切替をつなぐ時間。
+	UPROPERTY(EditDefaultsOnly, Category = "Carry Camera", meta = (ClampMin = "0.0"))
+	float CarryBlendTime = .45f;
+	// 降ろされる時は運ぶ人の頭を横切るので短くする。
+	UPROPERTY(EditDefaultsOnly, Category = "Carry Camera", meta = (ClampMin = "0.0"))
+	float CarryReleaseBlendTime = .12f;
+	UPROPERTY(EditDefaultsOnly, Category = "Carry Camera")
+	TEnumAsByte<EEasingFunc::Type> CarryBlendEase = EEasingFunc::EaseInOut;
+	// Easeの効きの強さ。
+	UPROPERTY(EditDefaultsOnly, Category = "Carry Camera", meta = (ClampMin = "1.0"))
+	float CarryBlendExp = 2.f;
+	virtual void CalcCamera(float DeltaTime, FMinimalViewInfo& OutResult) override;
 	UPROPERTY(VisibleAnywhere)
 	TObjectPtr<UStaticMeshComponent> Body;
 	UPROPERTY(Config, EditDefaultsOnly, Category = "Appearance")
@@ -127,6 +140,13 @@ private:
 	bool bCarryView = false;
 	// 運搬カメラを今付けている相手。途中のnullptrが届かず運ぶ人が入れ替わる場合に付け直す。
 	TWeakObjectPtr<ATBCharacter> CarryViewCarrier;
+	// 直前のフレームに画面へ出した視点。切替時にここからブレンドを始める。
+	FMinimalViewInfo LastView;
+	FVector LastActorLocation = FVector::ZeroVector;
+	bool bHasLastView = false;
+	FMinimalViewInfo CarryBlendFrom;
+	double CarryBlendStarted = -1;
+	float CarryBlendDuration = 0;
 	bool bAppearanceInitialized = false;
 	bool bShowingToy = false;
 	void UpdateAppearance(bool bToy);

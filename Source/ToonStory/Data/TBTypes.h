@@ -33,6 +33,14 @@ enum class ETBWinner : uint8
 	Humans,
 	Toys
 };
+UENUM(BlueprintType)
+enum class ETBRemoteKey : uint8
+{
+	Digit,
+	Next,
+	Prev,
+	Power
+};
 
 USTRUCT(BlueprintType)
 struct FTBSettings
