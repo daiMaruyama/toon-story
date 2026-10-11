@@ -303,9 +303,6 @@ void ATBHUD::DrawMatch(const ATBGameState& MatchState, ATBController& Controller
 	DrawText(Child ? TEXT("WASD Move    Space Jump    E Grab / Store    Q Put down")
 	               : TEXT("WASD Move    Shift Sprint    Space Jump    E Rescue    Touch batteries to collect"),
 	         Ink, 40 * S, H - 51 * S, nullptr, .95f * S);
-#if !UE_BUILD_SHIPPING
-	if (!Child) DrawText(TEXT("DEBUG: F6 Change toy"), Accent, 40 * S, H - 86 * S, nullptr, .85f * S);
-#endif
 	if (Player && Player->bFrozen)
 	{
 		DrawRect(FLinearColor(.28f, .045f, .035f, .9f), W * .5f - 165 * S, H * .7f, 330 * S, 44 * S);

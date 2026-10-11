@@ -23,11 +23,6 @@ public class ToonStory : ModuleRules
 		PublicIncludePaths.AddRange(new string[] {
 			"ToonStory"
 		});
-		if (Target.bBuildEditor)
-		{
-			PrivateDependencyModuleNames.AddRange(new string[] { "AssetRegistry", "ImageCore", "RenderCore", "RHI" });
-		}
-		// Keep downloaded toy attribution alongside packaged builds when this optional Content is present.
 		if (Target.ProjectFile != null)
 		{
 			string ToyNotices = System.IO.Path.Combine(Target.ProjectFile.Directory.FullName,

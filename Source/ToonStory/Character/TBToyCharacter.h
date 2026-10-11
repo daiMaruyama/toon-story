@@ -3,11 +3,9 @@
 #include "TBCharacter.h"
 #include "TBToyCharacter.generated.h"
 
-class UTBToyDefinition;
-class UTBCharacterAppearanceComponent;
-class UTBToyAnimationComponent;
+class UChildActorComponent;
 
-/** Adds data-driven toys without changing the shared movement, carry or camera implementation. */
+// おもちゃの選択結果を同期する。モデル・材質・アニメーションはBlueprint側で管理。
 UCLASS()
 class TOONSTORY_API ATBToyCharacter : public ATBCharacter
 {
@@ -16,32 +14,21 @@ public:
 	ATBToyCharacter(const FObjectInitializer& Init);
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaSeconds) override;
-	virtual void OnRep_PlayerState() override;
-	virtual void SetupPlayerInputComponent(UInputComponent* Input) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Toy")
-	TSoftObjectPtr<UTBToyDefinition> ToyDefinition;
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Toy")
-	TArray<TSoftObjectPtr<UTBToyDefinition>> ToyCatalogue;
+	// 表示専用BPの候補。ゲーム処理や独自の通信同期は持たせない。
+	UPROPERTY(EditDefaultsOnly, Category = "Toy")
+	TArray<TSubclassOf<AActor>> ToyCatalogue;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Toy")
-	TObjectPtr<UTBCharacterAppearanceComponent> Appearance;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Toy")
-	TObjectPtr<UTBToyAnimationComponent> ToyAnimation;
-	UPROPERTY(ReplicatedUsing = OnRep_SelectedToyIndex, BlueprintReadOnly, Category = "Toy")
+	TObjectPtr<UChildActorComponent> ToyVisual;
+	UPROPERTY(ReplicatedUsing = RefreshToyPresentation, BlueprintReadOnly, Category = "Toy")
 	int32 SelectedToyIndex = INDEX_NONE;
 
-	// Debug requests are also rejected by the server in Shipping builds.
-	UFUNCTION(Server, Reliable, BlueprintCallable, Category = "Debug", meta = (DevelopmentOnly))
-	void ServerSelectToy(int32 Index);
-	UFUNCTION(BlueprintCallable, Category = "Debug", meta = (DevelopmentOnly))
-	void NextToy();
+	// チーム確定後、プレイ開始前にサーバーから呼ぶ。
+	void ChooseRandomToy();
+	UFUNCTION()
 	void RefreshToyPresentation();
-	UTBToyDefinition* GetToyDefinition() const;
 
 private:
-	UFUNCTION()
-	void OnRep_SelectedToyIndex();
-	bool LoadToyDefinition();
-	bool bPresentationReady = false;
+	bool bShowingToy = false;
 };

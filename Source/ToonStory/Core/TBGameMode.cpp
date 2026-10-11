@@ -17,6 +17,7 @@
 #include "EngineUtils.h"
 #include "GameFramework/GameSession.h"
 #include "GameFramework/PlayerStart.h"
+#include "UObject/ConstructorHelpers.h"
 
 void ATBGameMode::InitGame(const FString& MapName, const FString& Options, FString& ErrorMessage)
 {
@@ -34,7 +35,9 @@ ATBGameMode::ATBGameMode()
 	PlayerStateClass = ATBPlayerState::StaticClass();
 	GameStateClass = ATBGameState::StaticClass();
 	PlayerControllerClass = ATBController::StaticClass();
-	DefaultPawnClass = ATBToyCharacter::StaticClass();
+	// おもちゃの候補や見た目はBPで設定し、未導入時は既存キャラクターを使う。
+	static ConstructorHelpers::FClassFinder<APawn> ToyPawn(TEXT("/Game/Characters/Toys/BP_ToyCharacter"));
+	DefaultPawnClass = ToyPawn.Succeeded() ? ToyPawn.Class.Get() : ATBCharacter::StaticClass();
 	HUDClass = ATBHUD::StaticClass();
 	BoxClass = ATBBox::StaticClass();
 }
@@ -274,6 +277,8 @@ void ATBGameMode::StartRound(APlayerController* PlayerController)
 		ToyPlayerInfo->bFrozen = false;
 		ToyPlayerInfo->Items = 0;
 		ToyPlayerInfo->OnRep_State();
+		// チーム確定後、プレイ開始前に見た目を選ぶ。
+		if (auto* Toy = Cast<ATBToyCharacter>(ToyPlayerInfo->GetPawn())) Toy->ChooseRandomToy();
 		ToyPlayerInfo->ForceNetUpdate();
 		if (auto* ToyCharacter = Cast<ATBCharacter>(ToyPlayerInfo->GetPawn()))
 		{
