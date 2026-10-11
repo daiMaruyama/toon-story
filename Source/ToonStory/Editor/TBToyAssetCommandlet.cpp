@@ -1,6 +1,7 @@
 #include "TBToyAssetCommandlet.h"
 
 #if WITH_EDITOR
+#include "TBToyGaitAuthoring.h"
 #include "Data/TBToyDefinition.h"
 #include "Engine/SkeletalMesh.h"
 #include "Engine/Texture2D.h"
@@ -202,7 +203,7 @@ static bool RepairBear(UTBToyDefinition* Definition)
 	return SaveToyAsset(Definition->Locomotion) && SaveToyAsset(Definition);
 }
 
-static bool RenderToy(UTBToyDefinition* Definition, const FString& Name)
+static bool RenderToy(UTBToyDefinition* Definition, const FString& Name, const FString& Params)
 {
 	auto* World = UWorld::CreateWorld(EWorldType::Game, false);
 	// CreateWorld initializes the persistent level.
@@ -215,10 +216,14 @@ static bool RenderToy(UTBToyDefinition* Definition, const FString& Name)
 	auto* Mesh = Actor->GetMesh();
 	Mesh->SetOwnerNoSee(false);
 	Mesh->SetCastShadow(true);
-	Mesh->PlayAnimation(Definition->Idle, true);
-	Mesh->SetPosition(0.f, false);
+	FString Motion = TEXT("Idle"); FParse::Value(*Params, TEXT("Motion="), Motion);
+	float Phase = 0.f; FParse::Value(*Params, TEXT("Phase="), Phase);
+	auto* Clip = Motion == TEXT("Walk") ? Definition->Walk.Get() : Motion == TEXT("Run") ? Definition->Run.Get() : Definition->Idle.Get();
+	Mesh->PlayAnimation(Clip, true);
+	Mesh->SetPosition(Clip->GetPlayLength() * Phase, false);
 	Mesh->TickAnimation(0.f, false);
 	Mesh->RefreshBoneTransforms();
+	Mesh->bPauseAnims = true;
 	Mesh->UpdateBounds();
 	auto* Floor = World->SpawnActor<AStaticMeshActor>();
 	Floor->GetStaticMeshComponent()->SetStaticMesh(LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube")));
@@ -233,6 +238,7 @@ static bool RenderToy(UTBToyDefinition* Definition, const FString& Name)
 	}
 	auto* Capture = World->SpawnActor<ASceneCapture2D>();
 	Capture->SetActorLocation(FVector(45, -42, 26));
+	if (FParse::Param(*Params, TEXT("Front"))) Capture->SetActorLocation(FVector(65, 0, 22));
 	Capture->SetActorRotation((FVector(0, 0, 12) - Capture->GetActorLocation()).Rotation());
 	auto* Camera = Capture->GetCaptureComponent2D();
 	auto* Target = NewObject<UTextureRenderTarget2D>(Capture);
@@ -272,7 +278,8 @@ static bool RenderToy(UTBToyDefinition* Definition, const FString& Name)
 	if (!bRead || Pixels.Num() != 900 * 900) { World->DestroyWorld(false); return false; }
 	TArray64<uint8> PNG;
 	FImageUtils::PNGCompressImageArray(900, 900, Pixels, PNG);
-	const bool bSaved = FFileHelper::SaveArrayToFile(PNG, *(FPaths::ProjectSavedDir() / TEXT("ToyCollectionRealistic") / (Name + TEXT("_UE.png"))));
+	FString Shot = Name + TEXT("_UE"); FParse::Value(*Params, TEXT("Shot="), Shot);
+	const bool bSaved = FFileHelper::SaveArrayToFile(PNG, *(FPaths::ProjectSavedDir() / TEXT("ToyCollectionRealistic") / (Shot + TEXT(".png"))));
 	World->DestroyWorld(false);
 	return bSaved;
 }
@@ -295,9 +302,11 @@ int32 UTBToyAssetCommandlet::Main(const FString& Params)
 	                         TEXT("TinRobot_Realistic"), TEXT("Dinosaur_Realistic"), TEXT("ArmyMan_StarterPack"), TEXT("Nutcracker")})
 	{
 		if (!Only.IsEmpty() && !FString(Name).StartsWith(Only)) continue;
+		if (FParse::Param(*Params, TEXT("ReviewGait")) && !FString(Name).StartsWith(TEXT("Army")) && !FString(Name).StartsWith(TEXT("Space")) && !FString(Name).StartsWith(TEXT("Duck"))) continue;
 		auto* Definition = LoadObject<UTBToyDefinition>(nullptr, *FString::Printf(TEXT("/Game/Characters/ToyDefinitions/DA_%s.DA_%s"), Name, Name));
 		if (!Definition || !Definition->SkeletalMesh) return 1;
 		auto* Mesh = Definition->SkeletalMesh.Get();
+		if (FParse::Param(*Params, TEXT("Tune")) && !TBToyGaitAuthoring::Tune(Definition, Name)) return 1;
 		if (FParse::Param(*Params, TEXT("Repair")) && (FString(Name).StartsWith(TEXT("Space")) || FString(Name).StartsWith(TEXT("Teddy"))))
 		{
 			if (FString(Name).StartsWith(TEXT("Space")))
@@ -325,8 +334,19 @@ int32 UTBToyAssetCommandlet::Main(const FString& Params)
 		}
 		if (FParse::Param(*Params, TEXT("Repair")) && FString(Name).StartsWith(TEXT("Teddy")) && !RepairBear(Definition)) return 1;
 		UE_LOG(LogTemp, Display, TEXT("OVERRIDES %d"), Definition->MaterialOverrides.Num());
-		if (FParse::Param(*Params, TEXT("Render")) && (FString(Name).StartsWith(TEXT("Space")) || FString(Name).StartsWith(TEXT("Teddy"))))
-			if (!RenderToy(Definition, Name)) return 1;
+		if (FParse::Param(*Params, TEXT("Render")))
+			if (!RenderToy(Definition, Name, Params)) return 1;
+		if (FParse::Param(*Params, TEXT("ReviewGait")))
+		{
+			if (FString(Name).StartsWith(TEXT("Duck")))
+			{ if (!RenderToy(Definition, Name, TEXT("-Shot=duck_yellow"))) return 1; }
+			else
+			{
+				const bool bArmy = FString(Name).StartsWith(TEXT("Army"));
+				if (!RenderToy(Definition, Name, bArmy ? TEXT("-Motion=Walk -Phase=0.25 -Front -Shot=army_forward_front") : TEXT("-Motion=Walk -Phase=0.25 -Shot=space_walk_swing"))) return 1;
+				if (!RenderToy(Definition, Name, bArmy ? TEXT("-Motion=Run -Phase=0.75 -Shot=army_forward_run") : TEXT("-Motion=Run -Phase=0.75 -Shot=space_run_swing"))) return 1;
+			}
+		}
 		const auto Bounds = Mesh->GetBounds();
 		UE_LOG(LogTemp, Display, TEXT("TOY %s bounds origin=%s extent=%s"), Name, *Bounds.Origin.ToString(), *Bounds.BoxExtent.ToString());
 		int32 Index = 0;

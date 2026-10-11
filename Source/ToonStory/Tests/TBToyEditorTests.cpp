@@ -91,4 +91,66 @@ bool FTBToySeatedIdleTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Body uses cloth shading"), Bear->SkeletalMesh->GetMaterials()[0].MaterialInterface->GetMaterial()->GetShadingModels().HasShadingModel(MSM_Cloth));
 	return true;
 }
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBToyGaitTest, "ToonStory.Appearance.TunedGait",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FTBToyGaitTest::RunTest(const FString& Parameters)
+{
+	for (const TCHAR* Name : {TEXT("ArmyMan_StarterPack"), TEXT("SpaceRanger_Realistic")})
+	{
+		auto* Definition = LoadObject<UTBToyDefinition>(nullptr, *FString::Printf(TEXT("/Game/Characters/ToyDefinitions/DA_%s.DA_%s"), Name, Name));
+		if (!TestNotNull(TEXT("Tuned definition exists"), Definition)) return false;
+		const bool bArmy = FString(Name).StartsWith(TEXT("Army"));
+		const auto& Ref = Definition->SkeletalMesh->GetRefSkeleton();
+		TArray<FTransform> Reference;
+		for (int32 Bone = 0; Bone < Ref.GetNum(); ++Bone)
+		{
+			auto T = Ref.GetRefBonePose()[Bone];
+			if (Ref.GetParentIndex(Bone) >= 0) T *= Reference[Ref.GetParentIndex(Bone)];
+			Reference.Add(T);
+		}
+		for (UAnimSequence* Clip : {Definition->Walk.Get(), Definition->Run.Get()})
+		{
+			const auto* Model = Clip->GetDataModel();
+			double MaxArmAngle = 0;
+			for (int32 Frame = 0; Frame <= Model->GetNumberOfFrames(); ++Frame)
+			{
+				TArray<FTransform> Pose;
+				for (int32 Bone = 0; Bone < Ref.GetNum(); ++Bone)
+				{
+					auto T = Model->GetBoneTrackTransform(Ref.GetBoneName(Bone), FFrameNumber(Frame));
+					if (Ref.GetParentIndex(Bone) >= 0) T *= Pose[Ref.GetParentIndex(Bone)];
+					Pose.Add(T);
+				}
+				for (const TCHAR* Side : {TEXT("L"), TEXT("R")})
+				{
+					if (bArmy)
+					{
+						const int32 Hip = Ref.FindBoneIndex(*FString::Printf(TEXT("thigh_%s"), Side));
+						const int32 Knee = Ref.FindBoneIndex(*FString::Printf(TEXT("calf_%s"), Side));
+						const int32 Foot = Ref.FindBoneIndex(*FString::Printf(TEXT("foot_%s"), Side));
+						TestTrue(TEXT("Knee stays in the hip/ankle forward plane"), FMath::Abs(Pose[Hip].GetLocation().Y - Pose[Knee].GetLocation().Y) < .001 && FMath::Abs(Pose[Knee].GetLocation().Y - Pose[Foot].GetLocation().Y) < .001);
+						const auto Direction = (Pose[Foot].GetRotation() * Reference[Foot].GetRotation().Inverse()).RotateVector(FVector::ForwardVector);
+						TestTrue(TEXT("Toe stays forward without inward yaw"), FMath::Abs(Direction.Y) < .001 && Direction.X > .9);
+					}
+					else
+					{
+						const int32 Arm = Ref.FindBoneIndex(*FString::Printf(TEXT("arm_%s"), Side));
+						const int32 Spine = Ref.FindBoneIndex(TEXT("spine"));
+						const auto Chest = Pose[Spine].GetRotation() * Reference[Spine].GetRotation().Inverse();
+						const auto Swing = Chest.Inverse() * Pose[Arm].GetRotation() * Reference[Arm].GetRotation().Inverse();
+						MaxArmAngle = FMath::Max(MaxArmAngle, Swing.AngularDistance(FQuat::Identity));
+					}
+				}
+			}
+			if (!bArmy)
+			{
+				AddInfo(FString::Printf(TEXT("%s arm swing peak %.1f degrees"), *Clip->GetName(), FMath::RadiansToDegrees(MaxArmAngle)));
+				TestTrue(TEXT("Arm swing has visible amplitude"), MaxArmAngle > FMath::DegreesToRadians(20.0));
+			}
+		}
+	}
+	return true;
+}
 #endif
