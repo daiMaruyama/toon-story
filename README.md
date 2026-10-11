@@ -22,7 +22,9 @@ UE5 / C++ で開発中の対戦アクション（PvP）。
 - 収納されたおもちゃは、仲間が箱の外から救助できる。救助を待つ間は、箱の中のテレビで外の様子を見られる
 - 制限時間内に必要数の電池を集めればおもちゃの勝ち。時間切れか全員収納で人間の勝ち
 
-## 担当（丸山）
+## 担当
+
+### 丸山
 
 | 範囲 | 内容 | 主なファイル |
 | --- | --- | --- |
@@ -32,6 +34,24 @@ UE5 / C++ で開発中の対戦アクション（PvP）。
 | エディタ拡張 | MCP サーバーの操作と AI クライアント設定の生成（下記） | `Plugins/MaruyamaEditorExtension/` |
 | 開発フロー | /quiz による PR 前の理解度チェック（下記） | `.agents/` `.github/workflows/quiz.yml` |
 | 環境構築 | リポジトリ構成（Content の submodule 分離）、Windows / macOS のセットアップ手順、clangd 設定 | `docs/GIT_SETUP.md` `.clangd` |
+
+### 寺田
+
+| 範囲 | 内容 | 主なファイル |
+| --- | --- | --- |
+| 対戦ルール | 陣営の割り振り、視線による凍結、掴む・運ぶ・収納、救助、電池の収集、制限時間と勝敗判定 | `Core/TBGameMode.*` `Character/TBCharacter.*` `GamePlay/TBBox.*` `TBPickup.*` `TBRuleMath.h` |
+| オンライン | 部屋の作成・検索・参加（Steam / LAN）、切断時の処理、同じ部屋での再戦 | `Core/TBSession.*` `TBController.*` |
+| キャラクター | 子ども・ロボットの見た目とアニメーションの組み込み、ダッシュ | `Character/TBMovement.*` |
+| ステージ | 子ども部屋・アパートの 2 ステージの配置、検証用の Arena | `docs/STAGE_EDITING.md` |
+| HUD | 試合状況・操作案内の表示 | `UI/TBHUD.*` |
+| テスト・ツール | ステージ・再戦の Automation テスト、ルール計算の単体テスト、受入テスト表、ビルド・パッケージ用スクリプト | `Tests/` `Scripts/` `docs/ACCEPTANCE_TESTS.md` |
+
+### 薮田
+
+| 範囲 | 内容 | 主なファイル |
+| --- | --- | --- |
+| タイトル | タイトル画面と、部屋の作成・参加・退出までの画面遷移（開発中） | `UI/TBTitleMenu.*` `Core/TBTitleGameMode.*` |
+| 試合ループ | 試合の開始から再戦までを確認する GameMode とテストマップ、共通の入力マッピング | Content |
 
 ## 開発フローの取り組み
 
@@ -78,6 +98,8 @@ Scripts/    ビルド・パッケージ・接続方式の切替
 docs/       開発ドキュメント
 .agents/    /quiz の手順と pre-push フック
 ```
+
+クラス名の接頭辞 `TB` は ToyBox の略。
 
 ## ビルド
 
