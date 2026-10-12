@@ -7,6 +7,7 @@ void FTBPitchShift::Init(const FSoundEffectSourceInitData& InitData)
 	Delays.SetNum(NumChannels);
 	Shifters.SetNum(NumChannels);
 	GET_EFFECT_SETTINGS(TBPitchShift);
+	bPassThrough = FMath::IsNearlyZero(Settings.Semitones);
 	for (int32 Channel = 0; Channel < NumChannels; ++Channel)
 	{
 		Delays[Channel].Init(InitData.SampleRate, .001f * Audio::FTapDelayPitchShifter::MaxDelayLength); // テープは最大長で確保
@@ -18,6 +19,7 @@ void FTBPitchShift::Init(const FSoundEffectSourceInitData& InitData)
 void FTBPitchShift::OnPresetChanged()
 {
 	GET_EFFECT_SETTINGS(TBPitchShift);
+	bPassThrough = FMath::IsNearlyZero(Settings.Semitones);
 	for (Audio::FTapDelayPitchShifter& Shifter : Shifters)
 	{
 		Shifter.SetPitchShift(Settings.Semitones);
@@ -35,8 +37,10 @@ void FTBPitchShift::ProcessAudio(const FSoundEffectSourceInputData& InData, floa
 		for (int32 Channel = 0; Channel < NumChannels; ++Channel)
 		{
 			const int32 Sample = Frame * NumChannels + Channel;
-			OutAudioBufferData[Sample] = Shifters[Channel].ReadDopplerShiftedTapFromDelay(Delays[Channel]); // 読む
-			Delays[Channel].WriteDelayAndInc(InData.InputSourceEffectBufferPtr[Sample]);                    // 録音
+			const float Shifted = Shifters[Channel].ReadDopplerShiftedTapFromDelay(Delays[Channel]); // 読む
+			Delays[Channel].WriteDelayAndInc(InData.InputSourceEffectBufferPtr[Sample]);            // 録音
+			// 0半音でも2つの読み位置が混ざって音がにじむので、そのまま通す
+			OutAudioBufferData[Sample] = bPassThrough ? InData.InputSourceEffectBufferPtr[Sample] : Shifted;
 		}
 	}
 }
@@ -44,5 +48,10 @@ void FTBPitchShift::ProcessAudio(const FSoundEffectSourceInputData& InData, floa
 // ゲーム側からの設定変更の入口
 void UTBPitchShiftPreset::SetSettings(const FTBPitchShiftSettings& InSettings)
 {
+	{
+		// 声の再生開始時にオーディオ側で遅れて走るInit()が、Settingsで上書きしてくるので揃えておく
+		FScopeLock Lock(&SettingsCritSect);
+		Settings = InSettings;
+	}
 	UpdateSettings(InSettings);
 }

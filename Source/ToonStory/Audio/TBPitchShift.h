@@ -27,6 +27,7 @@ public:
 
 private:
 	int32 NumChannels = 0;
+	bool bPassThrough = true;
 	TArray<Audio::FDelay> Delays;
 	TArray<Audio::FTapDelayPitchShifter> Shifters;
 };
