@@ -13,6 +13,7 @@ class ATBPlayerState;
 class ATBPickup;
 class USkeletalMesh;
 class UAnimInstance;
+class UTBVoiceComponent;
 
 /** 人間とおもちゃ共通の本体。操作要求をサーバーで検証する。 */
 UCLASS(Config = Game)
@@ -57,6 +58,8 @@ public:
 	TSoftClassPtr<UAnimInstance> ChildAnimation;
 	UPROPERTY(VisibleAnywhere)
 	TObjectPtr<USceneComponent> CarryAnchor;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	TObjectPtr<UTBVoiceComponent> Voice;
 	// Carrierは自分を運ぶ相手、CarriedToyは自分が運ぶおもちゃ。
 	UPROPERTY(ReplicatedUsing = OnRep_Carrier, BlueprintReadOnly)
 	TObjectPtr<ATBCharacter> Carrier;
