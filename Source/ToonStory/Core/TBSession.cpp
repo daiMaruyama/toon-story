@@ -441,9 +441,7 @@ void UTBSession::ReturnOffline()
 	CurrentOperation = ESessionOperation::Idle;
 	Results.Reset();
 	Rooms.Reset();
-	const TCHAR* Lobby = FPackageName::DoesPackageExist(TEXT("/Game/Maps/TB_KidsRoom")) ? TEXT("/Game/Maps/TB_KidsRoom")
-	                                                                                    : TEXT("/Game/Maps/Arena");
-	UGameplayStatics::OpenLevel(GetGameInstance(), FName(Lobby), true);
+	UGameplayStatics::OpenLevel(GetGameInstance(), FName(TEXT("/Game/Maps/Title")), true);
 	Message(TEXT("Offline. Last match ended; TBHost / TBFind for a new lobby."));
 }
 

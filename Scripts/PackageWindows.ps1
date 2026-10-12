@@ -5,7 +5,7 @@ $Project = Join-Path $ProjectRoot 'ToonStory.uproject'
 $UAT = Join-Path $EngineRoot 'Engine\Build\BatchFiles\RunUAT.bat'
 $Destination = Join-Path $ProjectRoot 'Builds\Windows'
 if (!(Test-Path $UAT)) { throw "RunUAT.bat not found: $UAT" }
-foreach ($Map in @('Arena', 'TB_KidsRoom', 'TB_ArchViz')) {
+foreach ($Map in @('Title', 'Arena', 'TB_KidsRoom', 'TB_ArchViz')) {
     if (!(Test-Path (Join-Path $ProjectRoot "Content\Maps\$Map.umap"))) {
         throw "Missing /Game/Maps/$Map. Initialize/update the Content submodule before packaging."
     }

@@ -17,7 +17,8 @@ public class ToonStory : ModuleRules
 			"OnlineSubsystemUtils",
 			"EnhancedInput",
 			"UMG",
-			"Slate"
+			"Slate",
+			"SlateCore"
 		});
 
 		PublicIncludePaths.AddRange(new string[] {

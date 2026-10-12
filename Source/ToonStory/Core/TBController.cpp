@@ -20,7 +20,8 @@ void ATBController::PlayerTick(float DeltaTime)
 	}
 	const auto* State = TB::GS(GetWorld());
 	const bool InLobby = State && State->Phase == ETBPhase::Lobby;
-	const bool ShowMenu = State && State->Phase != ETBPhase::Playing;
+	if (!State || State->Phase != ETBPhase::Playing) bLeaveMenuOpen = false;
+	const bool ShowMenu = State && (State->Phase != ETBPhase::Playing || bLeaveMenuOpen);
 	UpdateLobbyCamera(InLobby);
 	UpdateMenuInput(ShowMenu);
 	UpdateScreenTransition();
@@ -119,8 +120,15 @@ void ATBController::BeginPlay()
 void ATBController::SetupInputComponent()
 {
 	Super::SetupInputComponent();
+	InputComponent->BindKey(EKeys::Escape, IE_Pressed, this, &ATBController::ToggleLeaveMenu);
 	InputComponent->BindAction("Ready", IE_Pressed, this, &ATBController::TBReady);
 	InputComponent->BindAction("Start", IE_Pressed, this, &ATBController::TBStart);
+}
+
+void ATBController::ToggleLeaveMenu()
+{
+	const auto* State = TB::GS(GetWorld());
+	if (State && State->Phase == ETBPhase::Playing) bLeaveMenuOpen = !bLeaveMenuOpen;
 }
 
 void ATBController::TBHost()

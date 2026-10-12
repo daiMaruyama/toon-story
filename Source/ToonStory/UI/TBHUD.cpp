@@ -56,7 +56,7 @@ void ATBHUD::DrawLobby()
 	Text(TEXT("A quiet house. A very lively toy box."), 30, 70, 1.15f, Muted);
 	Panel(28, 106, 1144, 2, Accent);
 	Panel(28, 130, 690, 360, FLinearColor(.018f, .032f, .043f, .87f));
-	Text(bBrowsingRooms ? TEXT("AVAILABLE ROOMS") : TEXT("PLAYERS"), 48, 146, 1.25f, Accent);
+	Text(TEXT("PLAYERS"), 48, 146, 1.25f, Accent);
 	int32 Ready = 0, Row = 0;
 	for (APlayerState* Player : State->PlayerArray)
 	{
@@ -70,10 +70,6 @@ void ATBHUD::DrawLobby()
 		                              : P->Preference == ETBTeam::Toy ? TEXT("Toy")
 		                                                              : TEXT("Either");
 		const float PY = 186 + Row++ * 34;
-		if (bBrowsingRooms)
-		{
-			continue;
-		}
 		Panel(40, PY - 4, 666, 30, FLinearColor(.10f, .15f, .18f, Row % 2 ? .42f : .18f));
 		Panel(48, PY + 4, 4, 12, P->bReady ? Accent : Muted);
 		Text(P->GetPlayerName().Left(28), 62, PY, 1.1f, Ink);
@@ -113,27 +109,9 @@ void ATBHUD::DrawLobby()
 		                                                         : TEXT("Everyone must be ready to start."),
 		     28, 465, .9f, Muted);
 	}
-	Button(TEXT("Host"), TEXT("Host room"), 28, 600, 180);
-	Button(TEXT("Find"), TEXT("Find rooms"), 222, 600, 180);
-	Button(TEXT("Leave"), TEXT("Leave room"), 990, 600, 182);
+	Button(TEXT("Leave"), Host ? TEXT("Close room / Title") : TEXT("Leave room / Title"), 922, 600, 250);
 	if (auto* Session = PC->GetGameInstance()->GetSubsystem<UTBSession>())
 	{
-		if (bBrowsingRooms)
-		{
-			RoomPage = FMath::Clamp(RoomPage, 0, FMath::Max(0, (Session->Rooms.Num() - 1) / 5));
-			for (int32 I = RoomPage * 5; I < FMath::Min(RoomPage * 5 + 5, Session->Rooms.Num()); ++I)
-			{
-				Button(FName(*FString::Printf(TEXT("Join%d"), I)), Session->Rooms[I].Left(65), 48, 186 + (I % 5) * 50,
-				       650);
-			}
-			if (Session->Rooms.IsEmpty())
-			{
-				Text(TEXT("No rooms yet. Refresh with Find rooms."), 48, 200, 1.f, Muted);
-			}
-			Button(TEXT("Players"), TEXT("Back to players"), 418, 600, 190);
-			Button(TEXT("PreviousRooms"), TEXT("Previous"), 622, 600, 164, RoomPage > 0);
-			Button(TEXT("NextRooms"), TEXT("Next"), 800, 600, 164, (RoomPage + 1) * 5 < Session->Rooms.Num());
-		}
 		Text(Session->Status.Left(115), 28, 660, .95f, Muted);
 	}
 	Text(PC->Notice.Left(115), 28, 688, 1.f, Accent);
@@ -149,7 +127,12 @@ void ATBHUD::NotifyHitBoxClick(FName Name)
 	{
 		return;
 	}
-	if (Name == TEXT("Leave") && State->Phase != ETBPhase::Playing)
+	if (Name == TEXT("Resume"))
+	{
+		PC->ToggleLeaveMenu();
+		return;
+	}
+	if (Name == TEXT("Leave"))
 	{
 		PC->TBLeave();
 		return;
@@ -163,29 +146,7 @@ void ATBHUD::NotifyHitBoxClick(FName Name)
 	{
 		return;
 	}
-	if (Name == TEXT("Host"))
-	{
-		PC->TBHost();
-	}
-	else if (Name == TEXT("Find"))
-	{
-		bBrowsingRooms = true;
-		RoomPage = 0;
-		PC->TBFind();
-	}
-	else if (Name == TEXT("Players"))
-	{
-		bBrowsingRooms = false;
-	}
-	else if (Name == TEXT("PreviousRooms"))
-	{
-		--RoomPage;
-	}
-	else if (Name == TEXT("NextRooms"))
-	{
-		++RoomPage;
-	}
-	else if (Name == TEXT("Ready"))
+	if (Name == TEXT("Ready"))
 	{
 		PC->TBReady();
 	}
@@ -204,11 +165,6 @@ void ATBHUD::NotifyHitBoxClick(FName Name)
 	else if (Name == TEXT("Either"))
 	{
 		PC->TBPrefer(0);
-	}
-	else if (Name.ToString().StartsWith(TEXT("Join")))
-	{
-		bBrowsingRooms = false;
-		PC->TBJoin(FCString::Atoi(*Name.ToString().Mid(4)));
 	}
 	else if (Name == TEXT("MoreToys") || Name == TEXT("FewerToys"))
 	{
@@ -243,6 +199,18 @@ void ATBHUD::DrawHUD()
 	else
 	{
 		DrawMatch(*State, *PC);
+		if (PC->IsLeaveMenuOpen())
+		{
+			const float X = Canvas->ClipX * .5f - 180;
+			const float Y = Canvas->ClipY * .5f - 80;
+			DrawRect(FLinearColor(.02f, .04f, .06f, .98f), X, Y, 360, 160);
+			DrawText(TEXT("The match continues while this menu is open."), FLinearColor::White, X + 15, Y + 15);
+			DrawText(TEXT("Resume [Esc]"), FLinearColor::White, X + 20, Y + 60);
+			DrawText(PC->HasAuthority() ? TEXT("Close room and return to Title") : TEXT("Leave room and return to Title"),
+			         FLinearColor::Yellow, X + 20, Y + 110);
+			AddHitBox(FVector2D(X + 10, Y + 45), FVector2D(340, 40), TEXT("Resume"), true);
+			AddHitBox(FVector2D(X + 10, Y + 95), FVector2D(340, 40), TEXT("Leave"), true);
+		}
 	}
 }
 

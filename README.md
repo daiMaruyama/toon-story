@@ -52,6 +52,7 @@ git clone --recurse-submodules https://github.com/daiMaruyama/toon-story.git
 
 ## 試遊・検証
 
+- [Titleと画面遷移](docs/TITLE_FLOW.md)
 - [試遊手順](docs/PLAYTEST.md)
 - [受入テスト](docs/ACCEPTANCE_TESTS.md)
 - [UEエディタでのステージ編集](docs/STAGE_EDITING.md)
