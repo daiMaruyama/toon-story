@@ -13,7 +13,6 @@
 #include "Components/StaticMeshComponent.h"
 #include "Engine/SkeletalMesh.h"
 #include "Animation/AnimInstance.h"
-#include "Animation/AnimSequence.h"
 #include "Components/InputComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
@@ -81,11 +80,6 @@ ATBCharacter::ATBCharacter(const FObjectInitializer& Init)
 void ATBCharacter::BeginPlay()
 {
 	Super::BeginPlay();
-	ToyMesh.LoadSynchronous();
-	ToySkeletalMesh.LoadSynchronous();
-	ToyIdleAnimation.LoadSynchronous();
-	ToyWalkAnimation.LoadSynchronous();
-	ToyJumpAnimation.LoadSynchronous();
 	ChildMesh.LoadSynchronous();
 	ChildAnimation.LoadSynchronous();
 	GetMesh()->SetOwnerNoSee(true);
@@ -108,30 +102,7 @@ void ATBCharacter::UpdateAppearance(bool bToy)
 	bShowingToy = bToy;
 	GetMesh()->SetVisibility(false);
 	Body->SetVisibility(true);
-	ActiveToyAnimation = nullptr;
-	if (bToy && ToySkeletalMesh.Get())
-	{
-		Body->SetVisibility(false);
-		auto* Visual = GetMesh();
-		Visual->SetSkeletalMesh(ToySkeletalMesh.Get());
-		const FBoxSphereBounds Bounds = ToySkeletalMesh->GetBounds();
-		const float Scale = 25.f / FMath::Max(1.f, float(Bounds.BoxExtent.Z * 2));
-		Visual->SetRelativeScale3D(FVector(Scale));
-		Visual->SetRelativeLocation(FVector(0, 0, -13) - FVector(0, 0, Bounds.Origin.Z - Bounds.BoxExtent.Z) * Scale);
-		Visual->SetRelativeRotation(FRotator(0, -90, 0));
-		CacheInitialMeshOffset(Visual->GetRelativeLocation(), Visual->GetRelativeRotation());
-		Visual->SetVisibility(true);
-		UpdateToyAnimation();
-	}
-	else if (bToy && ToyMesh.Get())
-	{
-		Body->SetStaticMesh(ToyMesh.Get());
-		const FBoxSphereBounds Bounds = ToyMesh->GetBounds();
-		const float Scale = 25.f / FMath::Max(1.f, float(Bounds.BoxExtent.Z * 2));
-		Body->SetRelativeScale3D(FVector(Scale));
-		Body->SetRelativeLocation(-Bounds.Origin * Scale + FVector(0, 0, -.5));
-	}
-	else if (!bToy && ChildMesh.Get())
+	if (!bToy && ChildMesh.Get())
 	{
 		Body->SetVisibility(false);
 		auto* Visual = GetMesh();
@@ -162,33 +133,6 @@ void ATBCharacter::UpdateAppearance(bool bToy)
 	const FTransform MeshTransform = GetMesh()->GetRelativeTransform();
 	CarryAnchor->SetRelativeLocation(MeshTransform.InverseTransformPosition(FVector(95, 0, 10)));
 	CarryAnchor->SetRelativeRotation(MeshTransform.GetRotation().Inverse());
-}
-
-void ATBCharacter::UpdateToyAnimation()
-{
-	if (!bAppearanceInitialized || !bShowingToy || !ToySkeletalMesh.Get())
-	{
-		return;
-	}
-	if (IsMovementLocked() && ActiveToyAnimation)
-	{
-		GetMesh()->GlobalAnimRateScale = 0.f;
-		return;
-	}
-	const bool Moving = GetVelocity().SizeSquared2D() > 25.f;
-	UAnimSequence* Animation = GetCharacterMovement()->IsFalling()
-	                               ? ToyJumpAnimation.Get()
-	                               : (Moving ? ToyWalkAnimation.Get() : ToyIdleAnimation.Get());
-	if (Animation && Animation != ActiveToyAnimation)
-	{
-		GetMesh()->PlayAnimation(Animation, Animation != ToyJumpAnimation.Get());
-		ActiveToyAnimation = Animation;
-	}
-	// 凍結は相手の画面でも同じ姿勢で止める。
-	const float WalkRate = ActiveToyAnimation == ToyWalkAnimation.Get()
-	                           ? FMath::Clamp(GetVelocity().Size2D() / FMath::Max(ToySpeed, 1.f), .7f, 1.8f)
-	                           : 1.f;
-	GetMesh()->GlobalAnimRateScale = IsMovementLocked() ? 0.f : WalkRate;
 }
 
 ATBPlayerState* ATBCharacter::TBPS() const
@@ -387,6 +331,7 @@ void ATBCharacter::UpdateCarryCamera()
 	// 抱えられている自分も画面に入れる。
 	Body->SetOwnerNoSee(!bCarried);
 	GetMesh()->SetOwnerNoSee(!bCarried);
+	UpdateAppearance(TBPS() && TBPS()->Team == ETBTeam::Toy);
 }
 
 // カメラは先に切り替える。寄せる先は毎フレームの最新値なので、運ぶ人の移動や視点操作があっても最後に飛ばない。
@@ -430,7 +375,7 @@ void ATBCharacter::Tick(float DeltaSeconds)
 	Super::Tick(DeltaSeconds);
 	ApplyState();
 	UpdateCarryCamera();
-	UpdateToyAnimation();
+
 	if (!HasAuthority())
 	{
 		return;

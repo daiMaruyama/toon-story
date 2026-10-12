@@ -13,7 +13,6 @@ class ATBPlayerState;
 class ATBPickup;
 class USkeletalMesh;
 class UAnimInstance;
-class UAnimSequence;
 
 /** 人間とおもちゃ共通の本体。操作要求をサーバーで検証する。 */
 UCLASS(Config = Game)
@@ -52,16 +51,6 @@ public:
 	virtual void CalcCamera(float DeltaTime, FMinimalViewInfo& OutResult) override;
 	UPROPERTY(VisibleAnywhere)
 	TObjectPtr<UStaticMeshComponent> Body;
-	UPROPERTY(Config, EditDefaultsOnly, Category = "Appearance")
-	TSoftObjectPtr<UStaticMesh> ToyMesh;
-	UPROPERTY(Config, EditDefaultsOnly, Category = "Appearance")
-	TSoftObjectPtr<USkeletalMesh> ToySkeletalMesh;
-	UPROPERTY(Config, EditDefaultsOnly, Category = "Appearance")
-	TSoftObjectPtr<UAnimSequence> ToyIdleAnimation;
-	UPROPERTY(Config, EditDefaultsOnly, Category = "Appearance")
-	TSoftObjectPtr<UAnimSequence> ToyWalkAnimation;
-	UPROPERTY(Config, EditDefaultsOnly, Category = "Appearance")
-	TSoftObjectPtr<UAnimSequence> ToyJumpAnimation;
 	UPROPERTY(Config, EditDefaultsOnly, Category = "Appearance")
 	TSoftObjectPtr<USkeletalMesh> ChildMesh;
 	UPROPERTY(Config, EditDefaultsOnly, Category = "Appearance")
@@ -147,10 +136,9 @@ private:
 	FMinimalViewInfo CarryBlendFrom;
 	double CarryBlendStarted = -1;
 	float CarryBlendDuration = 0;
+protected:
+	// 親子で表示の切り替え状態を共有する。
 	bool bAppearanceInitialized = false;
 	bool bShowingToy = false;
-	void UpdateAppearance(bool bToy);
-	void UpdateToyAnimation();
-	UPROPERTY(Transient)
-	TObjectPtr<UAnimSequence> ActiveToyAnimation;
+	virtual void UpdateAppearance(bool bToy);
 };
