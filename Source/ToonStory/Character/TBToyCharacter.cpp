@@ -46,22 +46,27 @@ void ATBToyCharacter::RefreshToyPresentation()
 
 void ATBToyCharacter::UpdateAppearance(bool bToy)
 {
-	// 専用サーバーでは抽選・同期だけ行い、表示用Actorは生成しない。
+	if (!bToy)
+	{
+		if (ToyVisual->GetChildActorClass())
+		{
+			ToyVisual->SetChildActorClass(nullptr);
+		}
+		AppliedVisual.Reset();
+		// 人間のCarryAnchor補正は専用サーバーでも必要。
+		Super::UpdateAppearance(false);
+		return;
+	}
+	// 専用サーバーで省略するのは、おもちゃの表示処理だけ。
 	if (GetNetMode() == NM_DedicatedServer)
 	{
 		return;
 	}
-	UClass* VisualClass = bToy && ToyCatalogue.IsValidIndex(SelectedToyIndex)
+	UClass* VisualClass = ToyCatalogue.IsValidIndex(SelectedToyIndex)
 	                          ? ToyCatalogue[SelectedToyIndex].Get() : nullptr;
 	if (ToyVisual->GetChildActorClass() != VisualClass)
 	{
 		ToyVisual->SetChildActorClass(VisualClass);
-	}
-	if (!bToy)
-	{
-		AppliedVisual.Reset();
-		Super::UpdateAppearance(false);
-		return;
 	}
 	if (!bAppearanceInitialized || !bShowingToy)
 	{
