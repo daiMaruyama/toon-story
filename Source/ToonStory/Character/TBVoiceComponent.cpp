@@ -1,4 +1,5 @@
 #include "Character/TBVoiceComponent.h"
+#include "Audio/TBPitchShift.h"
 #include "Core/TBPlayerState.h"
 #include "GamePlay/TBBox.h"
 #include "Components/StaticMeshComponent.h"
@@ -8,6 +9,10 @@
 #include "GameFramework/PlayerController.h"
 #include "Sound/SoundAttenuation.h"
 #include "TimerManager.h"
+
+static TAutoConsoleVariable<float> CVarForcePitch(TEXT("TB.Voice.ForcePitch"), 0.f,
+                                                  TEXT("0以外なら、陣営に関係なく他人の声をこの半音数だけずらす（確認用）。"),
+                                                  ECVF_Cheat);
 
 UTBVoiceComponent::UTBVoiceComponent(const FObjectInitializer& Init) : Super(Init)
 {
@@ -59,11 +64,27 @@ void UTBVoiceComponent::UpdateVoice()
 		Attenuation = NewObject<USoundAttenuation>(this);
 		Attenuation->Attenuation.AttenuationShapeExtents = FVector::ZeroVector; // 既定の全音量域（半径400）を消す。
 		Settings.AttenuationSettings = Attenuation;
+		Pitch = NewObject<UTBPitchShiftPreset>(this);
+		PitchChain = NewObject<USoundEffectSourcePresetChain>(this);
+		FSourceEffectChainEntry Entry;
+		Entry.Preset = Pitch;
+		PitchChain->Chain.Add(Entry);
+		Settings.SourceEffectChain = PitchChain;
 		RegisterWithPlayerState(Speaker);
 	}
 	const auto* Controller = GetWorld()->GetFirstPlayerController();
 	const auto* Listener = Controller ? Controller->GetPlayerState<ATBPlayerState>() : nullptr;
-	const bool bToyToHuman = Speaker->Team == ETBTeam::Toy && Listener && Listener->Team == ETBTeam::Human;
+	const ETBTeam ListenerTeam = Listener ? Listener->Team : ETBTeam::None;
+	FTBPitchShiftSettings PitchSettings;
+	const float ForcedPitch = CVarForcePitch.GetValueOnGameThread();
+	PitchSettings.Semitones = ForcedPitch != 0.f ? ForcedPitch : PitchFor(Speaker->Team, ListenerTeam);
+	PitchSettings.DelayLength = PitchDelayLength;
+	if (PitchSettings.Semitones != Pitch->Settings.Semitones || PitchSettings.DelayLength != Pitch->Settings.DelayLength)
+	{
+		Pitch->Settings = PitchSettings;
+		Pitch->SetSettings(PitchSettings);
+	}
+	PitchChain->Chain[0].bBypass = FMath::IsNearlyZero(PitchSettings.Semitones);
 	// 収納部屋は箱から離れた別室なので、中と外の間の声は箱越しに聞かせる。
 	const bool bSpeakerBoxed = Speaker->ToyState == ETBToyState::Boxed;
 	const bool bListenerBoxed = Listener && Listener->ToyState == ETBToyState::Boxed;
@@ -80,10 +101,12 @@ void UTBVoiceComponent::UpdateVoice()
 	UpdateMirror();
 	Settings.ComponentToAttachTo = bIntoBox ? Mirror.Get() : WallBox ? WallBox->Visual.Get() : Pawn->GetRootComponent();
 	auto& Shape = Attenuation->Attenuation;
-	Shape.FalloffDistance = WallBox ? BoxedHearingDistance : bToyToHuman ? ToyToHumanHearingDistance : HearingDistance;
+	Shape.FalloffDistance = WallBox ? BoxedDistance : DistanceFor(Speaker->Team, ListenerTeam);
+	Shape.DistanceAlgorithm = FalloffModel;
+	Shape.CustomAttenuationCurve = FalloffCurve;
 	Shape.bAttenuateWithLPF = WallBox != nullptr;
 	Shape.LPFRadiusMin = 0.f;
-	Shape.LPFRadiusMax = BoxedHearingDistance;
+	Shape.LPFRadiusMax = BoxedDistance;
 	Shape.LPFFrequencyAtMin = BoxedMuffleFrequency;
 	Shape.LPFFrequencyAtMax = BoxedMuffleFrequency;
 }
@@ -99,6 +122,25 @@ void UTBVoiceComponent::UpdateMirror()
 	// 箱から見た話し手の位置を、聞き手の周りに写す。聞き手との距離が箱との距離と一致する。
 	const FVector FromBox = GetOwner()->GetActorLocation() - Box->Visual->GetComponentLocation();
 	Mirror->SetWorldLocation(ListenerPawn->GetActorLocation() + FromBox);
+}
+
+float UTBVoiceComponent::DistanceFor(ETBTeam SpeakerTeam, ETBTeam ListenerTeam) const
+{
+	const bool bSpeakerToy = SpeakerTeam == ETBTeam::Toy;
+	if (ListenerTeam == ETBTeam::Toy)
+	{
+		return bSpeakerToy ? ToyToToyDistance : SpeakerTeam == ETBTeam::Human ? HumanToToyDistance : HumanToHumanDistance;
+	}
+	return bSpeakerToy && ListenerTeam == ETBTeam::Human ? ToyToHumanDistance : HumanToHumanDistance;
+}
+
+float UTBVoiceComponent::PitchFor(ETBTeam SpeakerTeam, ETBTeam ListenerTeam) const
+{
+	if (SpeakerTeam == ETBTeam::Human && ListenerTeam == ETBTeam::Toy)
+	{
+		return HumanPitchForToys;
+	}
+	return SpeakerTeam == ETBTeam::Toy && ListenerTeam == ETBTeam::Human ? ToyPitchForHumans : 0.f;
 }
 
 ATBBox* UTBVoiceComponent::FindBox()
