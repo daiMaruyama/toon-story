@@ -24,6 +24,15 @@ public class ToonStory : ModuleRules
 		PublicIncludePaths.AddRange(new string[] {
 			"ToonStory"
 		});
+		if (Target.ProjectFile != null)
+		{
+			string ToyNotices = System.IO.Path.Combine(Target.ProjectFile.Directory.FullName,
+				"Content", "ThirdPartyNotices", "ToyAssets.txt");
+			if (System.IO.File.Exists(ToyNotices))
+			{
+				RuntimeDependencies.Add(ToyNotices, StagedFileType.NonUFS);
+			}
+		}
 
 	}
 }
