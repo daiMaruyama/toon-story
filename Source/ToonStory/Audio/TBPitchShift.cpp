@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Mamodou. All Rights Reserved.
+
 #include "Audio/TBPitchShift.h"
 
 // 声が鳴り始めたときに1回。チャンネルごとにテープと再生ヘッドを用意

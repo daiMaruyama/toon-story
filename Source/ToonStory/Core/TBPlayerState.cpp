@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Mamodou. All Rights Reserved.
+
 #include "TBPlayerState.h"
 #include "Character/TBCharacter.h"
 #include "Net/UnrealNetwork.h"

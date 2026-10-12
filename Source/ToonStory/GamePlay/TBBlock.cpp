@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Mamodou. All Rights Reserved.
+
 #include "TBBlock.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"

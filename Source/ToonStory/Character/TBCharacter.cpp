@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Mamodou. All Rights Reserved.
+
 #include "TBCharacter.h"
 #include "Core/TBPlayerState.h"
 #include "Core/TBGameState.h"

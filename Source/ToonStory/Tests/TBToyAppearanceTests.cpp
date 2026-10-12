@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Mamodou. All Rights Reserved.
+
 #include "Misc/AutomationTest.h"
 
 #if WITH_DEV_AUTOMATION_TESTS

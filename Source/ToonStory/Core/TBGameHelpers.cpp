@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Mamodou. All Rights Reserved.
+
 #include "TBGameHelpers.h"
 #include "Core/TBGameState.h"
 #include "Core/TBController.h"

@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Mamodou. All Rights Reserved.
+
 #include "TBScreenTransition.h"
 #include "Camera/PlayerCameraManager.h"
 #include "GameFramework/PlayerController.h"

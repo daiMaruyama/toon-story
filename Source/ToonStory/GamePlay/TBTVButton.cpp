@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Mamodou. All Rights Reserved.
+
 #include "TBTVButton.h"
 
 UTBTVButton::UTBTVButton()
