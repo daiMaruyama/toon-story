@@ -11,6 +11,8 @@
 #include "EngineUtils.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/PlayerController.h"
+#include "Interfaces/VoiceInterface.h"
+#include "OnlineSubsystemUtils.h"
 #include "Sound/SoundAttenuation.h"
 #include "TimerManager.h"
 
@@ -106,6 +108,13 @@ void UTBVoiceComponent::UpdateVoice()
 		PitchChain->Chain.Add(Entry);
 		Settings.SourceEffectChain = PitchChain;
 		RegisterWithPlayerState(Speaker);
+		// 常時送信だと相手の声の再生が止まらず、キャラを作り直しても古いキャラの設定が残るので、再生を作り直させる
+		if (IOnlineVoicePtr Voice = Online::GetVoiceInterface(GetWorld()))
+		{
+			const FUniqueNetIdPtr Id = Speaker->GetUniqueId().GetUniqueNetId();
+			Voice->UnregisterRemoteTalker(*Id);
+			Voice->RegisterRemoteTalker(*Id);
+		}
 	}
 	// キャラの作り直しで、古いキャラの破棄に登録を消されることがあるので付け直す
 	else if (UVOIPStatics::GetVOIPTalkerForPlayer(Speaker->GetUniqueId()) != this)
