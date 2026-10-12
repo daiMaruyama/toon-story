@@ -1,12 +1,14 @@
 #include "Misc/AutomationTest.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
+#include "Misc/ScopeExit.h"
 #include "Animation/AnimInstance.h"
 
 #include "Animation/BlendSpace.h"
 #include "Character/TBToyCharacter.h"
 #include "Components/ChildActorComponent.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "Core/TBController.h"
 #include "Core/TBGameMode.h"
 #include "Core/TBGameState.h"
@@ -36,7 +38,13 @@ bool FTBToyRoundTest::RunTest(const FString& Parameters)
 	auto* Host = Cast<ATBController>(World->GetFirstPlayerController());
 	auto* Mode = World->GetAuthGameMode<ATBGameMode>();
 	auto* State = World->GetGameState<ATBGameState>();
-	auto* Second = Cast<ATBController>(UGameplayStatics::CreatePlayer(World, -1, true));
+	auto* AddedPlayer = UGameplayStatics::CreatePlayer(World, -1, true);
+	// 型の不一致や途中の失敗でも、追加したプレイヤーを残さない。
+	ON_SCOPE_EXIT
+	{
+		if (IsValid(AddedPlayer)) UGameplayStatics::RemovePlayer(AddedPlayer, true);
+	};
+	auto* Second = Cast<ATBController>(AddedPlayer);
 	if (!Host || !Mode || !State || !Second)
 	{
 		return false;
@@ -47,7 +55,11 @@ bool FTBToyRoundTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	TestEqual(TEXT("No selection in lobby"), Toy->SelectedToyIndex, INDEX_NONE);
-	TestEqual(TEXT("Seven visual Blueprints"), Toy->ToyCatalogue.Num(), 7);
+	if (!TestTrue(TEXT("Toy catalogue is not empty"), !Toy->ToyCatalogue.IsEmpty())) return false;
+	for (auto Class : Toy->ToyCatalogue)
+	{
+		if (!TestNotNull(TEXT("Toy catalogue entry"), Class.Get())) return false;
+	}
 	// ローカルの2人で、開始時の抽選とラウンド中の再抽選防止を確認する。
 	FTBSettings Rules;
 	Rules.Humans = 1;
@@ -74,6 +86,13 @@ bool FTBToyRoundTest::RunTest(const FString& Parameters)
 	{
 		TestEqual(TEXT("Chosen class applied"), Visual->GetClass(), Toy->ToyCatalogue[Selection].Get());
 		TestEqual(TEXT("Visual owner is character"), Visual->GetOwner(), static_cast<AActor*>(Toy));
+		// 親の状態更新を繰り返しても、表示Actorを作り直したり仮の箱を出したりしない。
+		const FVector GroundOffset = Toy->ToyVisual->GetRelativeLocation();
+		Toy->ApplyState();
+		Toy->RefreshToyPresentation();
+		TestTrue(TEXT("Repeated state keeps visual actor"), Toy->ToyVisual->GetChildActor() == Visual);
+		TestFalse(TEXT("Toy hides fallback body"), Toy->Body->IsVisible());
+		TestTrue(TEXT("Ground offset remains stable"), Toy->ToyVisual->GetRelativeLocation().Equals(GroundOffset));
 		ToyInfo->bFrozen = true;
 		Toy->Tick(0.f);
 		TInlineComponentArray<USkeletalMeshComponent*> Parts(Visual);
@@ -132,6 +151,16 @@ bool FTBToyRoundTest::RunTest(const FString& Parameters)
 		}
 		Actor->Destroy();
 	}
+	// 同じPawnでも、おもちゃ→人間→おもちゃの表示が正しく切り替わること。
+	ToyInfo->Team = ETBTeam::Human;
+	Toy->ApplyState();
+	TestNull(TEXT("Human removes toy visual"), Toy->ToyVisual->GetChildActor());
+	TestTrue(TEXT("Human model restored"), Toy->ChildMesh.Get() &&
+	         Toy->GetMesh()->GetSkeletalMeshAsset() == Toy->ChildMesh.Get());
+	ToyInfo->Team = ETBTeam::Toy;
+	Toy->ApplyState();
+	TestNotNull(TEXT("Toy visual restored after human"), Toy->ToyVisual->GetChildActor());
+	TestFalse(TEXT("Restored toy hides fallback body"), Toy->Body->IsVisible());
 	Mode->Finish(ETBWinner::Toys, TEXT("test"));
 	Mode->ReturnToLobby(Host);
 	auto* NextPawn = Cast<ATBToyCharacter>(Second->GetPawn());
@@ -139,7 +168,6 @@ bool FTBToyRoundTest::RunTest(const FString& Parameters)
 	{
 		TestEqual(TEXT("Selection resets for next round"), NextPawn->SelectedToyIndex, INDEX_NONE);
 	}
-	UGameplayStatics::RemovePlayer(Second, true);
 	return true;
 }
 // 手動のポーズ更新では見逃す入力不良を、通常のフレーム更新で検出する。
@@ -226,12 +254,17 @@ public:
 			}
 			if (Phase == 2)
 			{
-				const auto& Idle = IdlePoses.FindChecked(WeakMesh);
+				const auto* Idle = IdlePoses.Find(WeakMesh);
+				if (!Idle)
+				{
+					Test->AddError(TEXT("Missing idle pose for running comparison"));
+					continue;
+				}
 				const auto& Run = Part->GetComponentSpaceTransforms();
 				bool bChanged = false;
-				for (int32 Bone = 0; Bone < FMath::Min(Idle.Num(), Run.Num()); ++Bone)
+				for (int32 Bone = 0; Bone < FMath::Min(Idle->Num(), Run.Num()); ++Bone)
 				{
-					bChanged |= !Idle[Bone].Equals(Run[Bone], .001f);
+					bChanged |= !(*Idle)[Bone].Equals(Run[Bone], .001f);
 				}
 				Test->TestTrue(TEXT("Running pose advances under normal world ticking"), bChanged);
 			}

@@ -1,6 +1,7 @@
 #include "Misc/AutomationTest.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
+#include "Misc/ScopeExit.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -76,6 +77,15 @@ bool FTBResidentialStageTest::RunTest(const FString& Parameters)
 		{
 			++VerifiedCharacters;
 			const ETBTeam OriginalTeam = Player->Team;
+			auto* ToyCharacter = Cast<ATBToyCharacter>(*It);
+			const int32 OriginalSelection = ToyCharacter ? ToyCharacter->SelectedToyIndex : INDEX_NONE;
+			// 選択済みの試合で実行した場合も、テスト前の状態へ戻す。
+			ON_SCOPE_EXIT
+			{
+				Player->Team = OriginalTeam;
+				if (ToyCharacter) ToyCharacter->SelectedToyIndex = OriginalSelection;
+				It->ApplyState();
+			};
 			Player->Team = ETBTeam::Human;
 			It->ApplyState();
 			TestNotNull(TEXT("Child skeletal mesh loaded"), It->GetMesh()->GetSkeletalMeshAsset());
