@@ -13,16 +13,16 @@ class TOONSTORY_API UTBVoiceComponent : public UVOIPTalker
 public:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
-	// この距離までは最大音量。
+	// この距離で無音になる。
 	UPROPERTY(EditDefaultsOnly, Category = "Voice", meta = (ClampMin = "0.0"))
-	float InnerRadius = 200.f;
-	// InnerRadiusの外側で、この距離をかけて無音になる。
+	float HearingDistance = 1500.f;
+	// おもちゃの声は、人間にはかなり近くでしか聞こえない。
 	UPROPERTY(EditDefaultsOnly, Category = "Voice", meta = (ClampMin = "0.0"))
-	float FalloffDistance = 1500.f;
+	float ToyToHumanHearingDistance = 400.f;
 
 private:
-	FTimerHandle RegisterTimer;
+	FTimerHandle UpdateTimer;
 	UPROPERTY(Transient)
 	TObjectPtr<USoundAttenuation> Attenuation;
-	void TryRegister();
+	void UpdateVoice();
 };
