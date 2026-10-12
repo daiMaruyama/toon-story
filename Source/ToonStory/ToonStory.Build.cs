@@ -15,6 +15,7 @@ public class ToonStory : ModuleRules
 			"InputCore",
 			"OnlineSubsystem",
 			"OnlineSubsystemUtils",
+			"SignalProcessing",
 			"EnhancedInput",
 			"UMG",
 			"Slate"
