@@ -3,6 +3,7 @@
 #include "Core/TBGameState.h"
 #include "Core/TBGameMode.h"
 #include "Character/TBMovement.h"
+#include "Character/TBVoiceComponent.h"
 #include "GamePlay/TBBox.h"
 #include "GamePlay/TBPickup.h"
 #include "GamePlay/TBRuleMath.h"
@@ -74,6 +75,7 @@ ATBCharacter::ATBCharacter(const FObjectInitializer& Init)
 	CarryAnchor->SetupAttachment(GetMesh());
 	CarryAnchor->SetUsingAbsoluteScale(true);
 	CarryAnchor->SetRelativeLocation(FVector(95, 0, 10));
+	Voice = CreateDefaultSubobject<UTBVoiceComponent>(TEXT("Voice"));
 	GetCharacterMovement()->MaxWalkSpeed = HumanSpeed;
 }
 
