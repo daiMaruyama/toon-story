@@ -1,7 +1,6 @@
 // Copyright (c) 2026 Mamodou. All Rights Reserved.
 
 #include "TBBoxTV.h"
-#include "TBBox.h"
 #include "TBTVCamera.h"
 #include "Character/TBCharacter.h"
 #include "Core/TBGameHelpers.h"
@@ -55,14 +54,13 @@ void ATBBoxTV::BeginPlay()
 void ATBBoxTV::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-	DOREPLIFETIME(ATBBoxTV, SourceBox);
 	DOREPLIFETIME(ATBBoxTV, Channel);
 	DOREPLIFETIME(ATBBoxTV, bPowerOn);
 }
 
 bool ATBBoxTV::HasLocalViewer() const
 {
-	if (!TB::Playing(GetWorld()) || !IsValid(SourceBox))
+	if (!TB::Playing(GetWorld()))
 	{
 		return false;
 	}

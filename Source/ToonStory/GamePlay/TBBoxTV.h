@@ -6,7 +6,6 @@
 #include "GameFramework/Actor.h"
 #include "TBBoxTV.generated.h"
 
-class ATBBox;
 class ATBCharacter;
 class ATBPlayerState;
 class ATBTVCamera;
@@ -41,8 +40,6 @@ public:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
-	UPROPERTY(EditInstanceOnly, BlueprintReadWrite, Replicated, Category = "Television")
-	TObjectPtr<ATBBox> SourceBox;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Television")
 	TObjectPtr<UStaticMeshComponent> Frame;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Television")
