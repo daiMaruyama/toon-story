@@ -14,8 +14,8 @@ ATBTVRemote::ATBTVRemote()
 
 void ATBTVRemote::BeginPlay()
 {
-	Super::HasAuthorityBeginPlay();
-	if (!())
+	Super::BeginPlay();
+	if (!HasAuthority())
 	{
 		return;
 	}
