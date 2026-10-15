@@ -7,11 +7,11 @@
 namespace TBScreen
 {
 	// 簡易版
-	void PlayTransition(APlayerController* PlayerController)
+	void PlayTransition(APlayerController* PlayerController, const FLinearColor& Color)
 	{
 		if (PlayerController && PlayerController->PlayerCameraManager)
 		{
-			PlayerController->PlayerCameraManager->StartCameraFade(1.f, 0.f, .4f, FLinearColor::Black);
+			PlayerController->PlayerCameraManager->StartCameraFade(1.f, 0.f, .4f, Color);
 		}
 	}
 }

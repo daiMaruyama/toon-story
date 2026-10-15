@@ -47,7 +47,12 @@ void ATBController::UpdateScreenTransition()
 	const bool bEnteredBox = bBoxed && !bWasBoxed && State->Phase != ETBPhase::Lobby;
 	// 救助は試合中だけ。ロビーへ戻る時の状態リセットが先に届いても出さない（二重の暗転を防ぐ）。
 	const bool bLeftBox = !bBoxed && bWasBoxed && State->Phase == ETBPhase::Playing;
-	if (bReturnedToLobby || bEnteredBox || bLeftBox)
+	// 箱のフタが開く光を白で表す。ロビーへの移動は暗転のまま。
+	if (bEnteredBox || bLeftBox)
+	{
+		TBScreen::PlayTransition(this, FLinearColor::White);
+	}
+	else if (bReturnedToLobby)
 	{
 		TBScreen::PlayTransition(this);
 	}
