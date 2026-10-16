@@ -48,8 +48,9 @@ ATBBox::ATBBox()
 	auto* Light = CreateDefaultSubobject<UPointLightComponent>(TEXT("StorageRoomLight"));
 	Light->SetupAttachment(StorageRoom);
 	Light->SetRelativeLocation(FVector(400, 0, 250));
-	Light->SetIntensity(5000.f);
-	Light->SetAttenuationRadius(900.f);
+	// 部屋の明かりは TB_ToyBoxRoom 側（PPV の環境光と壁の自己発光）が持つ。
+	Light->SetIntensity(0.f);
+	Light->SetCastShadows(false);
 	// 収納後は従来の別室へ移動する。木箱の見た目や大きさから独立させる。
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> Cube(TEXT("/Engine/BasicShapes/Cube.Cube"));
 	const FVector RoomCenters[] = {{400, 0, -10},    {0, -210, 160},  {0, 210, 160}, {0, 0, 280}, {800, 0, 160},
@@ -64,6 +65,8 @@ ATBBox::ATBBox()
 		Wall->SetRelativeLocation(RoomCenters[Index]);
 		Wall->SetRelativeScale3D(RoomScales[Index]);
 		Wall->SetCollisionProfileName(TEXT("BlockAll"));
+		// 見た目は TB_ToyBoxRoom 側が持つので、ここは当たり判定だけ残す。蓋が開いた時に見えないようにする。
+		Wall->SetHiddenInGame(true);
 	}
 }
 
@@ -127,6 +130,12 @@ bool ATBBox::CanStoreFrom(const ATBCharacter* Character) const
 	return !GetWorld()->LineTraceTestByChannel(Character->GetPawnViewLocation(), Target, ECC_Visibility, Params);
 }
 
+// 蓋は -Y 側が持ち上がる（TBBoxLid）ので、その真下の天井近くから落とす。リモコンの上には落とさない。
+FVector ATBBox::StorageSlot(int32 Slot)
+{
+	return FVector(200 + (Slot % 3) * 180, -185 - (Slot / 3) * 30, 220);
+}
+
 // 収納の最終確認を行い、箱内へ移してから勝敗を確認する。
 bool ATBBox::Store(ATBCharacter* Toy)
 {
@@ -140,8 +149,7 @@ bool ATBBox::Store(ATBCharacter* Toy)
 	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(TBStorage), false, Toy);
 	for (int32 Slot = 0; Slot < 9; ++Slot)
 	{
-		const FVector Candidate = StorageRoom->GetComponentTransform().TransformPosition(
-		    FVector(200 + (Slot % 3) * 180, -170 + (Slot / 3) * 170, 60));
+		const FVector Candidate = StorageRoom->GetComponentTransform().TransformPosition(StorageSlot(Slot));
 		if (!GetWorld()->OverlapBlockingTestByChannel(
 		        Candidate, FQuat::Identity, ECC_GameTraceChannel1,
 		        FCollisionShape::MakeCapsule(Toy->GetCapsuleComponent()->GetScaledCapsuleRadius(),
