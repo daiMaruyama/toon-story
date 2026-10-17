@@ -8,6 +8,7 @@
 #include "Core/TBPlayerState.h"
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
+#include "Components/ChildActorComponent.h"
 #include "Components/SceneCaptureComponent2D.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -317,6 +318,15 @@ bool ATBBoxTV::SetCaptureView()
 	Capture->SetWorldLocationAndRotation(Character->GetPawnViewLocation() + Smoothing, Character->GetBaseAimRotation());
 	Capture->FOVAngle = Character->Camera->FieldOfView;
 	Capture->HiddenActors.Add(const_cast<ATBCharacter*>(Character));
+	// 掴まれたおもちゃの子アクターは、掴んだ人の手に付いているので、TVに映らないように隠す。
+	TInlineComponentArray<UChildActorComponent*> Visuals(Character);
+	for (const auto* Visual : Visuals)
+	{
+		if (auto* Child = Visual->GetChildActor())
+		{
+			Capture->HiddenActors.Add(Child);
+		}
+	}
 	return true;
 }
 
