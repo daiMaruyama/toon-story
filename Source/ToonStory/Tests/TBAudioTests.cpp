@@ -4,6 +4,9 @@
 #include "Audio/TBAudioEvents.h"
 #include "Audio/TBAudioSettings.h"
 #include "Audio/TBAudioSubsystem.h"
+#include "Audio/TBCharacterAudioComponent.h"
+#include "Character/TBCharacter.h"
+#include "GamePlay/TBDummyToy.h"
 #include "Core/TBGameMode.h"
 #include "Core/TBGameState.h"
 #include "Core/TBPlayerState.h"
@@ -472,6 +475,57 @@ bool FTBHumanFootstepTest::RunTest(const FString& Parameters)
 	Settings->Sounds.Remove(ETBSoundEvent::HumanFootstep);
 	Audio->ReloadAudioSettings();
 	TestNull(TEXT("Missing human sound slot is also safe"), Audio->StartLoop(ETBSoundEvent::HumanFootstep, Source));
+	return !HasAnyErrors();
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBDummyStoreAudioTest, "ToonStory.Audio.DummyStoreParity",
+                                 EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+bool FTBDummyStoreAudioTest::RunTest(const FString& Parameters)
+{
+	UWorld* World = FindAudioTestWorld();
+	if (!TestNotNull(TEXT("Standalone stage"), World)) return false;
+	auto* Human = Cast<ATBCharacter>(World->GetFirstPlayerController()->GetPawn());
+	auto* State = World->GetGameState<ATBGameState>();
+	auto* Audio = World->GetGameInstance()->GetSubsystem<UTBAudioSubsystem>();
+	if (!Human || !Human->TBPS() || !State || !Audio) return false;
+	auto* Component = Human->FindComponentByClass<UTBCharacterAudioComponent>();
+	if (!TestNotNull(TEXT("Character audio component"), Component)) return false;
+	FScopedEmptyAudio Empty(Audio);
+	const auto OldPhase = State->Phase;
+	const auto OldTeam = Human->TBPS()->Team;
+	State->Phase = ETBPhase::Playing;
+	Human->TBPS()->Team = ETBTeam::Human;
+	auto* Dummy = World->SpawnActor<ATBDummyToy>();
+	FActorSpawnParameters Spawn;
+	Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	auto* Toy = World->SpawnActor<ATBCharacter>(FVector(0, 0, 1000), FRotator::ZeroRotator, Spawn);
+	auto* Wave = NewObject<USoundWaveProcedural>();
+	Wave->NumChannels = 1;
+	Wave->SetSampleRate(22050);
+	GetMutableDefault<UTBAudioSettings>()->Sounds.FindOrAdd(ETBSoundEvent::StoreLoop).Sound = Wave;
+	Audio->ReloadAudioSettings();
+	auto FindLoop = [&]() -> UAudioComponent*
+	{
+		for (TObjectIterator<UAudioComponent> It; It; ++It)
+			if (It->GetWorld() == World && It->IsRegistered() && It->GetSound() == Wave) return *It;
+		return nullptr;
+	};
+	for (bool bDummy : {false, true})
+	{
+		Human->CarriedToy = bDummy ? nullptr : Toy;
+		Human->CarriedDummy = bDummy ? Dummy : nullptr;
+		Human->StoreStarted = World->GetTimeSeconds();
+		Component->TickComponent(0.f, LEVELTICK_All, nullptr);
+		TestNotNull(bDummy ? TEXT("Dummy has the same storage loop") : TEXT("Real toy has storage loop"), FindLoop());
+		Human->ClearHeldInteraction();
+		Component->TickComponent(0.f, LEVELTICK_All, nullptr);
+		TestNull(TEXT("Releasing interaction stops storage loop"), FindLoop());
+	}
+	Human->CarriedToy = nullptr;
+	Human->CarriedDummy = nullptr;
+	if (Toy) Toy->Destroy();
+	if (Dummy) Dummy->Destroy();
+	Human->TBPS()->Team = OldTeam;
+	State->Phase = OldPhase;
 	return !HasAnyErrors();
 }
 #endif

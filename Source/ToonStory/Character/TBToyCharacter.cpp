@@ -1,6 +1,8 @@
 // Copyright (c) 2026 Mamodou. All Rights Reserved.
 
 #include "TBToyCharacter.h"
+#include "TBToyPresentation.h"
+#include "Components/CapsuleComponent.h"
 #include "Components/ChildActorComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -64,8 +66,7 @@ void ATBToyCharacter::UpdateAppearance(bool bToy)
 	{
 		return;
 	}
-	UClass* VisualClass = ToyCatalogue.IsValidIndex(SelectedToyIndex)
-	                          ? ToyCatalogue[SelectedToyIndex].Get() : nullptr;
+	UClass* VisualClass = ToyCatalogue.IsValidIndex(SelectedToyIndex) ? ToyCatalogue[SelectedToyIndex].Get() : nullptr;
 	if (ToyVisual->GetChildActorClass() != VisualClass)
 	{
 		ToyVisual->SetChildActorClass(VisualClass);
@@ -76,12 +77,14 @@ void ATBToyCharacter::UpdateAppearance(bool bToy)
 		bShowingToy = true;
 		Body->SetVisibility(false);
 		GetMesh()->SetSkeletalMesh(nullptr);
-		GetMesh()->SetRelativeTransform(FTransform(FVector(0, 0, -13)));
+		CarryAnchor->AttachToComponent(GetMesh(), FAttachmentTransformRules::KeepRelativeTransform);
+		GetMesh()->SetRelativeTransform(FTransform(FVector(0, 0, -13 * TBToyPresentation::SizeScale)));
+		ToyVisual->SetRelativeScale3D(FVector(TBToyPresentation::SizeScale));
 		CacheInitialMeshOffset(GetMesh()->GetRelativeLocation(), FRotator::ZeroRotator);
 		CarryAnchor->SetRelativeLocation(FVector(95, 0, 23));
 		CarryAnchor->SetRelativeRotation(FRotator::ZeroRotator);
-		const float Clearance = (UCharacterMovementComponent::MIN_FLOOR_DIST +
-		                         UCharacterMovementComponent::MAX_FLOOR_DIST) * .5f;
+		const float Clearance =
+		    (UCharacterMovementComponent::MIN_FLOOR_DIST + UCharacterMovementComponent::MAX_FLOOR_DIST) * .5f;
 		ToyVisual->SetRelativeLocation(FVector(0, 0, -Clearance));
 	}
 	auto* Visual = ToyVisual->GetChildActor();
@@ -98,6 +101,10 @@ void ATBToyCharacter::UpdateAppearance(bool bToy)
 		return;
 	}
 	Visual->SetOwner(this);
+	if (AppliedVisual.Get() != Visual)
+	{
+		TBToyPresentation::Initialize(Visual);
+	}
 	TInlineComponentArray<UPrimitiveComponent*> Parts(Visual);
 	for (auto* Part : Parts)
 	{
@@ -110,6 +117,26 @@ void ATBToyCharacter::UpdateAppearance(bool bToy)
 	AppliedVisual = Visual;
 	bAppliedOwnerNoSee = bOwnerNoSee;
 	bAppliedPause = bPause;
+}
+
+void ATBToyCharacter::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+	if (!TBPS() || TBPS()->Team != ETBTeam::Toy)
+	{
+		return;
+	}
+	TBToyPresentation::Animate(ToyVisual->GetChildActor(), GetVelocity().Size2D(), IsMovementLocked());
+	if (Carrier)
+	{
+		TBToyPresentation::Grip(ToyVisual, Carrier->GetCarryGripLocation(), GripCache);
+	}
+	if (!Carrier && GetCharacterMovement()->IsMovingOnGround())
+	{
+		TBToyPresentation::Ground(ToyVisual, GetActorLocation().Z -
+		                                         GetCapsuleComponent()->GetScaledCapsuleHalfHeight() -
+		                                         GetCharacterMovement()->CurrentFloor.FloorDist);
+	}
 }
 
 void ATBToyCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const

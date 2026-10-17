@@ -143,7 +143,7 @@ void UTBCharacterAudioComponent::UpdateStoreLoop(ATBCharacter* OwnerCharacter, U
 	const bool bDesired = TB::Playing(GetWorld()) && PrimaryController &&
 	                      OwnerCharacter->GetController() == PrimaryController &&
 	                      OwnerCharacter->IsLocallyControlled() &&
-	                      OwnerCharacter->CanAct() && OwnerCharacter->StoreStarted >= 0.0 && IsValid(OwnerCharacter->CarriedToy.Get());
+	                      OwnerCharacter->CanAct() && OwnerCharacter->StoreStarted >= 0.0 && OwnerCharacter->HasCarriedToy();
 	const uint32 Revision = Audio->GetSettingsRevision();
 	if (bDesired == bStoreLoopDesired && Revision == LastSettingsRevision)
 	{

@@ -16,6 +16,7 @@ class ATBPickup;
 class USkeletalMesh;
 class UAnimInstance;
 class UTBVoiceComponent;
+class ATBDummyToy;
 
 /** 人間とおもちゃ共通の本体。操作要求をサーバーで検証する。 */
 UCLASS(Config = Game)
@@ -25,6 +26,8 @@ class TOONSTORY_API ATBCharacter : public ACharacter
 public:
 	ATBCharacter(const FObjectInitializer& Init);
 	virtual void BeginPlay() override;
+	virtual void OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
+	virtual void OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
 	virtual void Tick(float DeltaSeconds) override;
 	virtual void SetupPlayerInputComponent(UInputComponent* Input) override;
 	virtual void OnRep_PlayerState() override;
@@ -67,8 +70,10 @@ public:
 	TObjectPtr<ATBCharacter> Carrier;
 	UPROPERTY(Replicated, BlueprintReadOnly)
 	TObjectPtr<ATBCharacter> CarriedToy;
+	UPROPERTY(Replicated, BlueprintReadOnly)
+	TObjectPtr<ATBDummyToy> CarriedDummy;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
-	float HumanSpeed = 450.f;
+	float HumanSpeed = 382.5f;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	float ToySpeed = 180.f;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement")
@@ -78,11 +83,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Movement")
 	void SetSprintRequested(bool bRequested);
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
-	float CarrySpeed = 300.f;
+	float CarrySpeed = 255.f;
 	UFUNCTION()
 	void OnRep_Carrier();
 	ATBPlayerState* TBPS() const;
 	bool IsHuman() const;
+	FVector GetCarryGripLocation() const;
 	bool CanAct() const;
 	bool IsMovementLocked() const;
 	bool IsPhysicsLocked() const;
@@ -96,6 +102,7 @@ public:
 	UPROPERTY(Replicated, BlueprintReadOnly)
 	float ItemProgress = 0.f;
 	void ApplyState();
+	bool HasCarriedToy() const { return CarriedToy || CarriedDummy; }
 	void SetFrozen(bool Value);
 	void SetToyState(ETBToyState Value);
 	void ClearHeldInteraction();
@@ -119,6 +126,11 @@ public:
 	bool bRescuing = false;
 
 private:
+	bool UpdateCarriedDummy();
+	void BeginDummyStorage();
+	void InitializeComfortMovement();
+	void ApplyComfortBody(bool bToy);
+	void ApplyComfortMovement(bool bToy);
 	void Forward(float V);
 	void Right(float V);
 	void Yaw(float V);
@@ -126,6 +138,8 @@ private:
 	void JumpPressed();
 	void JumpReleased();
 	void UpdateCarryCamera();
+	void CrouchPressed();
+	void CrouchReleased();
 	void SprintPressed();
 	void SprintReleased();
 	double LastRequest = -1000;
@@ -134,6 +148,7 @@ private:
 	bool bCarryView = false;
 	// 運搬カメラを今付けている相手。途中のnullptrが届かず運ぶ人が入れ替わる場合に付け直す。
 	TWeakObjectPtr<ATBCharacter> CarryViewCarrier;
+	TWeakObjectPtr<ATBCharacter> GripTickCarrier;
 	// 直前のフレームに画面へ出した視点。切替時にここからブレンドを始める。
 	FMinimalViewInfo LastView;
 	FVector LastActorLocation = FVector::ZeroVector;
@@ -141,8 +156,10 @@ private:
 	FMinimalViewInfo CarryBlendFrom;
 	double CarryBlendStarted = -1;
 	float CarryBlendDuration = 0;
+
 protected:
 	// 親子で表示の切り替え状態を共有する。
+	FVector StandingMeshOffset = FVector::ZeroVector;
 	bool bAppearanceInitialized = false;
 	bool bShowingToy = false;
 	virtual void UpdateAppearance(bool bToy);

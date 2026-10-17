@@ -31,5 +31,6 @@ void ATBPlayerState::CopyProperties(APlayerState* NewState)
 	{
 		CopiedState->Team = Team;
 		CopiedState->Preference = Preference;
+		CopiedState->bReady = bReady;
 	}
 }

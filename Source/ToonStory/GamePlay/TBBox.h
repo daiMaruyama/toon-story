@@ -7,6 +7,7 @@
 #include "TBBox.generated.h"
 
 class ATBCharacter;
+class ATBDummyToy;
 class ATBBox;
 class UStaticMesh;
 class UStaticMeshComponent;
@@ -20,6 +21,7 @@ class TOONSTORY_API ATBBox : public AActor
 	GENERATED_BODY()
 public:
 	ATBBox();
+	virtual void OnConstruction(const FTransform& Transform) override;
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaSeconds) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
@@ -49,6 +51,7 @@ public:
 	bool InRange(const ATBCharacter* C) const;
 	bool CanStoreFrom(const ATBCharacter* Character) const;
 	bool Store(ATBCharacter* Toy);
+	bool StoreDummy(ATBDummyToy* Toy);
 	bool HasPrisoners() const;
 	// 収納先の候補位置（StorageRoom のローカル座標）。
 	static constexpr int32 StorageSlotCount = 9;
@@ -59,4 +62,7 @@ public:
 private:
 	UFUNCTION(NetMulticast, Reliable)
 	void MulticastOpened();
+	void RefreshAppearance();
+	bool HasDummyPrisoners() const;
+	int32 ReleaseDummyPrisoners(int32 FirstSlot);
 };

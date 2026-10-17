@@ -14,6 +14,7 @@ class TOONSTORY_API ATBController : public APlayerController
 	GENERATED_BODY()
 public:
 	virtual void BeginPlay() override;
+	virtual void PostSeamlessTravel() override;
 	virtual void PlayerTick(float DeltaTime) override;
 	virtual void SetupInputComponent() override;
 	bool IsLeaveMenuOpen() const { return bLeaveMenuOpen; }
@@ -26,6 +27,8 @@ public:
 	void TBJoin(int32 Index);
 	UFUNCTION(Exec)
 	void TBLeave();
+	UFUNCTION(Exec)
+	void TBQuit();
 	UFUNCTION(Exec)
 	void TBLobby();
 	UFUNCTION(Server, Reliable)
@@ -44,6 +47,8 @@ public:
 	void ServerStart();
 	UFUNCTION(Server, Reliable, BlueprintCallable)
 	void ServerRules(FTBSettings Rules);
+	UFUNCTION(Server, Reliable)
+	void ServerSelectStage(int32 Index);
 	UFUNCTION(Server, Reliable, BlueprintCallable)
 	void ServerPreference(ETBTeam Team);
 	UFUNCTION(Client, Reliable)
@@ -61,6 +66,7 @@ private:
 	void UpdateLobbyCamera(bool InLobby);
 	void UpdateMenuInput(bool ShowMenu);
 	bool bLobbyInput = false;
+	double NoticeExpires = 0;
 	bool bLeaveMenuOpen = false;
 	bool bLobbyCameraActive = false;
 	bool bLobbyCameraSearched = false;

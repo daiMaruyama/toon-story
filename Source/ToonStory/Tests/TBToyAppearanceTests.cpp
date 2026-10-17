@@ -8,6 +8,7 @@
 
 #include "Animation/BlendSpace.h"
 #include "Character/TBToyCharacter.h"
+#include "Character/TBToyCarVisual.h"
 #include "Components/ChildActorComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -139,7 +140,12 @@ bool FTBToyRoundTest::RunTest(const FString& Parameters)
 		Actor->SetOwner(Toy);
 		TestFalse(TEXT("Visual actor does not replicate separately"), Actor->GetIsReplicated());
 		TInlineComponentArray<USkeletalMeshComponent*> Parts(Actor);
-		TestTrue(TEXT("Visual has a skeletal mesh"), Parts.Num() > 0);
+		if (auto* Car = Cast<ATBToyCarVisual>(Actor))
+		{
+			TestTrue(TEXT("Car has saved mesh"), Car->Car->GetStaticMesh() != nullptr);
+			TestEqual(TEXT("Car visual has no collision"), Car->Car->GetCollisionEnabled(), ECollisionEnabled::NoCollision);
+		}
+		else TestTrue(TEXT("Visual has a skeletal mesh"), Parts.Num() > 0);
 		for (auto* Part : Parts)
 		{
 			TestNotNull(TEXT("Saved mesh"), Part->GetSkeletalMeshAsset());

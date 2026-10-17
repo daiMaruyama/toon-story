@@ -43,7 +43,7 @@ bool FTBLobbyCountsTest::RunTest(const FString& Parameters)
 	auto* Second = UGameplayStatics::CreatePlayer(World, -1, true);
 	if (!TestNotNull(TEXT("Second player"), Second)) return false;
 	Check(1, 1);
-	TestFalse(TEXT("Joining resets ready"), Host->GetPlayerState<ATBPlayerState>()->bReady);
+	TestTrue(TEXT("Joining preserves ready"), Host->GetPlayerState<ATBPlayerState>()->bReady);
 	auto* Third = UGameplayStatics::CreatePlayer(World, -1, true);
 	if (!TestNotNull(TEXT("Third player"), Third))
 	{
@@ -55,6 +55,12 @@ bool FTBLobbyCountsTest::RunTest(const FString& Parameters)
 	Rules.Humans = 2;
 	Mode->SetRules(Host, Rules);
 	Check(2, 1);
+	TestTrue(TEXT("Changing team counts preserves ready"), Host->GetPlayerState<ATBPlayerState>()->bReady);
+	Rules = State->Settings;
+	Rules.Duration = Rules.Duration == 300.f ? 360.f : 300.f;
+	Mode->SetRules(Host, Rules);
+	TestEqual(TEXT("Time change is applied"), State->Settings.Duration, Rules.Duration);
+	TestTrue(TEXT("Changing time preserves ready"), Host->GetPlayerState<ATBPlayerState>()->bReady);
 	Rules = State->Settings;
 	Rules.Toys = 2;
 	Mode->SetRules(Host, Rules);

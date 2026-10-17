@@ -159,7 +159,7 @@ void UTBSession::Created(FName Name, bool bSucceeded)
 	}
 	Message(TEXT("Room created. Opening listen server..."));
 	TArray<FName> Stages;
-	for (const TCHAR* Map : {TEXT("/Game/Maps/TB_ArchViz"), TEXT("/Game/Maps/TB_KidsRoom")})
+	for (const TCHAR* Map : {TEXT("/Game/Maps/TB_ToyWorldDemoExpanded")})
 	{
 		if (FPackageName::DoesPackageExist(Map))
 		{

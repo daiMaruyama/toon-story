@@ -12,6 +12,7 @@ public class ToonStory : ModuleRules
 			"Core",
 			"CoreUObject",
 			"Engine",
+			"AnimationCore",
 			"DeveloperSettings",
 			"InputCore",
 			"OnlineSubsystem",
@@ -28,6 +29,19 @@ public class ToonStory : ModuleRules
 		});
 		if (Target.ProjectFile != null)
 		{
+			foreach (string Relative in new[] { "UI/PaperClub/Fonts", "ThirdPartyNotices/PaperClub" })
+			{
+				string Directory = System.IO.Path.Combine(Target.ProjectFile.Directory.FullName, "Content", Relative);
+				string Pattern = Relative.EndsWith("Fonts") ? "*.ttf" : "*.txt";
+				if (System.IO.Directory.Exists(Directory))
+				{
+					foreach (string File in System.IO.Directory.GetFiles(Directory, Pattern))
+					{
+						RuntimeDependencies.Add(File, StagedFileType.NonUFS);
+					}
+				}
+			}
+
 			string ToyNotices = System.IO.Path.Combine(Target.ProjectFile.Directory.FullName,
 				"Content", "ThirdPartyNotices", "ToyAssets.txt");
 			if (System.IO.File.Exists(ToyNotices))
