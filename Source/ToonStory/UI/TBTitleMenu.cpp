@@ -1,4 +1,5 @@
 #include "UI/TBTitleMenu.h"
+#include "Audio/TBAudioSubsystem.h"
 #include "Core/TBSession.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/Border.h"
@@ -96,7 +97,16 @@ void UTBTitleMenu::SelectionChanged(FString Item, ESelectInfo::Type SelectionTyp
 {
 	if (Session) JoinButton->SetIsEnabled(!Session->IsBusy() && Session->Rooms.IsValidIndex(RoomList->GetSelectedIndex()));
 }
-void UTBTitleMenu::Host() { if (Session) Session->Host(); }
-void UTBTitleMenu::Find() { if (Session) Session->Find(); }
-void UTBTitleMenu::Join() { if (Session) Session->Join(RoomList->GetSelectedIndex()); }
-void UTBTitleMenu::Cleanup() { if (Session) Session->Leave(); }
+namespace
+{
+	void PlayMenuClick(UGameInstance* GameInstance)
+	{
+		if (GameInstance)
+			if (auto* Audio = GameInstance->GetSubsystem<UTBAudioSubsystem>()) Audio->PlaySoundEvent(ETBSoundEvent::UIClick);
+	}
+}
+
+void UTBTitleMenu::Host() { PlayMenuClick(GetGameInstance()); if (Session) Session->Host(); }
+void UTBTitleMenu::Find() { PlayMenuClick(GetGameInstance()); if (Session) Session->Find(); }
+void UTBTitleMenu::Join() { PlayMenuClick(GetGameInstance()); if (Session) Session->Join(RoomList->GetSelectedIndex()); }
+void UTBTitleMenu::Cleanup() { PlayMenuClick(GetGameInstance()); if (Session) Session->Leave(); }

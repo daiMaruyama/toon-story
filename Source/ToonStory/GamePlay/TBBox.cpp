@@ -1,4 +1,6 @@
 #include "TBBox.h"
+#include "Audio/TBBoxAudioComponent.h"
+#include "Audio/TBAudioEvents.h"
 #include "Core/TBPlayerState.h"
 #include "Core/TBGameState.h"
 #include "Core/TBGameMode.h"
@@ -17,6 +19,7 @@
 
 ATBBox::ATBBox()
 {
+	CreateDefaultSubobject<UTBBoxAudioComponent>(TEXT("GameplayAudio"));
 	bReplicates = true;
 	bAlwaysRelevant = true;
 	PrimaryActorTick.bCanEverTick = true;
@@ -161,6 +164,7 @@ bool ATBBox::Store(ATBCharacter* Toy)
 	Toy->SetFrozen(false);
 	Toy->SetToyState(ETBToyState::Boxed);
 	Toy->ForceNetUpdate();
+	UTBAudioEvents::Emit(this, ETBSoundEvent::Store, Toy->TBPS(), InteractionPoint->GetComponentLocation());
 	if (auto* GameMode = GetWorld()->GetAuthGameMode<ATBGameMode>())
 	{
 		GameMode->CheckWin();
@@ -226,6 +230,7 @@ void ATBBox::ReleasePrisoners()
 		return;
 	}
 	int32 Slot = 0;
+	bool bReleasedAny = false;
 	for (TActorIterator<ATBCharacter> It(GetWorld()); It; ++It)
 	{
 		auto* Toy = *It;
@@ -240,7 +245,12 @@ void ATBBox::ReleasePrisoners()
 		{
 			Toy->SetFrozen(false);
 			Toy->SetToyState(ETBToyState::Free);
+			bReleasedAny = true;
 		}
+	}
+	if (bReleasedAny)
+	{
+		UTBAudioEvents::Emit(this, ETBSoundEvent::RescueComplete, nullptr, InteractionPoint->GetComponentLocation());
 	}
 	if (!HasPrisoners())
 	{

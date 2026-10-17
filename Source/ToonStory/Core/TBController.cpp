@@ -1,4 +1,6 @@
 #include "TBController.h"
+#include "Audio/TBAudioEvents.h"
+#include "Audio/TBAudioSubsystem.h"
 #include "Core/TBPlayerState.h"
 #include "Core/TBGameState.h"
 #include "Core/TBGameMode.h"
@@ -209,6 +211,7 @@ void ATBController::ServerReady_Implementation()
 	{
 		ToyPlayerInfo->bReady = !ToyPlayerInfo->bReady;
 		ToyPlayerInfo->ForceNetUpdate();
+		UTBAudioEvents::Emit(this, ETBSoundEvent::Ready, ToyPlayerInfo, FVector::ZeroVector);
 	}
 }
 
@@ -243,4 +246,18 @@ void ATBController::ServerPreference_Implementation(ETBTeam Team)
 void ATBController::ClientNotice_Implementation(const FString& Message)
 {
 	Notice = Message;
+}
+
+void ATBController::ClientPlaySoundEvent_Implementation(ETBSoundEvent Event, FVector Location)
+{
+	// A shared output uses the same primary listener as voice, BGM and team-only loops.
+	if (!IsLocalController() || !GetGameInstance() ||
+	    GetGameInstance()->GetFirstLocalPlayerController(GetWorld()) != this)
+	{
+		return;
+	}
+	if (auto* Audio = GetGameInstance()->GetSubsystem<UTBAudioSubsystem>())
+	{
+		Audio->PlaySoundEvent(Event, Location);
+	}
 }

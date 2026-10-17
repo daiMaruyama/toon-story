@@ -1,4 +1,5 @@
 #include "TBPickup.h"
+#include "Audio/TBAudioEvents.h"
 #include "Core/TBPlayerState.h"
 #include "Core/TBGameState.h"
 #include "Core/TBGameMode.h"
@@ -80,6 +81,7 @@ bool ATBPickup::Take(ATBCharacter* ToyCharacter)
 	ForceNetUpdate();
 	++MatchInfo->Collected;
 	++ToyCharacter->TBPS()->Items;
+	UTBAudioEvents::Emit(this, ETBSoundEvent::Pickup, ToyCharacter->TBPS(), GetActorLocation());
 	if (auto* GameMode = GetWorld()->GetAuthGameMode<ATBGameMode>())
 	{
 		GameMode->CheckWin();

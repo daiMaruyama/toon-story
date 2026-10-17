@@ -1,5 +1,6 @@
 #include "Character/TBVoiceComponent.h"
 #include "Audio/TBPitchShift.h"
+#include "Audio/TBAudioSubsystem.h"
 #include "Core/TBGameHelpers.h"
 #include "Core/TBGameState.h"
 #include "Core/TBPlayerState.h"
@@ -8,6 +9,7 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/World.h"
+#include "Engine/GameInstance.h"
 #include "EngineUtils.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/PlayerController.h"
@@ -25,6 +27,12 @@ static USceneComponent* VoiceAnchor(const APawn* Pawn)
 {
 	const auto* Character = Cast<ACharacter>(Pawn);
 	return Character && Character->GetMesh() ? Character->GetMesh() : Pawn->GetRootComponent();
+}
+
+static UTBAudioSubsystem* VoiceAudioSubsystem(UWorld* World)
+{
+	const auto* GameInstance = World ? World->GetGameInstance() : nullptr;
+	return GameInstance ? GameInstance->GetSubsystem<UTBAudioSubsystem>() : nullptr;
 }
 
 UTBVoiceComponent::UTBVoiceComponent(const FObjectInitializer& Init) : Super(Init)
@@ -48,6 +56,11 @@ void UTBVoiceComponent::BeginPlay()
 void UTBVoiceComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	GetWorld()->GetTimerManager().ClearTimer(UpdateTimer);
+	if (auto* Audio = VoiceAudioSubsystem(GetWorld()))
+	{
+		Audio->UntrackVoice(TalkingAudio.Get());
+	}
+	TalkingAudio.Reset();
 	if (EarsController.IsValid())
 	{
 		EarsController->ClearAudioListenerOverride();
@@ -65,12 +78,21 @@ void UTBVoiceComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 void UTBVoiceComponent::OnTalkingBegin(UAudioComponent* AudioComponent)
 {
 	Super::OnTalkingBegin(AudioComponent);
+	if (auto* Audio = VoiceAudioSubsystem(GetWorld()))
+	{
+		Audio->UntrackVoice(TalkingAudio.Get());
+		Audio->TrackVoice(AudioComponent);
+	}
 	TalkingAudio = AudioComponent;
 	ApplyToTalkingAudio();
 }
 
 void UTBVoiceComponent::OnTalkingEnd()
 {
+	if (auto* Audio = VoiceAudioSubsystem(GetWorld()))
+	{
+		Audio->UntrackVoice(TalkingAudio.Get());
+	}
 	Super::OnTalkingEnd();
 	TalkingAudio.Reset();
 }
@@ -78,15 +100,14 @@ void UTBVoiceComponent::OnTalkingEnd()
 void UTBVoiceComponent::UpdateVoice()
 {
 	auto* Pawn = Cast<APawn>(GetOwner());
-	auto* Speaker = Pawn ? Pawn->GetPlayerState<ATBPlayerState>() : nullptr;
-	if (!Speaker || !Speaker->GetUniqueId().IsValid())
+	if (!Pawn)
 	{
 		return;
 	}
-	// 自分の声は自分のPCでは鳴らさない。代わりに耳をカメラから自分のキャラへ移す。
+	// 自分の声は自分のPCでは鳴らさない。オンラインIDがない場合も耳はキャラへ移す。
 	if (Pawn->IsLocallyControlled())
 	{
-		GetWorld()->GetTimerManager().ClearTimer(UpdateTimer);
+		// 同じPawnでもロビーから試合へ移るとメッシュの向きが変わるため、補正を定期更新する。
 		if (auto* Controller = Cast<APlayerController>(Pawn->GetController()))
 		{
 			USceneComponent* Ears = VoiceAnchor(Pawn);
@@ -94,6 +115,11 @@ void UTBVoiceComponent::UpdateVoice()
 			Controller->SetAudioListenerOverride(Ears, FVector::ZeroVector, Ears->GetRelativeRotation().GetInverse());
 			EarsController = Controller;
 		}
+		return;
+	}
+	auto* Speaker = Pawn->GetPlayerState<ATBPlayerState>();
+	if (!Speaker || !Speaker->GetUniqueId().IsValid())
+	{
 		return;
 	}
 	if (!Attenuation)

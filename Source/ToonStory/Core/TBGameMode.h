@@ -41,6 +41,8 @@ public:
 	TArray<TObjectPtr<AActor>> SpawnPoints;
 
 private:
+	int32 LobbyPlayerCount() const;
+	void SyncLobbyCounts();
 	void DestroyRoundCharacters();
 	void ResetStageInteractions();
 	void BuildArena();

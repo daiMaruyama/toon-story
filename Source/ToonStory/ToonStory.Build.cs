@@ -12,6 +12,7 @@ public class ToonStory : ModuleRules
 			"Core",
 			"CoreUObject",
 			"Engine",
+			"DeveloperSettings",
 			"InputCore",
 			"OnlineSubsystem",
 			"OnlineSubsystemUtils",

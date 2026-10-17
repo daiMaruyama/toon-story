@@ -2,6 +2,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
 #include "Data/TBTypes.h"
+#include "Audio/TBAudioTypes.h"
 #include "TBController.generated.h"
 
 /** 入力とコンソールコマンドを、試合管理や接続処理へ渡す。 */
@@ -45,6 +46,8 @@ public:
 	void ServerPreference(ETBTeam Team);
 	UFUNCTION(Client, Reliable)
 	void ClientNotice(const FString& Message);
+	UFUNCTION(Client, Reliable)
+	void ClientPlaySoundEvent(ETBSoundEvent Event, FVector Location);
 	UPROPERTY(BlueprintReadOnly)
 	FString Notice;
 
