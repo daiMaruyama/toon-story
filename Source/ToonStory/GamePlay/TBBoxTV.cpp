@@ -11,6 +11,9 @@
 #include "Components/SceneCaptureComponent2D.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Components/TextBlock.h"
+#include "Components/WidgetComponent.h"
+#include "Blueprint/UserWidget.h"
 #include "Engine/TextureRenderTarget2D.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -38,6 +41,17 @@ ATBBoxTV::ATBBoxTV()
 	Capture->bCaptureEveryFrame = false;
 	Capture->bCaptureOnMovement = false;
 	Capture->CaptureSource = ESceneCaptureSource::SCS_FinalColorLDR;
+	ChannelOSD = CreateDefaultSubobject<UWidgetComponent>(TEXT("ChannelOSD"));
+	ChannelOSD->SetupAttachment(Screen);
+	ChannelOSD->SetWidgetSpace(EWidgetSpace::World);
+	ChannelOSD->SetDrawSize(FVector2D(320, 96));
+	ChannelOSD->SetBlendMode(EWidgetBlendMode::Transparent);
+	ChannelOSD->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	ChannelOSD->SetCastShadow(false);
+	ChannelOSD->SetRenderInMainPass(false);
+	ChannelOSD->SetRenderInDepthPass(false);
+	ChannelOSD->SetTickWhenOffscreen(true);
+	ChannelOSD->PrimaryComponentTick.bStartWithTickEnabled = false;
 }
 
 void ATBBoxTV::BeginPlay()
@@ -219,6 +233,7 @@ void ATBBoxTV::OnRep_Channel()
 	if (bViewing)
 	{
 		ScreenInstance->SetScalarParameterValue(TEXT("Noise"), 1.f);
+		UpdateChannelOSD();
 	}
 }
 
@@ -230,6 +245,11 @@ void ATBBoxTV::Tick(float DeltaSeconds)
 		SetPowerOn(true); // 次の試合は電源ONから始める。
 	}
 	SetViewing(GetNetMode() != NM_DedicatedServer && bPowerOn && HasLocalViewer());
+	// テクスチャは最初の描画で作られるので、できるまでTickで試す。
+	if (bViewing && !bOSDBound)
+	{
+		BindChannelOSD();
+	}
 }
 
 void ATBBoxTV::SetViewing(bool bEnable)
@@ -244,6 +264,7 @@ void ATBBoxTV::SetViewing(bool bEnable)
 	if (!bViewing)
 	{
 		Capture->HiddenActors.Reset();
+		ChannelOSD->SetComponentTickEnabled(false);
 		return;
 	}
 	if (!RenderTarget)
@@ -264,6 +285,8 @@ void ATBBoxTV::SetViewing(bool bEnable)
 	TimerParameters.bMaxOncePerFrame = true;
 	GetWorldTimerManager().SetTimer(CaptureTimer, this, &ATBBoxTV::CaptureFrame,
 	                                1.f / FMath::Clamp(CaptureRate, 1.f, 30.f), TimerParameters);
+	ChannelOSD->SetComponentTickEnabled(true);
+	UpdateChannelOSD();
 }
 
 bool ATBBoxTV::SetCaptureView()
@@ -318,4 +341,29 @@ void ATBBoxTV::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	GetWorldTimerManager().ClearTimer(CaptureTimer);
 	Capture->TextureTarget = nullptr;
 	Super::EndPlay(EndPlayReason);
+}
+
+void ATBBoxTV::UpdateChannelOSD()
+{
+	// WBPのTextBlockは「Label」という名前にしておく。
+	const auto* Widget = ChannelOSD->GetWidget();
+	auto* Label = Widget ? Cast<UTextBlock>(Widget->GetWidgetFromName(TEXT("Label"))) : nullptr;
+	if (!Label)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("ChannelOSD に Label という TextBlock が見つからない"));
+		return;
+	}
+	Label->SetText(FText::Format(NSLOCTEXT("TBBoxTV", "ChannelOSD", "CH {0}"), Channel.Number));
+}
+
+void ATBBoxTV::BindChannelOSD()
+{
+	auto* Target = ChannelOSD->GetRenderTarget();
+	if (!Target || !ScreenInstance)
+	{
+		return;
+	}
+	ScreenInstance->SetTextureParameterValue(TEXT("OSD"), Target);
+	ScreenInstance->SetScalarParameterValue(TEXT("OSDOpacity"), 1.f);
+	bOSDBound = true;
 }

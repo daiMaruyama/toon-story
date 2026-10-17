@@ -14,6 +14,7 @@ class UMaterialInterface;
 class USceneCaptureComponent2D;
 class UStaticMeshComponent;
 class UTextureRenderTarget2D;
+class UWidgetComponent;
 
 DECLARE_MULTICAST_DELEGATE(FTBTVPowerChanged);
 
@@ -48,6 +49,9 @@ public:
 	TObjectPtr<UStaticMeshComponent> Screen;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Television")
 	TObjectPtr<USceneCaptureComponent2D> Capture;
+	// 画面右上のチャンネル表示をマテリアルで重ねて表現する。
+	UPROPERTY(VisibleAnywhere, Category = "Television")
+	TObjectPtr<UWidgetComponent> ChannelOSD;
 	UPROPERTY(EditDefaultsOnly, Category = "Television")
 	TObjectPtr<UMaterialInterface> ScreenMaterial;
 	UPROPERTY(EditDefaultsOnly, Category = "Television", meta = (ClampMin = "0"))
@@ -96,6 +100,7 @@ private:
 	FTimerHandle CaptureTimer;
 	bool bViewing = false;
 	double NoiseUntil = 0;
+	bool bOSDBound = false;
 
 	UFUNCTION()
 	void OnRep_Channel();
@@ -105,6 +110,8 @@ private:
 	bool CanOperate(const ATBCharacter* Viewer) const;
 	TArray<ATBPlayerState*> GetPlayerChannels() const;
 	ATBTVCamera* FindCamera(int32 Number) const;
+	void UpdateChannelOSD();
+	void BindChannelOSD();
 	bool HasPicture(int32 Number, const TArray<ATBPlayerState*>& Players) const;
 	void SetChannel(int32 Number);
 	bool HasLocalViewer() const;
