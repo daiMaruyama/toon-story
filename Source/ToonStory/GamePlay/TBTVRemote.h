@@ -7,7 +7,9 @@
 #include "TBTVRemote.generated.h"
 
 class ATBBoxTV;
+class UMaterialInstanceDynamic;
 class UStaticMeshComponent;
+class UTBTVButton;
 
 /** 箱内テレビのリモコン。ボタンはBPで、アクタのスケールで全体の大きさを変えられる。 */
 UCLASS(Blueprintable)
@@ -17,6 +19,7 @@ class TOONSTORY_API ATBTVRemote : public AActor
 public:
 	ATBTVRemote();
 	virtual void BeginPlay() override;
+	virtual void Tick(float DeltaSeconds) override;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Remote")
 	TObjectPtr<UStaticMeshComponent> Mesh;
@@ -28,7 +31,17 @@ public:
 
 private:
 	double LastPressTime = -1;
+	bool bLastPowerOn = false;
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UTBTVButton>> Buttons;
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInstanceDynamic> GlowMaterial;
 	UFUNCTION()
 	void OnButtonOverlap(UPrimitiveComponent* Component, AActor* OtherActor, UPrimitiveComponent* OtherComponent,
 	                     int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
+	UFUNCTION()
+	void OnButtonEndOverlap(UPrimitiveComponent* Component, AActor* OtherActor, UPrimitiveComponent* OtherComponent,
+	                        int32 OtherBodyIndex);
+	// 押せる・踏まれている・押せない をボタンごとにマテリアルへ反映する。
+	void UpdateGlow();
 };

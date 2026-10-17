@@ -5,9 +5,11 @@
 #include "TBTVButton.h"
 #include "Character/TBCharacter.h"
 #include "Components/StaticMeshComponent.h"
+#include "Materials/MaterialInstanceDynamic.h"
 
 ATBTVRemote::ATBTVRemote()
 {
+	PrimaryActorTick.bCanEverTick = true;
 	Mesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Mesh"));
 	SetRootComponent(Mesh);
 }
@@ -15,21 +17,61 @@ ATBTVRemote::ATBTVRemote()
 void ATBTVRemote::BeginPlay()
 {
 	Super::BeginPlay();
-	if (!HasAuthority())
+	// 光り方は全員の画面で変えるので、検知はクライアントでも行う。テレビの操作はサーバーだけ。
+	if (GetNetMode() != NM_DedicatedServer)
+	{
+		GlowMaterial = Mesh->CreateDynamicMaterialInstance(0);
+	}
+	GetComponents(Buttons);
+	for (UTBTVButton* Button : Buttons)
+	{
+		Button->OnComponentBeginOverlap.AddDynamic(this, &ATBTVRemote::OnButtonOverlap);
+		Button->OnComponentEndOverlap.AddDynamic(this, &ATBTVRemote::OnButtonEndOverlap);
+	}
+	UpdateGlow();
+}
+
+void ATBTVRemote::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+	// 電源は通知がないので、変わった時だけ反映する。
+	if (IsValid(TV) && TV->IsPowerOn() != bLastPowerOn)
+	{
+		UpdateGlow();
+	}
+}
+
+void ATBTVRemote::UpdateGlow()
+{
+	bLastPowerOn = IsValid(TV) && TV->IsPowerOn();
+	if (!GlowMaterial)
 	{
 		return;
 	}
-	TArray<UTBTVButton*> Buttons;
-	GetComponents(Buttons);
-	for (auto* Button : Buttons)
+	TArray<AActor*> Riders;
+	for (const UTBTVButton* Button : Buttons)
 	{
-		Button->OnComponentBeginOverlap.AddDynamic(this, &ATBTVRemote::OnButtonOverlap);
+		// 電源OFF中に押せるのは電源ボタンだけ。押せないボタンは踏んでも沈ませない。
+		const bool bUsable = bLastPowerOn || Button->CurrentKey == ETBRemoteKey::Power;
+		Button->GetOverlappingActors(Riders, ATBCharacter::StaticClass());
+		const float State = !bUsable ? -.6f : Riders.Num() > 0 ? 2.f : 1.f;
+		GlowMaterial->SetScalarParameterValue(Button->GetGlowParameterName(), State);
 	}
+}
+
+void ATBTVRemote::OnButtonEndOverlap(UPrimitiveComponent*, AActor*, UPrimitiveComponent*, int32)
+{
+	UpdateGlow();
 }
 
 void ATBTVRemote::OnButtonOverlap(UPrimitiveComponent* Component, AActor* OtherActor, UPrimitiveComponent*, int32, bool,
                                   const FHitResult&)
 {
+	UpdateGlow();
+	if (!HasAuthority())
+	{
+		return;
+	}
 	const auto* Button = Cast<UTBTVButton>(Component);
 	auto* Viewer = Cast<ATBCharacter>(OtherActor);
 	const double Now = GetWorld()->GetTimeSeconds();
