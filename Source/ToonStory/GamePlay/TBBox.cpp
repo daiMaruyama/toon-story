@@ -1,6 +1,8 @@
 // Copyright (c) 2026 Mamodou. All Rights Reserved.
 
 #include "TBBox.h"
+#include "Audio/TBBoxAudioComponent.h"
+#include "Audio/TBAudioEvents.h"
 #include "Core/TBPlayerState.h"
 #include "Core/TBGameState.h"
 #include "Core/TBGameMode.h"
@@ -18,6 +20,7 @@
 
 ATBBox::ATBBox()
 {
+	CreateDefaultSubobject<UTBBoxAudioComponent>(TEXT("GameplayAudio"));
 	bReplicates = true;
 	bAlwaysRelevant = true;
 	PrimaryActorTick.bCanEverTick = true;
@@ -169,6 +172,9 @@ bool ATBBox::Store(ATBCharacter* Toy)
 	Toy->SetFrozen(false);
 	Toy->SetToyState(ETBToyState::Boxed);
 	Toy->ForceNetUpdate();
+	UTBAudioEvents::Emit(this, ETBSoundEvent::Store, Toy->TBPS(), InteractionPoint->GetComponentLocation());
+	UTBAudioEvents::Emit(this, ETBSoundEvent::BoxedTransition, Toy->TBPS(), FVector::ZeroVector);
+	UTBAudioEvents::Emit(this, ETBSoundEvent::TeamNotice, Toy->TBPS(), FVector::ZeroVector);
 	MulticastOpened();
 	if (auto* GameMode = GetWorld()->GetAuthGameMode<ATBGameMode>())
 	{
@@ -213,6 +219,8 @@ void ATBBox::Tick(float DeltaSeconds)
 	}
 	if (RescueCount == 0)
 	{
+		if (RescueProgress > 0.f && HasPrisoners())
+			UTBAudioEvents::Emit(this, ETBSoundEvent::RescueCancel, nullptr, FVector::ZeroVector);
 		Rescuers = 0;
 		RescueProgress = 0;
 		return;
@@ -255,6 +263,7 @@ void ATBBox::ReleasePrisoners()
 	}
 	if (Released > 0)
 	{
+		UTBAudioEvents::Emit(this, ETBSoundEvent::RescueComplete, nullptr, InteractionPoint->GetComponentLocation());
 		MulticastOpened();
 	}
 	if (!HasPrisoners())

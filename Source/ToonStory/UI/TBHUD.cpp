@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Mamodou. All Rights Reserved.
 
 #include "TBHUD.h"
+#include "Audio/TBAudioSubsystem.h"
 #include "Core/TBPlayerState.h"
 #include "Core/TBGameState.h"
 #include "Core/TBController.h"
@@ -87,11 +88,11 @@ void ATBHUD::DrawLobby()
 	Text(FString::Printf(TEXT("%02d:%02d   /   %d collectibles"), FMath::CeilToInt(State->Settings.Duration) / 60,
 	                     FMath::CeilToInt(State->Settings.Duration) % 60, State->Settings.RequiredItems),
 	     758, 284, 1.1f, Ink);
-	Text(TEXT("Doors stay open. Explore every room."), 758, 322, 1.f, Muted);
 	const bool Host = PC->HasAuthority();
-	Button(TEXT("FewerToys"), TEXT("- Toy slot"), 758, 362, 184, Host && State->Settings.Toys > 1);
-	Button(TEXT("MoreToys"), TEXT("+ Toy slot"), 956, 362, 194,
-	       Host && State->Settings.Humans + State->Settings.Toys < State->PlayerLimit);
+	Button(TEXT("FewerChildren"), TEXT("- Child slot"), 758, 322, 184, Host && State->Settings.Humans > 1);
+	Button(TEXT("MoreChildren"), TEXT("+ Child slot"), 956, 322, 194, Host && State->Settings.Toys > 1);
+	Button(TEXT("FewerToys"), TEXT("- Toy slot"), 758, 374, 184, Host && State->Settings.Toys > 1);
+	Button(TEXT("MoreToys"), TEXT("+ Toy slot"), 956, 374, 194, Host && State->Settings.Humans > 1);
 	Text(FString::Printf(TEXT("%d / %d ready"), Ready, State->Settings.Humans + State->Settings.Toys), 758, 430, 1.25f,
 	     Accent);
 	Text(TEXT("YOUR PREFERENCE"), 28, 514, 1.f, Muted);
@@ -101,13 +102,14 @@ void ATBHUD::DrawLobby()
 	Button(TEXT("Either"), TEXT("Either team"), 432, 542, 180, true, Local && Local->Preference == ETBTeam::None);
 	Button(TEXT("Ready"), Local && Local->bReady ? TEXT("Cancel ready [R]") : TEXT("Ready [R]"), 632, 542, 240,
 	       Local != nullptr, Local && Local->bReady);
-	const bool EveryoneReady = Ready == State->Settings.Humans + State->Settings.Toys && Ready == Row;
+	const bool EveryoneReady = State->Settings.Humans > 0 && State->Settings.Toys > 0 &&
+	                           Ready == State->Settings.Humans + State->Settings.Toys && Ready == Row;
 	const bool CanStart = Host && EveryoneReady;
 	Button(TEXT("Start"), Host ? TEXT("Start match [F5]") : TEXT("Waiting for host"), 890, 542, 282, CanStart,
 	       CanStart);
 	if (!EveryoneReady)
 	{
-		Text(Row < State->Settings.Humans + State->Settings.Toys ? TEXT("Invite players or lower the toy count.")
+		Text(Row < 2 ? TEXT("Invite at least one more player.")
 		                                                         : TEXT("Everyone must be ready to start."),
 		     28, 465, .9f, Muted);
 	}
@@ -128,6 +130,12 @@ void ATBHUD::NotifyHitBoxClick(FName Name)
 	if (!PC || !State)
 	{
 		return;
+	}
+	if (auto* Audio = PC->GetGameInstance()->GetSubsystem<UTBAudioSubsystem>())
+	{
+		if (Name != TEXT("Ready") && Name != TEXT("Child") && Name != TEXT("Toy") && Name != TEXT("Either") &&
+		    Name != TEXT("MoreChildren") && Name != TEXT("FewerChildren") && Name != TEXT("MoreToys") && Name != TEXT("FewerToys"))
+			Audio->PlaySoundEvent(Name == TEXT("Resume") || Name == TEXT("Leave") ? ETBSoundEvent::UIBack : ETBSoundEvent::UIClick);
 	}
 	if (Name == TEXT("Resume"))
 	{
@@ -167,6 +175,11 @@ void ATBHUD::NotifyHitBoxClick(FName Name)
 	else if (Name == TEXT("Either"))
 	{
 		PC->TBPrefer(0);
+	}
+	else if (Name == TEXT("MoreChildren") || Name == TEXT("FewerChildren"))
+	{
+		PC->TBRules(State->Settings.Humans + (Name == TEXT("MoreChildren") ? 1 : -1), State->Settings.Toys,
+		            State->Settings.Duration, State->Settings.RequiredItems);
 	}
 	else if (Name == TEXT("MoreToys") || Name == TEXT("FewerToys"))
 	{
@@ -359,4 +372,11 @@ void ATBHUD::DrawDebugHUD()
 		Line(FString::Printf(TEXT("Rescue: %.0f%% | Rescuers: %d"), State->Box->RescueProgress * 100,
 		                     State->Box->Rescuers));
 	}
+}
+
+void ATBHUD::NotifyHitBoxBeginCursorOver(FName BoxName)
+{
+    Super::NotifyHitBoxBeginCursorOver(BoxName);
+    if (auto* PC = GetOwningPlayerController())
+        if (auto* Audio = PC->GetGameInstance()->GetSubsystem<UTBAudioSubsystem>()) Audio->PlaySoundEvent(ETBSoundEvent::UIHover);
 }

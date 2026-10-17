@@ -1,6 +1,8 @@
 // Copyright (c) 2026 Mamodou. All Rights Reserved.
 
 #include "TBController.h"
+#include "Audio/TBAudioEvents.h"
+#include "Audio/TBAudioSubsystem.h"
 #include "Core/TBPlayerState.h"
 #include "Core/TBGameState.h"
 #include "Core/TBGameMode.h"
@@ -216,6 +218,7 @@ void ATBController::ServerReady_Implementation()
 	{
 		ToyPlayerInfo->bReady = !ToyPlayerInfo->bReady;
 		ToyPlayerInfo->ForceNetUpdate();
+		UTBAudioEvents::Emit(this, ToyPlayerInfo->bReady ? ETBSoundEvent::Ready : ETBSoundEvent::Unready, ToyPlayerInfo, FVector::ZeroVector);
 	}
 }
 
@@ -242,12 +245,28 @@ void ATBController::ServerPreference_Implementation(ETBTeam Team)
 	if (MatchInfo && MatchInfo->Phase == ETBPhase::Lobby && ToyPlayerInfo &&
 	    (Team == ETBTeam::None || Team == ETBTeam::Human || Team == ETBTeam::Toy))
 	{
+		if (ToyPlayerInfo->Preference != Team) ClientPlaySoundEvent(ETBSoundEvent::UIChange, FVector::ZeroVector);
 		ToyPlayerInfo->Preference = Team;
 		ToyPlayerInfo->bReady = false;
 	}
 }
 
-void ATBController::ClientNotice_Implementation(const FString& Message)
+void ATBController::ClientNotice_Implementation(const FString& Message, bool bError)
 {
 	Notice = Message;
+	if (bError) ClientPlaySoundEvent(ETBSoundEvent::UIError, FVector::ZeroVector);
+}
+
+void ATBController::ClientPlaySoundEvent_Implementation(ETBSoundEvent Event, FVector Location)
+{
+	// A shared output uses the same primary listener as voice, BGM and team-only loops.
+	if (!IsLocalController() || !GetGameInstance() ||
+	    GetGameInstance()->GetFirstLocalPlayerController(GetWorld()) != this)
+	{
+		return;
+	}
+	if (auto* Audio = GetGameInstance()->GetSubsystem<UTBAudioSubsystem>())
+	{
+		Audio->PlaySoundEvent(Event, Location);
+	}
 }
