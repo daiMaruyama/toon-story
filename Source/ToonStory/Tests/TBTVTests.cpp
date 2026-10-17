@@ -71,7 +71,6 @@ bool FTBTVTest::RunTest(const FString& Parameters)
 		}
 		return false;
 	}
-	TV->SourceBox = State->Box;
 	TV->ScreenMaterial = FixtureMaterial;
 	TV->FinishSpawning(Placement);
 	auto* ViewerController = Cast<ATBController>(UGameplayStatics::CreatePlayer(World, -1, true));
@@ -123,7 +122,7 @@ bool FTBTVTest::RunTest(const FString& Parameters)
 		TV->Destroy();
 		Overview->Destroy();
 	};
-	if (Viewer && Target && TV->SourceBox)
+	if (Viewer && Target && State->Box)
 	{
 		// 視聴者が箱に入ると、番号は人間（Host）→残りのおもちゃ（Target）の順になる。
 		const int32 HumanNumber = ATBBoxTV::CameraChannels;
@@ -136,7 +135,7 @@ bool FTBTVTest::RunTest(const FString& Parameters)
 		TV->Tick(0);
 		TestFalse(TEXT("No capture when no local player is boxed"), TV->IsCapturing());
 		TestFalse(TEXT("Free toy cannot change television"), TV->SelectChannel(Viewer, TargetNumber));
-		TestTrue(TEXT("Viewer can be stored without ending match"), TV->SourceBox->Store(Viewer));
+		TestTrue(TEXT("Viewer can be stored without ending match"), State->Box->Store(Viewer));
 		TV->Tick(0);
 		TestTrue(TEXT("Boxed local player starts capture scheduling"), TV->IsCapturing());
 		TestEqual(TEXT("Initial channel is overview"), TV->GetChannel().Number, 0);
@@ -203,7 +202,7 @@ bool FTBTVTest::RunTest(const FString& Parameters)
 		// 実フレームでタイマーを動かす。同期テスト内のWorld::Tick連打ではタイマーは進まない。
 		const double Deadline = FPlatformTime::Seconds() + 15;
 		ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand(
-		    [this, World, TV, Viewer, Target, TargetController, TargetNumber, Mode, Noise, Deadline, Cleanup,
+		    [this, World, State, TV, Viewer, Target, TargetController, TargetNumber, Mode, Noise, Deadline, Cleanup,
 		     WaitFrom = World->GetTimeSeconds(), Phase = 0]() mutable
 		    {
 			    if (World->GetTimeSeconds() - WaitFrom < .75 && FPlatformTime::Seconds() < Deadline)
@@ -239,7 +238,7 @@ bool FTBTVTest::RunTest(const FString& Parameters)
 				    return false;
 			    default:
 				    TestEqual(TEXT("Empty channel shows static"), Noise(), 1.f);
-				    TV->SourceBox->ReleasePrisoners();
+				    State->Box->ReleasePrisoners();
 				    TV->Tick(0);
 				    TestFalse(TEXT("Rescue stops capturing"), TV->IsCapturing());
 				    Mode->Finish(ETBWinner::Humans, TEXT("TV test cleanup"));

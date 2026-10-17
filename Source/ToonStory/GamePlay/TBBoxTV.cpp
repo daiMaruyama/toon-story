@@ -1,7 +1,6 @@
 // Copyright (c) 2026 Mamodou. All Rights Reserved.
 
 #include "TBBoxTV.h"
-#include "TBBox.h"
 #include "TBTVCamera.h"
 #include "Character/TBCharacter.h"
 #include "Core/TBGameHelpers.h"
@@ -9,9 +8,13 @@
 #include "Core/TBPlayerState.h"
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
+#include "Components/ChildActorComponent.h"
 #include "Components/SceneCaptureComponent2D.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Components/TextBlock.h"
+#include "Components/WidgetComponent.h"
+#include "Blueprint/UserWidget.h"
 #include "Engine/TextureRenderTarget2D.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -39,11 +42,22 @@ ATBBoxTV::ATBBoxTV()
 	Capture->bCaptureEveryFrame = false;
 	Capture->bCaptureOnMovement = false;
 	Capture->CaptureSource = ESceneCaptureSource::SCS_FinalColorLDR;
+	ChannelOSD = CreateDefaultSubobject<UWidgetComponent>(TEXT("ChannelOSD"));
+	ChannelOSD->SetupAttachment(Screen);
+	ChannelOSD->SetWidgetSpace(EWidgetSpace::World);
+	ChannelOSD->SetDrawSize(FVector2D(320, 96));
+	ChannelOSD->SetBlendMode(EWidgetBlendMode::Transparent);
+	ChannelOSD->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	ChannelOSD->SetCastShadow(false);
+	ChannelOSD->SetRenderInMainPass(false);
+	ChannelOSD->SetRenderInDepthPass(false);
+	ChannelOSD->SetTickWhenOffscreen(true);
 }
 
 void ATBBoxTV::BeginPlay()
 {
 	Super::BeginPlay();
+	ChannelOSD->SetComponentTickEnabled(false); // 映るまで止めておく
 	if (GetNetMode() != NM_DedicatedServer && ScreenMaterial)
 	{
 		ScreenInstance = UMaterialInstanceDynamic::Create(ScreenMaterial, this);
@@ -55,14 +69,13 @@ void ATBBoxTV::BeginPlay()
 void ATBBoxTV::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-	DOREPLIFETIME(ATBBoxTV, SourceBox);
 	DOREPLIFETIME(ATBBoxTV, Channel);
 	DOREPLIFETIME(ATBBoxTV, bPowerOn);
 }
 
 bool ATBBoxTV::HasLocalViewer() const
 {
-	if (!TB::Playing(GetWorld()) || !IsValid(SourceBox))
+	if (!TB::Playing(GetWorld()))
 	{
 		return false;
 	}
@@ -199,9 +212,20 @@ bool ATBBoxTV::TogglePower(ATBCharacter* Viewer)
 	{
 		return false;
 	}
-	bPowerOn = !bPowerOn;
-	ForceNetUpdate();
+	SetPowerOn(!bPowerOn);
 	return true;
+}
+
+void ATBBoxTV::SetPowerOn(bool bOn)
+{
+	bPowerOn = bOn;
+	ForceNetUpdate();
+	OnRep_PowerOn(); // リッスンサーバーのローカルにも通知する。
+}
+
+void ATBBoxTV::OnRep_PowerOn()
+{
+	OnPowerChanged.Broadcast();
 }
 
 void ATBBoxTV::OnRep_Channel()
@@ -210,6 +234,7 @@ void ATBBoxTV::OnRep_Channel()
 	if (bViewing)
 	{
 		ScreenInstance->SetScalarParameterValue(TEXT("Noise"), 1.f);
+		UpdateChannelOSD();
 	}
 }
 
@@ -218,9 +243,14 @@ void ATBBoxTV::Tick(float DeltaSeconds)
 	Super::Tick(DeltaSeconds);
 	if (HasAuthority() && !bPowerOn && !TB::Playing(GetWorld()))
 	{
-		bPowerOn = true; // 次の試合は電源ONから始める。
+		SetPowerOn(true); // 次の試合は電源ONから始める。
 	}
 	SetViewing(GetNetMode() != NM_DedicatedServer && bPowerOn && HasLocalViewer());
+	// テクスチャは最初の描画で作られるので、できるまでTickで試す。
+	if (bViewing && !bOSDBound)
+	{
+		BindChannelOSD();
+	}
 }
 
 void ATBBoxTV::SetViewing(bool bEnable)
@@ -235,6 +265,7 @@ void ATBBoxTV::SetViewing(bool bEnable)
 	if (!bViewing)
 	{
 		Capture->HiddenActors.Reset();
+		ChannelOSD->SetComponentTickEnabled(false);
 		return;
 	}
 	if (!RenderTarget)
@@ -255,6 +286,8 @@ void ATBBoxTV::SetViewing(bool bEnable)
 	TimerParameters.bMaxOncePerFrame = true;
 	GetWorldTimerManager().SetTimer(CaptureTimer, this, &ATBBoxTV::CaptureFrame,
 	                                1.f / FMath::Clamp(CaptureRate, 1.f, 30.f), TimerParameters);
+	ChannelOSD->SetComponentTickEnabled(true);
+	UpdateChannelOSD();
 }
 
 bool ATBBoxTV::SetCaptureView()
@@ -285,6 +318,15 @@ bool ATBBoxTV::SetCaptureView()
 	Capture->SetWorldLocationAndRotation(Character->GetPawnViewLocation() + Smoothing, Character->GetBaseAimRotation());
 	Capture->FOVAngle = Character->Camera->FieldOfView;
 	Capture->HiddenActors.Add(const_cast<ATBCharacter*>(Character));
+	// 掴まれたおもちゃの子アクターは、掴んだ人の手に付いているので、TVに映らないように隠す。
+	TInlineComponentArray<UChildActorComponent*> Visuals(Character);
+	for (const auto* Visual : Visuals)
+	{
+		if (auto* Child = Visual->GetChildActor())
+		{
+			Capture->HiddenActors.Add(Child);
+		}
+	}
 	return true;
 }
 
@@ -309,4 +351,33 @@ void ATBBoxTV::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	GetWorldTimerManager().ClearTimer(CaptureTimer);
 	Capture->TextureTarget = nullptr;
 	Super::EndPlay(EndPlayReason);
+}
+
+void ATBBoxTV::UpdateChannelOSD()
+{
+	// WBPのTextBlockは「Label」という名前にしておく。
+	const auto* Widget = ChannelOSD->GetWidget();
+	if (!Widget)
+	{
+		return;
+	}
+	auto* Label = Cast<UTextBlock>(Widget->GetWidgetFromName(TEXT("Label")));
+	if (!Label)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("ChannelOSD に Label という TextBlock が見つからない"));
+		return;
+	}
+	Label->SetText(FText::Format(NSLOCTEXT("TBBoxTV", "ChannelOSD", "CH {0}"), Channel.Number));
+}
+
+void ATBBoxTV::BindChannelOSD()
+{
+	auto* Target = ChannelOSD->GetRenderTarget();
+	if (!Target || !ScreenInstance)
+	{
+		return;
+	}
+	ScreenInstance->SetTextureParameterValue(TEXT("OSD"), Target);
+	ScreenInstance->SetScalarParameterValue(TEXT("OSDOpacity"), 1.f);
+	bOSDBound = true;
 }
