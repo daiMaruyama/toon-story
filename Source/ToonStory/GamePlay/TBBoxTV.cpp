@@ -52,12 +52,12 @@ ATBBoxTV::ATBBoxTV()
 	ChannelOSD->SetRenderInMainPass(false);
 	ChannelOSD->SetRenderInDepthPass(false);
 	ChannelOSD->SetTickWhenOffscreen(true);
-	ChannelOSD->PrimaryComponentTick.bStartWithTickEnabled = false;
 }
 
 void ATBBoxTV::BeginPlay()
 {
 	Super::BeginPlay();
+	ChannelOSD->SetComponentTickEnabled(false); // 映るまで止めておく
 	if (GetNetMode() != NM_DedicatedServer && ScreenMaterial)
 	{
 		ScreenInstance = UMaterialInstanceDynamic::Create(ScreenMaterial, this);
