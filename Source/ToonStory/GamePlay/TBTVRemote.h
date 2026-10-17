@@ -32,6 +32,8 @@ private:
 	double LastPressTime = -1;
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UTBTVButton>> Buttons;
+	// Buttons と同じ並びのマテリアルのパラメータ名。
+	TArray<FName> GlowParameters;
 	UPROPERTY(Transient)
 	TObjectPtr<UMaterialInstanceDynamic> GlowMaterial;
 	UFUNCTION()
@@ -42,4 +44,5 @@ private:
 	                        int32 OtherBodyIndex);
 	// 押せる・踏まれている・押せない をボタンごとにマテリアルへ反映する。
 	void UpdateGlow();
+	void UpdateButtonGlow(int32 Index);
 };

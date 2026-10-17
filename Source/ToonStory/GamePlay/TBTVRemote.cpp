@@ -34,6 +34,7 @@ void ATBTVRemote::BeginPlay()
 	{
 		Button->OnComponentBeginOverlap.AddDynamic(this, &ATBTVRemote::OnButtonOverlap);
 		Button->OnComponentEndOverlap.AddDynamic(this, &ATBTVRemote::OnButtonEndOverlap);
+		GlowParameters.Add(Button->GetGlowParameterName());
 	}
 	if (IsValid(TV))
 	{
@@ -44,31 +45,36 @@ void ATBTVRemote::BeginPlay()
 
 void ATBTVRemote::UpdateGlow()
 {
-	if (!GlowMaterial)
+	for (int32 Index = 0; Index < Buttons.Num(); ++Index)
 	{
-		return;
-	}
-	const bool bPowerOn = IsValid(TV) && TV->IsPowerOn();
-	TArray<AActor*> Riders;
-	for (const UTBTVButton* Button : Buttons)
-	{
-		// 電源OFF中に押せるのは電源ボタンだけ。押せないボタンは踏んでも沈ませない。
-		const bool bUsable = bPowerOn || Button->CurrentKey == ETBRemoteKey::Power;
-		Button->GetOverlappingActors(Riders, ATBCharacter::StaticClass());
-		const float State = !bUsable ? GlowUnavailable : Riders.Num() > 0 ? GlowPressed : GlowAvailable;
-		GlowMaterial->SetScalarParameterValue(Button->GetGlowParameterName(), State);
+		UpdateButtonGlow(Index);
 	}
 }
 
-void ATBTVRemote::OnButtonEndOverlap(UPrimitiveComponent*, AActor*, UPrimitiveComponent*, int32)
+void ATBTVRemote::UpdateButtonGlow(int32 Index)
 {
-	UpdateGlow();
+	if (!GlowMaterial || !Buttons.IsValidIndex(Index))
+	{
+		return;
+	}
+	const UTBTVButton* Button = Buttons[Index];
+	// 電源OFF中に押せるのは電源ボタンだけ。押せないボタンは踏んでも沈ませない。
+	const bool bUsable = (IsValid(TV) && TV->IsPowerOn()) || Button->CurrentKey == ETBRemoteKey::Power;
+	TArray<AActor*> Riders;
+	Button->GetOverlappingActors(Riders, ATBCharacter::StaticClass());
+	const float State = !bUsable ? GlowUnavailable : Riders.Num() > 0 ? GlowPressed : GlowAvailable;
+	GlowMaterial->SetScalarParameterValue(GlowParameters[Index], State);
+}
+
+void ATBTVRemote::OnButtonEndOverlap(UPrimitiveComponent* Component, AActor*, UPrimitiveComponent*, int32)
+{
+	UpdateButtonGlow(Buttons.IndexOfByKey(Component));
 }
 
 void ATBTVRemote::OnButtonOverlap(UPrimitiveComponent* Component, AActor* OtherActor, UPrimitiveComponent*, int32, bool,
                                   const FHitResult&)
 {
-	UpdateGlow();
+	UpdateButtonGlow(Buttons.IndexOfByKey(Component));
 	if (!HasAuthority())
 	{
 		return;

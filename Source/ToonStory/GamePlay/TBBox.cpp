@@ -10,7 +10,6 @@
 #include "Components/StaticMeshComponent.h"
 #include "Components/BoxComponent.h"
 #include "Components/CapsuleComponent.h"
-#include "Components/PointLightComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -45,12 +44,6 @@ ATBBox::ATBBox()
 	StorageRoom = CreateDefaultSubobject<USceneComponent>(TEXT("StorageRoom"));
 	StorageRoom->SetupAttachment(Root);
 	StorageRoom->SetRelativeLocation(FVector(3000, 0, 0));
-	auto* Light = CreateDefaultSubobject<UPointLightComponent>(TEXT("StorageRoomLight"));
-	Light->SetupAttachment(StorageRoom);
-	Light->SetRelativeLocation(FVector(400, 0, 250));
-	// 部屋の明かりは TB_ToyBoxRoom 側（PPV の環境光と壁の自己発光）が持つ。
-	Light->SetIntensity(0.f);
-	Light->SetCastShadows(false);
 	// 収納後は従来の別室へ移動する。木箱の見た目や大きさから独立させる。
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> Cube(TEXT("/Engine/BasicShapes/Cube.Cube"));
 	const FVector RoomCenters[] = {{400, 0, -10},    {0, -210, 160},  {0, 210, 160}, {0, 0, 280}, {800, 0, 160},
@@ -176,6 +169,7 @@ bool ATBBox::Store(ATBCharacter* Toy)
 	Toy->SetFrozen(false);
 	Toy->SetToyState(ETBToyState::Boxed);
 	Toy->ForceNetUpdate();
+	MulticastOpened();
 	if (auto* GameMode = GetWorld()->GetAuthGameMode<ATBGameMode>())
 	{
 		GameMode->CheckWin();
@@ -241,6 +235,7 @@ void ATBBox::ReleasePrisoners()
 		return;
 	}
 	int32 Slot = 0;
+	int32 Released = 0;
 	for (TActorIterator<ATBCharacter> It(GetWorld()); It; ++It)
 	{
 		auto* Toy = *It;
@@ -255,7 +250,12 @@ void ATBBox::ReleasePrisoners()
 		{
 			Toy->SetFrozen(false);
 			Toy->SetToyState(ETBToyState::Free);
+			++Released;
 		}
+	}
+	if (Released > 0)
+	{
+		MulticastOpened();
 	}
 	if (!HasPrisoners())
 	{
@@ -267,4 +267,9 @@ void ATBBox::ReleasePrisoners()
 		}
 	}
 	ForceNetUpdate();
+}
+
+void ATBBox::MulticastOpened_Implementation()
+{
+	OnOpened.Broadcast();
 }

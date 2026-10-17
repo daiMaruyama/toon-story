@@ -347,7 +347,11 @@ void ATBBoxTV::UpdateChannelOSD()
 {
 	// WBPのTextBlockは「Label」という名前にしておく。
 	const auto* Widget = ChannelOSD->GetWidget();
-	auto* Label = Widget ? Cast<UTextBlock>(Widget->GetWidgetFromName(TEXT("Label"))) : nullptr;
+	if (!Widget)
+	{
+		return;
+	}
+	auto* Label = Cast<UTextBlock>(Widget->GetWidgetFromName(TEXT("Label")));
 	if (!Label)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("ChannelOSD に Label という TextBlock が見つからない"));

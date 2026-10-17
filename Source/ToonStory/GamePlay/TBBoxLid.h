@@ -45,7 +45,7 @@ public:
 	float FlashSeconds = .35f;
 
 private:
-	int32 LastBoxedCount = -1;
+	bool bBoundToBox = false;
 	float Elapsed = -1.f;
 	UPROPERTY(Transient)
 	TObjectPtr<UMaterialInstanceDynamic> CeilingMaterial;
@@ -53,6 +53,7 @@ private:
 	FVector Hinge = FVector::ZeroVector;
 	float OpenSign = 1.f;
 	float RestExposure = 0.f;
+	void Open();
 	void SetOpen(float Alpha);
 	void SetFlash(float Alpha);
 };

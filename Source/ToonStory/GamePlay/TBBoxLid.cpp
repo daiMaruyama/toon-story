@@ -7,6 +7,7 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Core/TBGameHelpers.h"
 #include "Core/TBGameState.h"
+#include "GamePlay/TBBox.h"
 
 ATBBoxLid::ATBBoxLid()
 {
@@ -31,6 +32,8 @@ void ATBBoxLid::BeginPlay()
 		{
 			CeilingMaterial = Mesh->CreateDynamicMaterialInstance(0);
 		}
+		// 毎フレーム動かすので、レベル側が Static のままでも動けるようにする。
+		Ceiling->GetRootComponent()->SetMobility(EComponentMobility::Movable);
 		CeilingRest = Ceiling->GetActorTransform();
 		FVector Origin, Extent;
 		Ceiling->GetActorBounds(false, Origin, Extent);
@@ -50,19 +53,16 @@ void ATBBoxLid::BeginPlay()
 void ATBBoxLid::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
-	const auto* State = TB::GS(GetWorld());
-	if (!State)
+	// 箱は GameState 経由で後から届くことがあるので、見つかるまで探して収納・救助の合図に登録する。
+	if (!bBoundToBox)
 	{
-		return;
+		const auto* State = TB::GS(GetWorld());
+		if (State && State->Box)
+		{
+			State->Box->OnOpened.AddUObject(this, &ATBBoxLid::Open);
+			bBoundToBox = true;
+		}
 	}
-	// 収納・救助のたびに箱の中の人数が変わるので、それを蓋が開く合図にする。
-	const bool bPlaying = TB::Playing(GetWorld());
-	const int32 Boxed = bPlaying ? State->BoxedCount : 0;
-	if (bPlaying && LastBoxedCount >= 0 && Boxed != LastBoxedCount)
-	{
-		Elapsed = 0.f;
-	}
-	LastBoxedCount = Boxed;
 	if (Elapsed < 0.f)
 	{
 		return;
@@ -80,9 +80,21 @@ void ATBBoxLid::Tick(float DeltaSeconds)
 	SetOpen(Alpha);
 }
 
+void ATBBoxLid::Open()
+{
+	if (Elapsed < 0.f)
+	{
+		Elapsed = 0.f;
+		return;
+	}
+	// 開いている途中で次の合図が来たら、閉じずに今の開き具合から開き直す。
+	const float Closing = Elapsed - OpenSeconds - HoldSeconds;
+	Elapsed = Closing > 0.f ? OpenSeconds * FMath::Max(0.f, 1.f - Closing / CloseSeconds) : FMath::Min(Elapsed, OpenSeconds);
+}
+
 void ATBBoxLid::SetOpen(float Alpha)
 {
-	const float Eased = Alpha * Alpha * (3.f - 2.f * Alpha);
+	const float Eased = FMath::SmoothStep(0.f, 1.f, Alpha);
 	Light->SetIntensity(PeakIntensity * Eased);
 	if (CeilingMaterial)
 	{
@@ -100,6 +112,7 @@ void ATBBoxLid::SetFlash(float Alpha)
 {
 	if (RoomVolume)
 	{
+		RoomVolume->Settings.bOverride_AutoExposureBias = true;
 		RoomVolume->Settings.AutoExposureBias = RestExposure + FlashExposure * Alpha;
 	}
 }
