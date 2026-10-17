@@ -3,6 +3,7 @@
 #include "TBHUD.h"
 #include "Core/TBLobbySettings.h"
 #include "TBPaperStyle.h"
+#include "Audio/TBAudioSubsystem.h"
 #include "Core/TBPlayerState.h"
 #include "Core/TBGameState.h"
 #include "Core/TBController.h"
@@ -24,6 +25,13 @@ void ATBHUD::NotifyHitBoxClick(FName Name)
 	if (!PC || !State)
 	{
 		return;
+	}
+	if (auto* Audio = PC->GetGameInstance()->GetSubsystem<UTBAudioSubsystem>())
+	{
+		if (Name != TEXT("Ready") && Name != TEXT("Child") && Name != TEXT("Toy") && Name != TEXT("Either") &&
+		    Name != TEXT("MoreChildren") && Name != TEXT("FewerChildren") && Name != TEXT("MoreToys") && Name != TEXT("FewerToys") &&
+		    Name != TEXT("LessTime") && Name != TEXT("MoreTime") && Name != TEXT("FewerBatteries") && Name != TEXT("MoreBatteries"))
+			Audio->PlaySoundEvent(Name == TEXT("Resume") || Name == TEXT("Leave") || Name == TEXT("CloseSettings") || Name == TEXT("CancelStage") ? ETBSoundEvent::UIBack : ETBSoundEvent::UIClick);
 	}
 	if (Name == TEXT("Resume"))
 	{
@@ -64,6 +72,11 @@ void ATBHUD::NotifyHitBoxClick(FName Name)
 	else if (Name == TEXT("Either"))
 	{
 		PC->TBPrefer(0);
+	}
+	else if (Name == TEXT("MoreChildren") || Name == TEXT("FewerChildren"))
+	{
+		PC->TBRules(State->Settings.Humans + (Name == TEXT("MoreChildren") ? 1 : -1), State->Settings.Toys,
+		            State->Settings.Duration, State->Settings.RequiredItems);
 	}
 	else if (Name == TEXT("MoreToys") || Name == TEXT("FewerToys"))
 	{
@@ -149,4 +162,11 @@ void ATBHUD::DrawDebugHUD()
 		Line(FString::Printf(TEXT("Rescue: %.0f%% | Rescuers: %d"), State->Box->RescueProgress * 100,
 		                     State->Box->Rescuers));
 	}
+}
+
+void ATBHUD::NotifyHitBoxBeginCursorOver(FName BoxName)
+{
+    Super::NotifyHitBoxBeginCursorOver(BoxName);
+    if (auto* PC = GetOwningPlayerController())
+        if (auto* Audio = PC->GetGameInstance()->GetSubsystem<UTBAudioSubsystem>()) Audio->PlaySoundEvent(ETBSoundEvent::UIHover);
 }

@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Mamodou. All Rights Reserved.
 
 #include "UI/TBTitleMenu.h"
+#include "Audio/TBAudioSubsystem.h"
 #include "Core/TBSession.h"
 #include "Components/Button.h"
 #include "Components/TextBlock.h"
@@ -48,9 +49,20 @@ void UTBTitleMenu::Refresh()
 
 void UTBTitleMenu::SelectionChanged(FString Item, ESelectInfo::Type SelectionType)
 {
+	if (SelectionType != ESelectInfo::Direct) Hover();
 	if (Session) JoinButton->SetIsEnabled(!Session->IsBusy() && Session->Rooms.IsValidIndex(RoomList->GetSelectedIndex()));
 }
-void UTBTitleMenu::Host() { if (Session) Session->Host(); }
-void UTBTitleMenu::Find() { if (Session) Session->Find(); }
-void UTBTitleMenu::Join() { if (Session) Session->Join(RoomList->GetSelectedIndex()); }
-void UTBTitleMenu::Cleanup() { if (Session) Session->Leave(); }
+namespace
+{
+	void PlayMenuClick(UGameInstance* GameInstance, ETBSoundEvent Event = ETBSoundEvent::UIClick)
+	{
+		if (GameInstance)
+			if (auto* Audio = GameInstance->GetSubsystem<UTBAudioSubsystem>()) Audio->PlaySoundEvent(Event);
+	}
+}
+
+void UTBTitleMenu::Host() { PlayMenuClick(GetGameInstance()); if (Session) Session->Host(); }
+void UTBTitleMenu::Find() { PlayMenuClick(GetGameInstance()); if (Session) Session->Find(); }
+void UTBTitleMenu::Join() { PlayMenuClick(GetGameInstance()); if (Session) Session->Join(RoomList->GetSelectedIndex()); }
+void UTBTitleMenu::Hover() { PlayMenuClick(GetGameInstance(), ETBSoundEvent::UIHover); }
+void UTBTitleMenu::Cleanup() { PlayMenuClick(GetGameInstance(), ETBSoundEvent::UIBack); if (Session) Session->Leave(); }

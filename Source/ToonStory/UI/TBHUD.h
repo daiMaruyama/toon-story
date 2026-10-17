@@ -16,6 +16,7 @@ public:
 	virtual void NotifyHitBoxClick(FName BoxName) override;
 	bool IsLobbySettingsOpen() const { return bLobbySettingsOpen; }
 	bool IsStagePickerOpen() const { return bStagePickerOpen; }
+	virtual void NotifyHitBoxBeginCursorOver(FName BoxName) override;
 
 private:
 	bool bLobbySettingsOpen = false;

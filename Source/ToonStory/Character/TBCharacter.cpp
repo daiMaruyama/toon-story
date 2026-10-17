@@ -1,11 +1,13 @@
 // Copyright (c) 2026 Mamodou. All Rights Reserved.
 
 #include "TBCharacter.h"
+#include "Audio/TBAudioEvents.h"
 #include "Core/TBPlayerState.h"
 #include "Core/TBGameState.h"
 #include "Core/TBGameMode.h"
 #include "Character/TBMovement.h"
 #include "Character/TBVoiceComponent.h"
+#include "Audio/TBCharacterAudioComponent.h"
 #include "GamePlay/TBBox.h"
 #include "GamePlay/TBDummyToy.h"
 #include "GamePlay/TBPickup.h"
@@ -79,6 +81,7 @@ ATBCharacter::ATBCharacter(const FObjectInitializer& Init)
 	CarryAnchor->SetUsingAbsoluteRotation(true);
 	CarryAnchor->SetRelativeLocation(FVector(95, 0, 10));
 	Voice = CreateDefaultSubobject<UTBVoiceComponent>(TEXT("Voice"));
+	CreateDefaultSubobject<UTBCharacterAudioComponent>(TEXT("GameplayAudio"));
 	GetCharacterMovement()->MaxWalkSpeed = HumanSpeed;
 }
 
@@ -267,6 +270,11 @@ void ATBCharacter::SetFrozen(bool bFrozen)
 	{
 		ClearHeldInteraction();
 	}
+	if (TBPS()->ToyState == ETBToyState::Free && !Carrier)
+	{
+		UTBAudioEvents::Emit(this, bFrozen ? ETBSoundEvent::Frozen : ETBSoundEvent::Thawed,
+		                    TBPS(), GetActorLocation());
+	}
 }
 
 void ATBCharacter::SetToyState(ETBToyState NewState)
@@ -435,6 +443,8 @@ void ATBCharacter::Tick(float DeltaSeconds)
 	if (ToyPlayerState->ToyState == ETBToyState::Grabbed && Now >= GrabEnds)
 	{
 		CarriedToy->SetToyState(ETBToyState::Carried);
+		UTBAudioEvents::Emit(this, ETBSoundEvent::CarryLift, TBPS(), FVector::ZeroVector);
+		UTBAudioEvents::Emit(this, ETBSoundEvent::CarryLift, CarriedToy->TBPS(), FVector::ZeroVector);
 	}
 	if (ToyPlayerState->ToyState == ETBToyState::Storing)
 	{
@@ -456,6 +466,10 @@ void ATBCharacter::Tick(float DeltaSeconds)
 
 void ATBCharacter::ClearHeldInteraction()
 {
+	if (HasAuthority() && CarriedDummy && StoreStarted >= 0)
+	{
+		UTBAudioEvents::Emit(this, ETBSoundEvent::StoreCancel, TBPS(), FVector::ZeroVector);
+	}
 	bHoldingInteract = false;
 	bRescuing = false;
 	StoreStarted = -1;
@@ -463,6 +477,7 @@ void ATBCharacter::ClearHeldInteraction()
 	    CarriedToy->TBPS()->ToyState == ETBToyState::Storing)
 	{
 		CarriedToy->SetToyState(ETBToyState::Carried);
+		UTBAudioEvents::Emit(this, ETBSoundEvent::StoreCancel, TBPS(), FVector::ZeroVector);
 	}
 }
 
@@ -500,6 +515,8 @@ void ATBCharacter::DropToy()
 			DropPosition = DesiredPosition;
 		}
 	}
+	UTBAudioEvents::Emit(this, ETBSoundEvent::CarryDrop, TBPS(), FVector::ZeroVector);
+	UTBAudioEvents::Emit(this, ETBSoundEvent::CarryDrop, Toy->TBPS(), FVector::ZeroVector);
 	Toy->Carrier = nullptr;
 	Toy->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
 	Toy->SetActorLocation(DropPosition, false, nullptr, ETeleportType::TeleportPhysics);
@@ -571,14 +588,16 @@ void ATBCharacter::ServerInteract_Implementation()
 		if (ClosestToy)
 		{
 			ClosestToy->ClearHeldInteraction();
-			ClosestToy->SetFrozen(false);
 			CarriedToy = ClosestToy;
 			ClosestToy->Carrier = this;
+			ClosestToy->SetFrozen(false);
 			ClosestToy->SetToyState(ETBToyState::Grabbed);
 			ClosestToy->OnRep_Carrier();
 			ClosestToy->ForceNetUpdate();
 			GrabEnds = Now + .25;
 			ApplyState();
+			UTBAudioEvents::Emit(this, ETBSoundEvent::Capture, ClosestToy->TBPS(), ClosestToy->GetActorLocation());
+			UTBAudioEvents::Emit(this, ETBSoundEvent::TeamNotice, ClosestToy->TBPS(), FVector::ZeroVector);
 		}
 		else
 		{

@@ -185,7 +185,7 @@ void ATBHUD::DrawLobby()
 	       Host && State->Settings.RequiredItems < TBLobbySettings::AvailableItems(GetWorld()));
 	Button(TEXT("FewerToys"), TEXT("- おもちゃ"), 758, 350, 184, Host && State->Settings.Toys > 1);
 	Button(TEXT("MoreToys"), TEXT("+ おもちゃ"), 956, 350, 194,
-	       Host && State->Settings.Humans + State->Settings.Toys < State->PlayerLimit);
+	       Host && State->Settings.Humans > 1);
 	Text(FString::Printf(TEXT("にんげん %d人 ／ おもちゃ %d体"), State->Settings.Humans, State->Settings.Toys), 758,
 	     405, .95f, Ink);
 	Text(FString::Printf(TEXT("%d / %d人 準備OK"), Ready, State->Settings.Humans + State->Settings.Toys), 758, 430,
@@ -197,13 +197,14 @@ void ATBHUD::DrawLobby()
 	Button(TEXT("Ready"), Local && Local->bReady ? TEXT("準備をやめる [R]") : TEXT("準備OK [R]"), 632, 542, 240,
 	       Local != nullptr, Local && Local->bReady);
 	const bool EveryoneReady = Ready == State->Settings.Humans + State->Settings.Toys && Ready == Row;
-	const bool CanStart = Host && EveryoneReady;
+	const bool EnoughPlayers = State->Settings.Humans >= 1 && State->Settings.Toys >= 1;
+	const bool CanStart = Host && EveryoneReady && EnoughPlayers;
 	Button(TEXT("Start"), Host ? TEXT("あそびはじめる [F5]") : TEXT("ホストを待っています"), 890, 542, 282, CanStart,
 	       CanStart);
-	if (!EveryoneReady)
+	if (!EveryoneReady || !EnoughPlayers)
 	{
-		Text(Row < State->Settings.Humans + State->Settings.Toys
-		         ? TEXT("仲間を呼ぶか、おもちゃの人数を減らしてください。")
+		Text(!EnoughPlayers
+		         ? TEXT("にんげんとおもちゃ、2人以上で遊べます。")
 		         : TEXT("全員の準備ができたら、はじめよう。"),
 		     48, 456, .85f, Muted);
 	}

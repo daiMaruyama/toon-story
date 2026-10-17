@@ -1,5 +1,6 @@
 #include "TBBox.h"
 #include "TBDummyToy.h"
+#include "Audio/TBAudioEvents.h"
 #include "Core/TBGameHelpers.h"
 #include "Components/CapsuleComponent.h"
 #include "Engine/World.h"
@@ -24,6 +25,7 @@ bool ATBBox::StoreDummy(ATBDummyToy* Toy)
 			continue;
 		}
 		Toy->Place(Position, this);
+		UTBAudioEvents::Emit(this, ETBSoundEvent::Store, nullptr, InteractionPoint->GetComponentLocation());
 		MulticastOpened();
 		return true;
 	}

@@ -1,4 +1,7 @@
 #include "TBDummyToy.h"
+#include "Audio/TBAudioEvents.h"
+#include "Core/TBPlayerState.h"
+#include "TimerManager.h"
 #include "Character/TBCharacter.h"
 #include "Character/TBToyPresentation.h"
 #include "Components/ChildActorComponent.h"
@@ -114,8 +117,18 @@ bool ATBDummyToy::PickUp(ATBCharacter* Human)
 	bFalling = false;
 	Human->GrabEnds = GetWorld()->GetTimeSeconds() + .25;
 	Human->CarriedDummy = this;
+	FTimerHandle LiftTimer;
+	const double LiftAt = Human->GrabEnds;
+	GetWorldTimerManager().SetTimer(LiftTimer, FTimerDelegate::CreateWeakLambda(this, [this, LiftAt]()
+	{
+		if (IsValid(Holder) && Holder->GrabEnds == LiftAt)
+		{
+			UTBAudioEvents::Emit(this, ETBSoundEvent::CarryLift, Holder->TBPS(), FVector::ZeroVector);
+		}
+	}), .25f, false);
 	OnRep_Holder();
 	Human->ApplyState();
+	UTBAudioEvents::Emit(this, ETBSoundEvent::Capture, nullptr, GetActorLocation());
 	Human->ForceNetUpdate();
 	ForceNetUpdate();
 	return true;
@@ -127,6 +140,7 @@ void ATBDummyToy::PutDown()
 		return;
 	}
 	ATBCharacter* Human = Holder;
+	UTBAudioEvents::Emit(this, ETBSoundEvent::CarryDrop, Human->TBPS(), FVector::ZeroVector);
 	FVector Position = Human->GetActorLocation();
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(DummyDrop), false, Human);
 	Params.AddIgnoredActor(this);

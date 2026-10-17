@@ -69,6 +69,14 @@ void ATBGameMode::BeginPlay()
 		}
 	}
 	TBLobbySettings::Restore(this);
+	SyncLobbyCounts();
+}
+
+void ATBGameMode::PostSeamlessTravel()
+{
+	Super::PostSeamlessTravel();
+	TBLobbySettings::Restore(this);
+	SyncLobbyCounts();
 }
 
 // 検証用の床・壁・箱・開始位置・アイテムをサーバーで一度だけ生成する。
@@ -151,6 +159,7 @@ void ATBGameMode::PreLogin(const FString& Options, const FString& Address, const
 void ATBGameMode::PostLogin(APlayerController* PlayerController)
 {
 	Super::PostLogin(PlayerController);
+	SyncLobbyCounts();
 	if (auto* ToyCharacter = Cast<ATBCharacter>(PlayerController->GetPawn()))
 	{
 		ToyCharacter->ApplyState();
@@ -162,6 +171,32 @@ bool ATBGameMode::IsHost(const APlayerController* PlayerController) const
 	return PlayerController && PlayerController->IsLocalController() && PlayerController->HasAuthority();
 }
 
+int32 ATBGameMode::LobbyPlayerCount() const
+{
+	int32 Count = 0;
+	if (const auto* State = TB::GS(GetWorld()))
+	{
+		for (const APlayerState* Player : State->PlayerArray)
+		{
+			Count += Cast<ATBPlayerState>(Player) ? 1 : 0;
+		}
+	}
+	return Count;
+}
+
+void ATBGameMode::SyncLobbyCounts()
+{
+	auto* State = TB::GS(GetWorld());
+	if (!State || State->Phase != ETBPhase::Lobby) return;
+	const int32 Count = LobbyPlayerCount();
+	// Preserve children where possible, leaving one toy when there are at least two players.
+	const int32 Humans = Count < 2 ? Count : FMath::Clamp(State->Settings.Humans, 1, Count - 1);
+	if (State->Settings.Humans == Humans && State->Settings.Toys == Count - Humans) return;
+	State->Settings.Humans = Humans;
+	State->Settings.Toys = Count - Humans;
+	State->ForceNetUpdate();
+}
+
 // ホストからの設定変更を検証し、各プレイヤーのReadyは維持する。
 void ATBGameMode::SetRules(APlayerController* PlayerController, const FTBSettings& Rules)
 {
@@ -170,8 +205,21 @@ void ATBGameMode::SetRules(APlayerController* PlayerController, const FTBSetting
 	{
 		return;
 	}
-	if (!GameSession || Rules.Humans < 1 || Rules.Toys < 1 ||
-	    int64(Rules.Humans) + Rules.Toys > GameSession->MaxPlayers || !FMath::IsFinite(Rules.Duration) ||
+	const int32 Count = LobbyPlayerCount();
+	FTBSettings Adjusted = Rules;
+	// A single changed field determines the other; explicit pairs must already match the lobby.
+	if (Rules.Humans != MatchInfo->Settings.Humans && Rules.Toys == MatchInfo->Settings.Toys)
+	{
+		if (Rules.Humans < 0 || Rules.Humans > Count) return;
+		Adjusted.Toys = Count - Rules.Humans;
+	}
+	else if (Rules.Toys != MatchInfo->Settings.Toys && Rules.Humans == MatchInfo->Settings.Humans)
+	{
+		if (Rules.Toys < 0 || Rules.Toys > Count) return;
+		Adjusted.Humans = Count - Rules.Toys;
+	}
+	if (!GameSession || Adjusted.Humans < (Count > 0 ? 1 : 0) || Adjusted.Toys < (Count > 1 ? 1 : 0) ||
+	    int64(Adjusted.Humans) + Adjusted.Toys != Count || Count > GameSession->MaxPlayers || !FMath::IsFinite(Rules.Duration) ||
 	    Rules.Duration < 10 || Rules.Duration > 3600 || Rules.RequiredItems < 1)
 	{
 		return;
@@ -188,7 +236,8 @@ void ATBGameMode::SetRules(APlayerController* PlayerController, const FTBSetting
 	{
 		return;
 	}
-	MatchInfo->Settings = Rules;
+	CastChecked<ATBController>(PlayerController)->ClientPlaySoundEvent(ETBSoundEvent::UIChange, FVector::ZeroVector);
+	MatchInfo->Settings = Adjusted;
 	MatchInfo->ForceNetUpdate();
 }
 
@@ -209,11 +258,12 @@ void ATBGameMode::StartRound(APlayerController* PlayerController)
 			Players.Add(CandidateState);
 		}
 	}
-	if (Players.Num() != MatchInfo->Settings.Humans + MatchInfo->Settings.Toys)
+	if (MatchInfo->Settings.Humans < 1 || MatchInfo->Settings.Toys < 1 ||
+	    Players.Num() != MatchInfo->Settings.Humans + MatchInfo->Settings.Toys)
 	{
 		if (HostController)
 		{
-			HostController->ClientNotice(TEXT("Player count must match rules (TBRules H T Seconds Items)."));
+			HostController->ClientNotice(TEXT("At least one child and one toy are required to start."));
 		}
 		return;
 	}
@@ -329,6 +379,7 @@ void ATBGameMode::ReturnToLobby(APlayerController* PlayerController)
 	State->Winner = ETBWinner::None;
 	State->Reason.Reset();
 	State->Phase = ETBPhase::Lobby;
+	SyncLobbyCounts();
 	State->ForceNetUpdate();
 	SpawnCursor = 0;
 	for (auto It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
@@ -336,7 +387,7 @@ void ATBGameMode::ReturnToLobby(APlayerController* PlayerController)
 		if (auto* Controller = Cast<ATBController>(It->Get()))
 		{
 			RestartPlayer(Controller);
-			Controller->ClientNotice(TEXT("Same room. Choose your role and ready up for another round."));
+			Controller->ClientNotice(TEXT("Same room. Choose your role and ready up for another round."), false);
 		}
 	}
 	if (auto* Session = GetGameInstance()->GetSubsystem<UTBSession>())
@@ -548,6 +599,7 @@ void ATBGameMode::Logout(AController* Exiting)
 		MatchInfo->RemovePlayerState(Exiting->PlayerState);
 	}
 	Super::Logout(Exiting);
+	SyncLobbyCounts();
 	if (!WasPlaying)
 	{
 		return;

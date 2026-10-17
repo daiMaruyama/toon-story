@@ -89,6 +89,7 @@ void UTBTitleMenu::BuildPaperLayout()
 		Style.SetPressed(TBPaper::Brush(PaperTexture, FLinearColor(.9f, .66f, .47f)));
 		Style.SetDisabled(TBPaper::Brush(PaperTexture, FLinearColor(.46f, .46f, .43f)));
 		B->SetStyle(Style);
+		B->OnHovered.AddDynamic(this, &ThisClass::Hover);
 		auto* ButtonLabel = Label(Text, W < 250 ? 15 : 21, TBPaper::Ink);
 		ButtonLabel->SetAutoWrapText(false);
 		B->SetContent(ButtonLabel);

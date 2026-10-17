@@ -22,6 +22,7 @@ public:
 	virtual void PreLogin(const FString& Options, const FString& Address, const FUniqueNetIdRepl& UniqueId,
 	                      FString& Error) override;
 	virtual void PostLogin(APlayerController* NewPlayer) override;
+	virtual void PostSeamlessTravel() override;
 	virtual void Logout(AController* Exiting) override;
 	virtual AActor* ChoosePlayerStart_Implementation(AController* Player) override;
 	UPROPERTY(EditDefaultsOnly)
@@ -43,6 +44,8 @@ public:
 	TArray<TObjectPtr<AActor>> SpawnPoints;
 
 private:
+	int32 LobbyPlayerCount() const;
+	void SyncLobbyCounts();
 	void DestroyRoundCharacters();
 	void ResetStageInteractions();
 	void BuildArena();
