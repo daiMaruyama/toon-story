@@ -197,9 +197,20 @@ bool ATBBoxTV::TogglePower(ATBCharacter* Viewer)
 	{
 		return false;
 	}
-	bPowerOn = !bPowerOn;
-	ForceNetUpdate();
+	SetPowerOn(!bPowerOn);
 	return true;
+}
+
+void ATBBoxTV::SetPowerOn(bool bOn)
+{
+	bPowerOn = bOn;
+	ForceNetUpdate();
+	OnRep_PowerOn(); // リッスンサーバーのローカルにも通知する。
+}
+
+void ATBBoxTV::OnRep_PowerOn()
+{
+	OnPowerChanged.Broadcast();
 }
 
 void ATBBoxTV::OnRep_Channel()
@@ -216,7 +227,7 @@ void ATBBoxTV::Tick(float DeltaSeconds)
 	Super::Tick(DeltaSeconds);
 	if (HasAuthority() && !bPowerOn && !TB::Playing(GetWorld()))
 	{
-		bPowerOn = true; // 次の試合は電源ONから始める。
+		SetPowerOn(true); // 次の試合は電源ONから始める。
 	}
 	SetViewing(GetNetMode() != NM_DedicatedServer && bPowerOn && HasLocalViewer());
 }

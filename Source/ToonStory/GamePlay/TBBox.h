@@ -49,5 +49,6 @@ public:
 	bool Store(ATBCharacter* Toy);
 	bool HasPrisoners() const;
 	// 収納先の候補位置（StorageRoom のローカル座標）。
+	static constexpr int32 StorageSlotCount = 9;
 	static FVector StorageSlot(int32 Slot);
 };

@@ -15,6 +15,8 @@ class USceneCaptureComponent2D;
 class UStaticMeshComponent;
 class UTextureRenderTarget2D;
 
+DECLARE_MULTICAST_DELEGATE(FTBTVPowerChanged);
+
 /** 0〜2は固定カメラ、3〜9は箱にいないプレイヤー（人間→おもちゃ、各PlayerId順。最大8人−捕まった1人＝7人）。映すものが無い番号は砂嵐。 */
 USTRUCT()
 struct FTBTVChannel
@@ -75,6 +77,8 @@ public:
 	{
 		return bPowerOn;
 	}
+	// 電源が変わった時に各PCで呼ばれる。
+	FTBTVPowerChanged OnPowerChanged;
 	bool IsCapturing() const
 	{
 		return bViewing;
@@ -83,7 +87,7 @@ public:
 private:
 	UPROPERTY(ReplicatedUsing = OnRep_Channel)
 	FTBTVChannel Channel;
-	UPROPERTY(Replicated)
+	UPROPERTY(ReplicatedUsing = OnRep_PowerOn)
 	bool bPowerOn = true;
 	UPROPERTY(Transient)
 	TObjectPtr<UTextureRenderTarget2D> RenderTarget;
@@ -95,6 +99,9 @@ private:
 
 	UFUNCTION()
 	void OnRep_Channel();
+	UFUNCTION()
+	void OnRep_PowerOn();
+	void SetPowerOn(bool bOn);
 	bool CanOperate(const ATBCharacter* Viewer) const;
 	TArray<ATBPlayerState*> GetPlayerChannels() const;
 	ATBTVCamera* FindCamera(int32 Number) const;

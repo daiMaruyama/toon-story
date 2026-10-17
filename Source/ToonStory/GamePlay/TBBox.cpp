@@ -133,7 +133,12 @@ bool ATBBox::CanStoreFrom(const ATBCharacter* Character) const
 // 蓋は -Y 側が持ち上がる（TBBoxLid）ので、その真下の天井近くから落とす。リモコンの上には落とさない。
 FVector ATBBox::StorageSlot(int32 Slot)
 {
-	return FVector(200 + (Slot % 3) * 180, -185 - (Slot / 3) * 30, 220);
+	// 部屋は X 0〜800・Y ±300・天井 Z 320。3 列ずつ -Y の壁際へ並べる。
+	constexpr int32 Columns = 3;
+	constexpr float FirstX = 200.f, StepX = 180.f;
+	constexpr float FirstY = -185.f, StepY = -30.f;
+	constexpr float DropHeight = 220.f;
+	return FVector(FirstX + (Slot % Columns) * StepX, FirstY + (Slot / Columns) * StepY, DropHeight);
 }
 
 // 収納の最終確認を行い、箱内へ移してから勝敗を確認する。
@@ -147,7 +152,7 @@ bool ATBBox::Store(ATBCharacter* Toy)
 	FVector StoragePosition;
 	bool bFoundPosition = false;
 	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(TBStorage), false, Toy);
-	for (int32 Slot = 0; Slot < 9; ++Slot)
+	for (int32 Slot = 0; Slot < StorageSlotCount; ++Slot)
 	{
 		const FVector Candidate = StorageRoom->GetComponentTransform().TransformPosition(StorageSlot(Slot));
 		if (!GetWorld()->OverlapBlockingTestByChannel(

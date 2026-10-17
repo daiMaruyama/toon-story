@@ -19,7 +19,6 @@ class TOONSTORY_API ATBTVRemote : public AActor
 public:
 	ATBTVRemote();
 	virtual void BeginPlay() override;
-	virtual void Tick(float DeltaSeconds) override;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Remote")
 	TObjectPtr<UStaticMeshComponent> Mesh;
@@ -31,7 +30,6 @@ public:
 
 private:
 	double LastPressTime = -1;
-	bool bLastPowerOn = false;
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UTBTVButton>> Buttons;
 	UPROPERTY(Transient)
