@@ -45,6 +45,7 @@ void ATBBoxLid::BeginPlay()
 	if (RoomVolume)
 	{
 		RestExposure = RoomVolume->Settings.AutoExposureBias;
+		bRestExposureOverride = RoomVolume->Settings.bOverride_AutoExposureBias;
 	}
 	SetOpen(0.f);
 	SetFlash(0.f);
@@ -112,7 +113,8 @@ void ATBBoxLid::SetFlash(float Alpha)
 {
 	if (RoomVolume)
 	{
-		RoomVolume->Settings.bOverride_AutoExposureBias = true;
+		// 光っている間だけ上書きし、終わったら元の設定に戻す。
+		RoomVolume->Settings.bOverride_AutoExposureBias = Alpha > 0.f || bRestExposureOverride;
 		RoomVolume->Settings.AutoExposureBias = RestExposure + FlashExposure * Alpha;
 	}
 }

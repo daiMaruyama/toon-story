@@ -53,6 +53,7 @@ private:
 	FVector Hinge = FVector::ZeroVector;
 	float OpenSign = 1.f;
 	float RestExposure = 0.f;
+	bool bRestExposureOverride = false;
 	void Open();
 	void SetOpen(float Alpha);
 	void SetFlash(float Alpha);
