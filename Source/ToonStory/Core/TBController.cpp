@@ -11,7 +11,9 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "Camera/CameraActor.h"
+#include "Camera/CameraComponent.h"
 #include "UI/TBScreenTransition.h"
+#include "Kismet/KismetSystemLibrary.h"
 
 void ATBController::PlayerTick(float DeltaTime)
 {
@@ -27,6 +29,11 @@ void ATBController::PlayerTick(float DeltaTime)
 	UpdateLobbyCamera(InLobby);
 	UpdateMenuInput(ShowMenu);
 	UpdateScreenTransition();
+	if (NoticeExpires > 0 && GetWorld()->GetTimeSeconds() > NoticeExpires)
+	{
+		Notice.Reset();
+		NoticeExpires = 0;
+	}
 }
 
 // 切替はサーバーで確定して届くので、自分の状態を見てから演出を出す。
@@ -73,6 +80,7 @@ void ATBController::UpdateLobbyCamera(bool InLobby)
 				if (It->ActorHasTag(TEXT("TBLobbyCamera")))
 				{
 					LobbyCamera = *It;
+					It->GetCameraComponent()->bConstrainAspectRatio = false;
 					break;
 				}
 			}
@@ -170,6 +178,11 @@ void ATBController::TBLeave()
 	}
 }
 
+void ATBController::TBQuit()
+{
+	UKismetSystemLibrary::QuitGame(this, this, EQuitPreference::Quit, false);
+}
+
 void ATBController::TBReady()
 {
 	ServerReady();
@@ -243,11 +256,12 @@ void ATBController::ServerPreference_Implementation(ETBTeam Team)
 	    (Team == ETBTeam::None || Team == ETBTeam::Human || Team == ETBTeam::Toy))
 	{
 		ToyPlayerInfo->Preference = Team;
-		ToyPlayerInfo->bReady = false;
+		ToyPlayerInfo->ForceNetUpdate();
 	}
 }
 
 void ATBController::ClientNotice_Implementation(const FString& Message)
 {
 	Notice = Message;
+	NoticeExpires = GetWorld()->GetTimeSeconds() + 5;
 }

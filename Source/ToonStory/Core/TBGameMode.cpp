@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Mamodou. All Rights Reserved.
 
 #include "TBGameMode.h"
+#include "TBLobbySettings.h"
 #include "Core/TBPlayerState.h"
 #include "Core/TBGameState.h"
 #include "Core/TBController.h"
@@ -9,6 +10,7 @@
 #include "Character/TBCharacter.h"
 #include "Character/TBToyCharacter.h"
 #include "GamePlay/TBBox.h"
+#include "GamePlay/TBDummyToy.h"
 #include "GamePlay/TBPickup.h"
 #include "GamePlay/TBBlock.h"
 #include "GamePlay/TBRuleMath.h"
@@ -55,15 +57,18 @@ void ATBGameMode::BeginPlay()
 	{
 		const FString Map = GetWorld()->GetMapName();
 		MatchInfo->PlayerLimit = GameSession ? GameSession->MaxPlayers : 0;
-		MatchInfo->StageName = Map.Contains(TEXT("KidsRoom"))  ? TEXT("Kids' Rooms")
-		                       : Map.Contains(TEXT("ArchViz")) ? TEXT("ArchViz Apartment")
-		                                                       : TEXT("Test Arena");
+		MatchInfo->StageName = Map.Contains(TEXT("ToyWorldDemo")) ? TEXT("ToyWorld Demo")
+		                       : Map.Contains(TEXT("ToyWorld"))   ? TEXT("紙のひみつクラブ")
+		                       : Map.Contains(TEXT("KidsRoom"))   ? TEXT("Kids' Rooms")
+		                       : Map.Contains(TEXT("ArchViz"))    ? TEXT("ArchViz Apartment")
+		                                                          : TEXT("Test Arena");
 		TActorIterator<ATBBox> It(GetWorld());
 		if (It)
 		{
 			MatchInfo->Box = *It;
 		}
 	}
+	TBLobbySettings::Restore(this);
 }
 
 // 検証用の床・壁・箱・開始位置・アイテムをサーバーで一度だけ生成する。
@@ -157,7 +162,7 @@ bool ATBGameMode::IsHost(const APlayerController* PlayerController) const
 	return PlayerController && PlayerController->IsLocalController() && PlayerController->HasAuthority();
 }
 
-// ホストからの設定変更を検証し、変更後は全員のReadyを解除する。
+// ホストからの設定変更を検証し、各プレイヤーのReadyは維持する。
 void ATBGameMode::SetRules(APlayerController* PlayerController, const FTBSettings& Rules)
 {
 	auto* MatchInfo = TB::GS(GetWorld());
@@ -185,13 +190,6 @@ void ATBGameMode::SetRules(APlayerController* PlayerController, const FTBSetting
 	}
 	MatchInfo->Settings = Rules;
 	MatchInfo->ForceNetUpdate();
-	for (APlayerState* ToyPlayerInfo : MatchInfo->PlayerArray)
-	{
-		if (auto* Toy = Cast<ATBPlayerState>(ToyPlayerInfo))
-		{
-			Toy->bReady = false;
-		}
-	}
 }
 
 // 人数・Ready・マップ構成を確認してから陣営を割り当て、試合を開始する。
@@ -349,6 +347,10 @@ void ATBGameMode::ReturnToLobby(APlayerController* PlayerController)
 
 void ATBGameMode::DestroyRoundCharacters()
 {
+	for (TActorIterator<ATBDummyToy> It(GetWorld()); It; ++It)
+	{
+		It->ResetPlacement();
+	}
 	// 運搬の親子関係を解除してから全Pawnを再生成する。
 	// 移動補間、入力、取得途中・収納途中のタイマーも新しいPawnで初期状態になる。
 	TArray<ATBCharacter*> OldCharacters;

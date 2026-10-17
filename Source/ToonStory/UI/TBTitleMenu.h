@@ -20,6 +20,7 @@ protected:
 	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
 private:
+	void BuildPaperLayout();
 	UPROPERTY(Transient) TObjectPtr<UTBSession> Session;
 	UPROPERTY(Transient) TObjectPtr<UButton> HostButton;
 	UPROPERTY(Transient) TObjectPtr<UButton> FindButton;
@@ -32,5 +33,19 @@ private:
 	UFUNCTION() void Find();
 	UFUNCTION() void Join();
 	UFUNCTION() void Cleanup();
+	UFUNCTION()
+	void Quit();
+	UFUNCTION()
+	void Help();
+	UFUNCTION()
+	class UWidget* RoomLabel(FString Item);
+	UPROPERTY(Transient)
+	TObjectPtr<class UFont> PaperFont;
+	UPROPERTY(Transient)
+	TObjectPtr<class UFont> LogoFont;
+	UPROPERTY(Transient)
+	TObjectPtr<class UTexture2D> PaperTexture;
+	UPROPERTY(Transient)
+	TObjectPtr<class UTexture2D> BackgroundTexture;
 	UFUNCTION() void SelectionChanged(FString Item, ESelectInfo::Type SelectionType);
 };

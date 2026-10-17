@@ -66,7 +66,7 @@ ATBBox::ATBBox()
 void ATBBox::BeginPlay()
 {
 	Super::BeginPlay();
-	Visual->SetStaticMesh(BoxMesh.LoadSynchronous());
+	RefreshAppearance();
 	if (auto* GameMode = GetWorld()->GetAuthGameMode<ATBGameMode>())
 	{
 		AddTickPrerequisiteActor(GameMode);
@@ -102,7 +102,7 @@ bool ATBBox::HasPrisoners() const
 			return true;
 		}
 	}
-	return false;
+	return HasDummyPrisoners();
 }
 
 bool ATBBox::CanStoreFrom(const ATBCharacter* Character) const
@@ -253,6 +253,7 @@ void ATBBox::ReleasePrisoners()
 			++Released;
 		}
 	}
+	Released += ReleaseDummyPrisoners(Slot);
 	if (Released > 0)
 	{
 		MulticastOpened();

@@ -11,10 +11,23 @@ class TOONSTORY_API ATBHUD : public AHUD
 {
 	GENERATED_BODY()
 public:
+	virtual void BeginPlay() override;
 	virtual void DrawHUD() override;
 	virtual void NotifyHitBoxClick(FName BoxName) override;
+	bool IsLobbySettingsOpen() const { return bLobbySettingsOpen; }
+	bool IsStagePickerOpen() const { return bStagePickerOpen; }
 
 private:
+	bool bLobbySettingsOpen = false;
+	bool bStagePickerOpen = false;
+	bool HandleLobbyPanelClick(FName Name);
+	UPROPERTY(Transient)
+	TObjectPtr<class UFont> PaperFont;
+	UPROPERTY(Transient)
+	TObjectPtr<class UTexture2D> PaperTexture;
+	void PaperPanel(FLinearColor Tint, float X, float Y, float W, float H);
+	void DrawText(const FString& Text, FLinearColor Color, float X, float Y, UFont* Font = nullptr, float Scale = 1.f,
+	              bool ScalePosition = false);
 	void DrawResults(const class ATBGameState& MatchState, class ATBController& Controller);
 	void DrawMatch(const class ATBGameState& MatchState, class ATBController& Controller);
 	void DrawLobby();

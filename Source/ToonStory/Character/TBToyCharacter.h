@@ -3,6 +3,7 @@
 #pragma once
 
 #include "TBCharacter.h"
+#include "TBToyPresentation.h"
 #include "TBToyCharacter.generated.h"
 
 class UChildActorComponent;
@@ -14,6 +15,7 @@ class TOONSTORY_API ATBToyCharacter : public ATBCharacter
 	GENERATED_BODY()
 public:
 	ATBToyCharacter(const FObjectInitializer& Init);
+	virtual void Tick(float DeltaSeconds) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 	// 表示専用BPの候補。ゲーム処理や独自の通信同期は持たせない。
@@ -33,6 +35,7 @@ protected:
 	virtual void UpdateAppearance(bool bToy) override;
 
 private:
+	FTBGripCache GripCache;
 	TWeakObjectPtr<AActor> AppliedVisual;
 	bool bAppliedOwnerNoSee = false;
 	bool bAppliedPause = false;
