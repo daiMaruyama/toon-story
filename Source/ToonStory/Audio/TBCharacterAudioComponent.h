@@ -32,6 +32,11 @@ public:
 private:
 	TWeakObjectPtr<ATBCharacter> Character;
 	TWeakObjectPtr<UAudioComponent> StoreAudio;
+	TWeakObjectPtr<UAudioComponent> CollectAudio;
+	bool bCollectLoopDesired = false;
+	uint32 CollectSettingsRevision = 0;
+	void UpdateCollectLoop(ATBCharacter* OwnerCharacter, UTBAudioSubsystem* Audio);
+	void StopCollectLoop(UTBAudioSubsystem* Audio);
 	FVector PreviousLocation = FVector::ZeroVector;
 	ETBTeam PreviousTeam = ETBTeam::None;
 	ETBToyState PreviousToyState = ETBToyState::Free;

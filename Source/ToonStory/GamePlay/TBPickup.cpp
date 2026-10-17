@@ -81,6 +81,8 @@ bool ATBPickup::Take(ATBCharacter* ToyCharacter)
 	ForceNetUpdate();
 	++MatchInfo->Collected;
 	++ToyCharacter->TBPS()->Items;
+	if (MatchInfo->Settings.RequiredItems - MatchInfo->Collected == 1)
+		UTBAudioEvents::Emit(this, ETBSoundEvent::BatteryLast, ToyCharacter->TBPS(), GetActorLocation());
 	UTBAudioEvents::Emit(this, ETBSoundEvent::Pickup, ToyCharacter->TBPS(), GetActorLocation());
 	if (auto* GameMode = GetWorld()->GetAuthGameMode<ATBGameMode>())
 	{

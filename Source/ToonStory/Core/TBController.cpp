@@ -211,7 +211,7 @@ void ATBController::ServerReady_Implementation()
 	{
 		ToyPlayerInfo->bReady = !ToyPlayerInfo->bReady;
 		ToyPlayerInfo->ForceNetUpdate();
-		UTBAudioEvents::Emit(this, ETBSoundEvent::Ready, ToyPlayerInfo, FVector::ZeroVector);
+		UTBAudioEvents::Emit(this, ToyPlayerInfo->bReady ? ETBSoundEvent::Ready : ETBSoundEvent::Unready, ToyPlayerInfo, FVector::ZeroVector);
 	}
 }
 
@@ -238,14 +238,16 @@ void ATBController::ServerPreference_Implementation(ETBTeam Team)
 	if (MatchInfo && MatchInfo->Phase == ETBPhase::Lobby && ToyPlayerInfo &&
 	    (Team == ETBTeam::None || Team == ETBTeam::Human || Team == ETBTeam::Toy))
 	{
+		if (ToyPlayerInfo->Preference != Team) ClientPlaySoundEvent(ETBSoundEvent::UIChange, FVector::ZeroVector);
 		ToyPlayerInfo->Preference = Team;
 		ToyPlayerInfo->bReady = false;
 	}
 }
 
-void ATBController::ClientNotice_Implementation(const FString& Message)
+void ATBController::ClientNotice_Implementation(const FString& Message, bool bError)
 {
 	Notice = Message;
+	if (bError) ClientPlaySoundEvent(ETBSoundEvent::UIError, FVector::ZeroVector);
 }
 
 void ATBController::ClientPlaySoundEvent_Implementation(ETBSoundEvent Event, FVector Location)

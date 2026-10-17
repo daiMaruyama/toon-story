@@ -1,4 +1,5 @@
 #include "TBSession.h"
+#include "Audio/TBAudioSubsystem.h"
 #include "Core/TBGameState.h"
 #include "Core/TBGameHelpers.h"
 #include "OnlineSubsystem.h"
@@ -55,9 +56,11 @@ void UTBSession::Deinitialize()
 	Super::Deinitialize();
 }
 
-void UTBSession::Message(const FString& Text)
+void UTBSession::Message(const FString& Text, bool bError)
 {
 	Status = Text;
+	if (bError)
+		if (auto* Audio = GetGameInstance()->GetSubsystem<UTBAudioSubsystem>()) Audio->PlaySoundEvent(ETBSoundEvent::UIError);
 	UE_LOG(LogTemp, Log, TEXT("[ToyBoxSession] %s"), *Text);
 	Changed.Broadcast();
 }
@@ -72,7 +75,7 @@ bool UTBSession::Acquire()
 	IOnlineSubsystem* OnlineSubsystem = Online::GetSubsystem(GetWorld());
 	if (!OnlineSubsystem || !OnlineSubsystem->GetSessionInterface().IsValid())
 	{
-		Message(TEXT("No online session interface."));
+		Message(TEXT("No online session interface."), true);
 		return false;
 	}
 	Sessions = OnlineSubsystem->GetSessionInterface();
@@ -105,7 +108,7 @@ void UTBSession::Host()
 	}
 	if (Sessions->GetNamedSession(NAME_GameSession))
 	{
-		Message(TEXT("Existing session: TBLeave before hosting again."));
+		Message(TEXT("Existing session: TBLeave before hosting again."), true);
 		return;
 	}
 	IOnlineSubsystem* OnlineSubsystem = Online::GetSubsystem(GetWorld());
@@ -114,7 +117,7 @@ void UTBSession::Host()
 	const auto* GameMode = GetWorld()->GetAuthGameMode();
 	if (!GameMode || !GameMode->GameSession || GameMode->GameSession->MaxPlayers < 2)
 	{
-		Message(TEXT("Hosting requires an offline/server world and MaxPlayers >= 2."));
+		Message(TEXT("Hosting requires an offline/server world and MaxPlayers >= 2."), true);
 		return;
 	}
 	Settings.NumPublicConnections = GameMode->GameSession->MaxPlayers;
@@ -135,7 +138,7 @@ void UTBSession::Host()
 	if (!Sessions->CreateSession(0, NAME_GameSession, Settings))
 	{
 		CurrentOperation = ESessionOperation::Idle;
-		Message(TEXT("CreateSession could not start. Check Steam login/App ID."));
+		Message(TEXT("CreateSession could not start. Check Steam login/App ID."), true);
 	}
 }
 
@@ -149,7 +152,7 @@ void UTBSession::Created(FName Name, bool bSucceeded)
 	CurrentOperation = ESessionOperation::Idle;
 	if (!bSucceeded)
 	{
-		Message(TEXT("Room creation failed."));
+		Message(TEXT("Room creation failed."), true);
 		return;
 	}
 	Message(TEXT("Room created. Opening listen server..."));
@@ -180,7 +183,7 @@ void UTBSession::Find()
 	}
 	if (Sessions->GetNamedSession(NAME_GameSession))
 	{
-		Message(TEXT("TBLeave before searching."));
+		Message(TEXT("TBLeave before searching."), true);
 		return;
 	}
 	IOnlineSubsystem* OnlineSubsystem = Online::GetSubsystem(GetWorld());
@@ -200,7 +203,7 @@ void UTBSession::Find()
 	if (!Sessions->FindSessions(0, Search.ToSharedRef()))
 	{
 		CurrentOperation = ESessionOperation::Idle;
-		Message(TEXT("FindSessions could not start."));
+		Message(TEXT("FindSessions could not start."), true);
 	}
 }
 
@@ -276,7 +279,7 @@ void UTBSession::Found(bool bSucceeded)
 	Rooms.Reset();
 	if (!bSucceeded || !Search.IsValid())
 	{
-		Message(TEXT("Search failed."));
+		Message(TEXT("Search failed."), true);
 		return;
 	}
 	for (const auto& SearchResult : Search->SearchResults)
@@ -305,7 +308,7 @@ void UTBSession::Join(int32 Index)
 	}
 	if (!Results.IsValidIndex(Index))
 	{
-		Message(TEXT("Invalid room index. TBFind first."));
+		Message(TEXT("Invalid room index. TBFind first."), true);
 		return;
 	}
 	BeginJoin(Results[Index]);
@@ -319,14 +322,14 @@ void UTBSession::BeginJoin(const FOnlineSessionSearchResult& SearchResult)
 	}
 	if (Sessions->GetNamedSession(NAME_GameSession))
 	{
-		Message(TEXT("TBLeave before joining another room."));
+		Message(TEXT("TBLeave before joining another room."), true);
 		return;
 	}
 	bool bLobbyOpen = false;
 	if (!SearchResult.Session.SessionSettings.Get(LobbyKey, bLobbyOpen) || !bLobbyOpen ||
 	    SearchResult.Session.NumOpenPublicConnections <= 0)
 	{
-		Message(TEXT("Room is closed or full. TBFind to refresh."));
+		Message(TEXT("Room is closed or full. TBFind to refresh."), true);
 		return;
 	}
 	CurrentOperation = ESessionOperation::Joining;
@@ -334,7 +337,7 @@ void UTBSession::BeginJoin(const FOnlineSessionSearchResult& SearchResult)
 	if (!Sessions->JoinSession(0, NAME_GameSession, SearchResult))
 	{
 		CurrentOperation = ESessionOperation::Idle;
-		Message(TEXT("JoinSession could not start."));
+		Message(TEXT("JoinSession could not start."), true);
 	}
 }
 
@@ -348,14 +351,14 @@ void UTBSession::Joined(FName Name, EOnJoinSessionCompleteResult::Type Result)
 	CurrentOperation = ESessionOperation::Idle;
 	if (Result != EOnJoinSessionCompleteResult::Success)
 	{
-		Message(TEXT("Join failed. If a local session remains, TBLeave then retry."));
+		Message(TEXT("Join failed. If a local session remains, TBLeave then retry."), true);
 		return;
 	}
 	FString URL;
 	APlayerController* PlayerController = GetGameInstance()->GetFirstLocalPlayerController();
 	if (!PlayerController || !Sessions->GetResolvedConnectString(NAME_GameSession, URL) || URL.IsEmpty())
 	{
-		Message(TEXT("Could not resolve connection. TBLeave to clean up."));
+		Message(TEXT("Could not resolve connection. TBLeave to clean up."), true);
 		return;
 	}
 	Message(TEXT("Connecting to host..."));
@@ -372,7 +375,7 @@ void UTBSession::Accepted(bool bSucceeded, int32 LocalUser, TSharedPtr<const FUn
 	FString Tag;
 	if (!SearchResult.Session.SessionSettings.Get(GameKey, Tag) || Tag != BuildTag)
 	{
-		Message(TEXT("Invite build mismatch."));
+		Message(TEXT("Invite build mismatch."), true);
 		return;
 	}
 	BeginJoin(SearchResult);
@@ -388,7 +391,7 @@ void UTBSession::Leave()
 	}
 	if (CurrentOperation != ESessionOperation::Idle)
 	{
-		Message(TEXT("Online operation still pending. Wait for its completion before leaving."));
+		Message(TEXT("Online operation still pending. Wait for its completion before leaving."), true);
 		return;
 	}
 	if (!Acquire())
@@ -407,7 +410,7 @@ void UTBSession::Leave()
 		if (!Sessions->DestroySession(NAME_GameSession))
 		{
 			CurrentOperation = ESessionOperation::Idle;
-			Message(TEXT("DestroySession could not start. Retry TBLeave."));
+			Message(TEXT("DestroySession could not start. Retry TBLeave."), true);
 		}
 	}
 	else
@@ -425,7 +428,7 @@ void UTBSession::Destroyed(FName Name, bool bSucceeded)
 	if (!bSucceeded)
 	{
 		CurrentOperation = ESessionOperation::Idle;
-		Message(TEXT("Session cleanup failed; retry TBLeave or restart the game."));
+		Message(TEXT("Session cleanup failed; retry TBLeave or restart the game."), true);
 		return;
 	}
 	ReturnOffline();
@@ -433,6 +436,7 @@ void UTBSession::Destroyed(FName Name, bool bSucceeded)
 
 void UTBSession::ReturnOffline()
 {
+	if (auto* Audio = GetGameInstance()->GetSubsystem<UTBAudioSubsystem>()) Audio->QueueTravelSound(ETBSoundEvent::LobbyLeave);
 	bLobbyUpdateInFlight = false;
 	if (UWorld* World = GetWorld())
 	{
@@ -458,7 +462,7 @@ void UTBSession::NetworkFailed(UWorld* World, UNetDriver* Driver, ENetworkFailur
 	{
 		return;
 	}
-	Message(FString::Printf(TEXT("Network failure: %s"), *Error));
+	Message(FString::Printf(TEXT("Network failure: %s"), *Error), true);
 	// 切断理由を表示してから退出する。
 	if (CurrentOperation == ESessionOperation::Idle)
 	{
@@ -474,5 +478,5 @@ void UTBSession::TravelFailed(UWorld* World, ETravelFailure::Type Type, const FS
 		return;
 	}
 	Message(FString::Printf(
-	    TEXT("Travel failed: %s. Check the destination map is saved/cooked; TBLeave cleans session."), *Error));
+	    TEXT("Travel failed: %s. Check the destination map is saved/cooked; TBLeave cleans session."), *Error), true);
 }

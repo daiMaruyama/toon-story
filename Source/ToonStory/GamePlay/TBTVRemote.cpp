@@ -1,4 +1,7 @@
 #include "TBTVRemote.h"
+#include "Audio/TBAudioEvents.h"
+#include "Audio/TBAudioSubsystem.h"
+#include "Engine/GameInstance.h"
 #include "TBBoxTV.h"
 #include "TBTVButton.h"
 #include "Character/TBCharacter.h"
@@ -62,5 +65,6 @@ void ATBTVRemote::OnButtonOverlap(UPrimitiveComponent* Component, AActor* OtherA
 	if (bHandled)
 	{
 		LastPressTime = Now;
+		UTBAudioEvents::Emit(this, ETBSoundEvent::TVButton, nullptr, FVector::ZeroVector);
 	}
 }

@@ -44,6 +44,7 @@ void UTBTitleMenu::NativeOnInitialized()
 		Label->SetText(FText::FromString(Text));
 		Label->SetColorAndOpacity(FSlateColor(FLinearColor::Black));
 		Button->SetContent(Label);
+		Button->OnHovered.AddDynamic(this, &ThisClass::Hover);
 		Column->AddChildToVerticalBox(Button)->SetPadding(FMargin(8, 6));
 		return Button;
 	};
@@ -95,18 +96,20 @@ void UTBTitleMenu::Refresh()
 
 void UTBTitleMenu::SelectionChanged(FString Item, ESelectInfo::Type SelectionType)
 {
+	if (SelectionType != ESelectInfo::Direct) Hover();
 	if (Session) JoinButton->SetIsEnabled(!Session->IsBusy() && Session->Rooms.IsValidIndex(RoomList->GetSelectedIndex()));
 }
 namespace
 {
-	void PlayMenuClick(UGameInstance* GameInstance)
+	void PlayMenuClick(UGameInstance* GameInstance, ETBSoundEvent Event = ETBSoundEvent::UIClick)
 	{
 		if (GameInstance)
-			if (auto* Audio = GameInstance->GetSubsystem<UTBAudioSubsystem>()) Audio->PlaySoundEvent(ETBSoundEvent::UIClick);
+			if (auto* Audio = GameInstance->GetSubsystem<UTBAudioSubsystem>()) Audio->PlaySoundEvent(Event);
 	}
 }
 
 void UTBTitleMenu::Host() { PlayMenuClick(GetGameInstance()); if (Session) Session->Host(); }
 void UTBTitleMenu::Find() { PlayMenuClick(GetGameInstance()); if (Session) Session->Find(); }
 void UTBTitleMenu::Join() { PlayMenuClick(GetGameInstance()); if (Session) Session->Join(RoomList->GetSelectedIndex()); }
-void UTBTitleMenu::Cleanup() { PlayMenuClick(GetGameInstance()); if (Session) Session->Leave(); }
+void UTBTitleMenu::Hover() { PlayMenuClick(GetGameInstance(), ETBSoundEvent::UIHover); }
+void UTBTitleMenu::Cleanup() { PlayMenuClick(GetGameInstance(), ETBSoundEvent::UIBack); if (Session) Session->Leave(); }

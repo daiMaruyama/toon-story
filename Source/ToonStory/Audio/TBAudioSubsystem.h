@@ -28,6 +28,8 @@ public:
 	void StopLoop(UAudioComponent* Audio);
 	UFUNCTION(BlueprintCallable, Category = "Toon Story|Audio")
 	void ReloadAudioSettings();
+	// Survives map cleanup; used for room closure notices after returning to Title.
+	void QueueTravelSound(ETBSoundEvent Event);
 	uint32 GetSettingsRevision() const { return SettingsRevision; }
 	void TrackVoice(UAudioComponent* Audio);
 	void UntrackVoice(UAudioComponent* Audio);
@@ -81,6 +83,10 @@ private:
 	float HumanFootstepToyPitchMultiplier = .75f;
 	uint32 SettingsRevision = 0;
 	bool bInitialized = false, bSawPlaying = false, bResultCuePlayed = false;
+	TOptional<ETBSoundEvent> TravelSound;
+	TWeakObjectPtr<UWorld> TravelFromWorld;
+	int32 LastLobbyCount = -1, LastRemainingSecond = -1;
+	double LastErrorTime = -1000;
 	void ChangeMusic(ETBMusicState Next);
 	void StopOwnedAudio();
 	void ReleaseVoiceTracking();

@@ -1,4 +1,7 @@
 #include "TBBoxTV.h"
+#include "Audio/TBAudioEvents.h"
+#include "Audio/TBAudioSubsystem.h"
+#include "Engine/GameInstance.h"
 #include "TBBox.h"
 #include "TBTVCamera.h"
 #include "Character/TBCharacter.h"
@@ -144,6 +147,8 @@ void ATBBoxTV::SetChannel(int32 Number)
 	Channel.Target = Players.IsValidIndex(Number - CameraChannels) ? Players[Number - CameraChannels] : nullptr;
 	++Channel.Revision;
 	ForceNetUpdate();
+	UTBAudioEvents::Emit(this, ETBSoundEvent::TVChannel, nullptr, FVector::ZeroVector);
+	UTBAudioEvents::Emit(this, ETBSoundEvent::TVGlitch, nullptr, FVector::ZeroVector);
 	OnRep_Channel(); // リッスンサーバーのローカル視聴者にも切替演出を適用する。
 }
 
@@ -198,6 +203,7 @@ bool ATBBoxTV::TogglePower(ATBCharacter* Viewer)
 		return false;
 	}
 	bPowerOn = !bPowerOn;
+	UTBAudioEvents::Emit(this, bPowerOn ? ETBSoundEvent::TVPowerOn : ETBSoundEvent::TVPowerOff, nullptr, FVector::ZeroVector);
 	ForceNetUpdate();
 	return true;
 }
@@ -232,6 +238,7 @@ void ATBBoxTV::SetViewing(bool bEnable)
 	GetWorldTimerManager().ClearTimer(CaptureTimer);
 	if (!bViewing)
 	{
+		bWasStatic = false;
 		Capture->HiddenActors.Reset();
 		return;
 	}
@@ -293,7 +300,14 @@ void ATBBoxTV::CaptureFrame()
 		SetViewing(false);
 		return;
 	}
-	if (GetWorld()->GetTimeSeconds() < NoiseUntil || !SetCaptureView())
+	const bool bSwitching = GetWorld()->GetTimeSeconds() < NoiseUntil;
+	const bool bStatic = !bSwitching && !SetCaptureView();
+	if (bStatic && !bWasStatic)
+	{
+		if (auto* Audio = GetGameInstance()->GetSubsystem<UTBAudioSubsystem>()) Audio->PlaySoundEvent(ETBSoundEvent::TVStatic);
+	}
+	bWasStatic = bStatic;
+	if (bSwitching || bStatic)
 	{
 		ScreenInstance->SetScalarParameterValue(TEXT("Noise"), 1.f);
 		return;

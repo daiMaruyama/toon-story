@@ -45,7 +45,7 @@ public:
 	UFUNCTION(Server, Reliable, BlueprintCallable)
 	void ServerPreference(ETBTeam Team);
 	UFUNCTION(Client, Reliable)
-	void ClientNotice(const FString& Message);
+	void ClientNotice(const FString& Message, bool bError = true);
 	UFUNCTION(Client, Reliable)
 	void ClientPlaySoundEvent(ETBSoundEvent Event, FVector Location);
 	UPROPERTY(BlueprintReadOnly)

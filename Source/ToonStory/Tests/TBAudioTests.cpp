@@ -16,6 +16,7 @@
 #include "GameFramework/PlayerController.h"
 #include "Sound/SoundAttenuation.h"
 #include "Sound/SoundWaveProcedural.h"
+#include "Sound/SoundWave.h"
 #include "UObject/UObjectIterator.h"
 #include "UObject/GarbageCollection.h"
 
@@ -79,6 +80,37 @@ namespace
 		float Master, MusicVolume, Effects, Voice;
 		float HumanFootstepToyVolume, HumanFootstepToyPitch;
 	};
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBAudioSelectedCatalogTest, "ToonStory.Audio.SelectedCatalog",
+                                 EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+bool FTBAudioSelectedCatalogTest::RunTest(const FString& Parameters)
+{
+	const auto* Settings = GetDefault<UTBAudioSettings>();
+	TestEqual(TEXT("Four music states registered"), Settings->Music.Num(), 4);
+	TestEqual(TEXT("All 42 selected SE registered"), Settings->Sounds.Num(), 42);
+	for (const auto& Pair : Settings->Music)
+	{
+		auto* Wave = Cast<USoundWave>(Pair.Value.Sound.LoadSynchronous());
+		if (TestNotNull(TEXT("Registered BGM loads"), Wave))
+		{
+			TestTrue(TEXT("BGM loops"), Wave->bLooping);
+			TestTrue(TEXT("BGM has samples"), Wave->Duration > 0);
+		}
+		TestFalse(TEXT("BGM is non-spatial"), Pair.Value.bSpatial);
+	}
+	for (const auto& Pair : Settings->Sounds)
+	{
+		auto* Wave = Cast<USoundWave>(Pair.Value.Sound.LoadSynchronous());
+		if (TestNotNull(TEXT("Registered SE loads"), Wave))
+		{
+			const bool bLoop = Pair.Key == ETBSoundEvent::CollectLoop || Pair.Key == ETBSoundEvent::StoreLoop ||
+			                   Pair.Key == ETBSoundEvent::RescueLoop;
+			TestEqual(TEXT("Only progress sounds loop"), bool(Wave->bLooping), bLoop);
+			TestTrue(TEXT("SE has samples"), Wave->Duration > 0);
+		}
+	}
+	return !HasAnyErrors();
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBAudioEmptyAssetsTest, "ToonStory.Audio.EmptyAssetsAndVolumes",
@@ -227,12 +259,27 @@ bool FTBAudioAudienceTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Toys receive rescue notification"), UTBAudioEvents::ShouldDeliver(ETBSoundEvent::RescueComplete, Toy, nullptr));
 	TestFalse(TEXT("Children cannot hear rescue notification"), UTBAudioEvents::ShouldDeliver(ETBSoundEvent::RescueComplete, Human, nullptr));
 	TestFalse(TEXT("Unassigned players cannot hear rescue notification"), UTBAudioEvents::ShouldDeliver(ETBSoundEvent::RescueComplete, Unassigned, nullptr));
-	for (const ETBSoundEvent Event : {ETBSoundEvent::Ready, ETBSoundEvent::Pickup, ETBSoundEvent::Frozen, ETBSoundEvent::Thawed})
+	for (const ETBSoundEvent Event : {ETBSoundEvent::Unready, ETBSoundEvent::CarryLift, ETBSoundEvent::CarryDrop, ETBSoundEvent::StoreCancel, ETBSoundEvent::BoxedTransition, ETBSoundEvent::Frozen, ETBSoundEvent::Thawed})
 	{
 		TestTrue(TEXT("Personal event reaches its subject"), UTBAudioEvents::ShouldDeliver(Event, Toy, Toy));
 		TestFalse(TEXT("Personal event excludes other players"), UTBAudioEvents::ShouldDeliver(Event, Human, Toy));
 		TestFalse(TEXT("Personal event requires a subject"), UTBAudioEvents::ShouldDeliver(Event, Toy, nullptr));
 	}
+	TestTrue(TEXT("Ready is heard across lobby"), UTBAudioEvents::ShouldDeliver(ETBSoundEvent::Ready, Human, Toy));
+	for (auto Event : {ETBSoundEvent::Pickup, ETBSoundEvent::BatteryLast, ETBSoundEvent::RescueCancel})
+	{
+		TestTrue(TEXT("Toy team receives team event"), UTBAudioEvents::ShouldDeliver(Event, Toy, nullptr));
+		TestFalse(TEXT("Human cannot hear team event"), UTBAudioEvents::ShouldDeliver(Event, Human, Toy));
+	}
+	TestFalse(TEXT("Free toy cannot hear TV"), UTBAudioEvents::ShouldDeliver(ETBSoundEvent::TVChannel, Toy, nullptr));
+	Toy->ToyState = ETBToyState::Boxed;
+	for (auto Event : {ETBSoundEvent::TVButton, ETBSoundEvent::TVChannel, ETBSoundEvent::TVPowerOn,
+	                  ETBSoundEvent::TVPowerOff, ETBSoundEvent::TVGlitch, ETBSoundEvent::TVStatic})
+	{
+		TestTrue(TEXT("Boxed toy receives TV event"), UTBAudioEvents::ShouldDeliver(Event, Toy, nullptr));
+		TestFalse(TEXT("Human cannot hear TV"), UTBAudioEvents::ShouldDeliver(Event, Human, Toy));
+	}
+	TestFalse(TEXT("Team notice excludes captured subject"), UTBAudioEvents::ShouldDeliver(ETBSoundEvent::TeamNotice, Toy, Toy));
 	for (const ETBSoundEvent Event : {ETBSoundEvent::Capture, ETBSoundEvent::Store})
 	{
 		TestTrue(TEXT("World event reaches Children"), UTBAudioEvents::ShouldDeliver(Event, Human, Toy));

@@ -230,6 +230,7 @@ void ATBGameMode::SetRules(APlayerController* PlayerController, const FTBSetting
 	{
 		return;
 	}
+	CastChecked<ATBController>(PlayerController)->ClientPlaySoundEvent(ETBSoundEvent::UIChange, FVector::ZeroVector);
 	MatchInfo->Settings = Adjusted;
 	MatchInfo->ForceNetUpdate();
 	for (APlayerState* ToyPlayerInfo : MatchInfo->PlayerArray)
@@ -388,7 +389,7 @@ void ATBGameMode::ReturnToLobby(APlayerController* PlayerController)
 		if (auto* Controller = Cast<ATBController>(It->Get()))
 		{
 			RestartPlayer(Controller);
-			Controller->ClientNotice(TEXT("Same room. Choose your role and ready up for another round."));
+			Controller->ClientNotice(TEXT("Same room. Choose your role and ready up for another round."), false);
 		}
 	}
 	if (auto* Session = GetGameInstance()->GetSubsystem<UTBSession>())

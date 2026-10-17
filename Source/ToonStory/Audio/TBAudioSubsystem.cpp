@@ -106,6 +106,7 @@ void UTBAudioSubsystem::EnsurePlaybackWorld(UWorld* World)
 		PlaybackWorld = World;
 		MusicState = ETBMusicState::None;
 		bSawPlaying = bResultCuePlayed = false;
+		LastLobbyCount = LastRemainingSecond = -1;
 		++SettingsRevision;
 	}
 }
@@ -117,6 +118,12 @@ void UTBAudioSubsystem::Tick(float DeltaTime)
 	EnsurePlaybackWorld(World);
 	const APlayerController* Local = GetGameInstance()->GetFirstLocalPlayerController(World);
 	if (!Local) return;
+	if (TravelSound.IsSet() && TravelFromWorld.Get() != World)
+	{
+		const ETBSoundEvent Event = TravelSound.GetValue();
+		TravelSound.Reset();
+		PlaySoundEvent(Event);
+	}
 	ETBMusicState Next = ETBMusicState::None;
 	if (const auto* State = World->GetGameState<ATBGameState>())
 	{
@@ -131,7 +138,23 @@ void UTBAudioSubsystem::Tick(float DeltaTime)
 		{
 			if (MusicState == ETBMusicState::Lobby) PlaySoundEvent(ETBSoundEvent::MatchStart);
 			bSawPlaying = true;
+			const int32 Remaining = FMath::CeilToInt(State->Remaining());
+			if (LastRemainingSecond > Remaining && Remaining > 0 && Remaining <= 10)
+				PlaySoundEvent(ETBSoundEvent::TimeTick);
+			LastRemainingSecond = Remaining;
 		}
+		else LastRemainingSecond = -1;
+		if (Next == ETBMusicState::Lobby)
+		{
+			const int32 Count = State->PlayerArray.Num();
+			if (Count > 0 && Count != LastLobbyCount)
+			{
+				if (LastLobbyCount >= 0 || MusicState == ETBMusicState::None)
+					PlaySoundEvent(LastLobbyCount > Count ? ETBSoundEvent::LobbyLeave : ETBSoundEvent::LobbyJoin);
+				LastLobbyCount = Count;
+			}
+		}
+		else LastLobbyCount = -1;
 		if (Next != ETBMusicState::Results) bResultCuePlayed = false;
 		// Wait for winner/team replication. Initial snapshots and rematch resets don't play old cues.
 		const auto* Player = Local->GetPlayerState<ATBPlayerState>();
@@ -232,6 +255,12 @@ UAudioComponent* UTBAudioSubsystem::CreateAudio(const FTBAudioClip& Clip, ETBAud
 
 void UTBAudioSubsystem::PlaySoundEvent(ETBSoundEvent Event, FVector Location, USceneComponent* AttachTo)
 {
+	if (Event == ETBSoundEvent::UIError && GetWorld())
+	{
+		const double Now = GetWorld()->GetTimeSeconds();
+		if (Now >= LastErrorTime && Now - LastErrorTime < .5) return;
+		LastErrorTime = Now;
+	}
 	if (const auto* Clip = SoundClips.Find(Event))
 	{
 		if (auto* Audio = CreateAudio(*Clip, ETBAudioCategory::Effects, Event, Location, AttachTo, false)) Audio->Play();
@@ -322,4 +351,10 @@ void UTBAudioSubsystem::UntrackVoice(UAudioComponent* Audio)
 		if (IsValid(Audio)) Audio->SetVolumeMultiplier(Playing.BaseVolume);
 		PlayingSounds.RemoveAtSwap(Index);
 	}
+}
+
+void UTBAudioSubsystem::QueueTravelSound(ETBSoundEvent Event)
+{
+    TravelSound = Event;
+    TravelFromWorld = GetWorld();
 }

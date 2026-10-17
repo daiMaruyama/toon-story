@@ -26,6 +26,7 @@ private:
 	UPROPERTY(Transient) TObjectPtr<UComboBoxString> RoomList;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> StatusText;
 	UFUNCTION() void Refresh();
+	UFUNCTION() void Hover();
 	UFUNCTION() void Host();
 	UFUNCTION() void Find();
 	UFUNCTION() void Join();

@@ -11,6 +11,7 @@ class TOONSTORY_API ATBHUD : public AHUD
 public:
 	virtual void DrawHUD() override;
 	virtual void NotifyHitBoxClick(FName BoxName) override;
+	virtual void NotifyHitBoxBeginCursorOver(FName BoxName) override;
 
 private:
 	void DrawResults(const class ATBGameState& MatchState, class ATBController& Controller);

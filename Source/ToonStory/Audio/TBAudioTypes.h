@@ -14,7 +14,10 @@ enum class ETBSoundEvent : uint8
 	UIClick, Ready, MatchStart, Victory, Defeat, Pickup, Capture, Store,
 	RescueComplete, Frozen, Thawed, Footstep, Jump, Land, RescueLoop, StoreLoop,
 	// Append new events to preserve existing serialized enum values.
-	HumanFootstep
+	HumanFootstep, UIHover, UIBack, UIError, UIChange, Unready, LobbyJoin, LobbyLeave,
+	TeamNotice, CaptureHard, CarryLift, CarryDrop, HumanLand, StoreCancel, RescueCancel,
+	TVButton, TVChannel, TVPowerOn, TVPowerOff, TVGlitch, TimeTick, JingleAlternate,
+	BatteryLast, BoxedTransition, CollectLoop, TVStatic
 };
 
 UENUM(BlueprintType)

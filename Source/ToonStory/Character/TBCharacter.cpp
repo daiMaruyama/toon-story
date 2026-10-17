@@ -415,6 +415,8 @@ void ATBCharacter::Tick(float DeltaSeconds)
 	if (ToyPlayerState->ToyState == ETBToyState::Grabbed && Now >= GrabEnds)
 	{
 		CarriedToy->SetToyState(ETBToyState::Carried);
+		UTBAudioEvents::Emit(this, ETBSoundEvent::CarryLift, TBPS(), FVector::ZeroVector);
+		UTBAudioEvents::Emit(this, ETBSoundEvent::CarryLift, CarriedToy->TBPS(), FVector::ZeroVector);
 	}
 	if (ToyPlayerState->ToyState == ETBToyState::Storing)
 	{
@@ -443,6 +445,7 @@ void ATBCharacter::ClearHeldInteraction()
 	    CarriedToy->TBPS()->ToyState == ETBToyState::Storing)
 	{
 		CarriedToy->SetToyState(ETBToyState::Carried);
+		UTBAudioEvents::Emit(this, ETBSoundEvent::StoreCancel, TBPS(), FVector::ZeroVector);
 	}
 }
 
@@ -476,6 +479,8 @@ void ATBCharacter::DropToy()
 			DropPosition = DesiredPosition;
 		}
 	}
+	UTBAudioEvents::Emit(this, ETBSoundEvent::CarryDrop, TBPS(), FVector::ZeroVector);
+	UTBAudioEvents::Emit(this, ETBSoundEvent::CarryDrop, Toy->TBPS(), FVector::ZeroVector);
 	Toy->Carrier = nullptr;
 	Toy->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
 	Toy->SetActorLocation(DropPosition, false, nullptr, ETeleportType::TeleportPhysics);
@@ -550,6 +555,7 @@ void ATBCharacter::ServerInteract_Implementation()
 			GrabEnds = Now + .25;
 			ApplyState();
 			UTBAudioEvents::Emit(this, ETBSoundEvent::Capture, ClosestToy->TBPS(), ClosestToy->GetActorLocation());
+			UTBAudioEvents::Emit(this, ETBSoundEvent::TeamNotice, ClosestToy->TBPS(), FVector::ZeroVector);
 		}
 		else
 		{

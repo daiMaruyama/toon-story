@@ -16,13 +16,30 @@ bool UTBAudioEvents::ShouldDeliver(ETBSoundEvent Event, const ATBPlayerState* Re
 
 	switch (Event)
 	{
-	case ETBSoundEvent::Ready:
-	case ETBSoundEvent::Pickup:
+	case ETBSoundEvent::Unready:
+	case ETBSoundEvent::CarryLift:
+	case ETBSoundEvent::CarryDrop:
+	case ETBSoundEvent::StoreCancel:
+	case ETBSoundEvent::BoxedTransition:
 	case ETBSoundEvent::Frozen:
 	case ETBSoundEvent::Thawed:
 		return Subject && Recipient == Subject;
+	case ETBSoundEvent::TVButton:
+	case ETBSoundEvent::TVChannel:
+	case ETBSoundEvent::TVPowerOn:
+	case ETBSoundEvent::TVPowerOff:
+	case ETBSoundEvent::TVGlitch:
+	case ETBSoundEvent::TVStatic:
+		return Recipient->Team == ETBTeam::Toy && Recipient->ToyState == ETBToyState::Boxed;
+	case ETBSoundEvent::TeamNotice:
+		return Recipient->Team == ETBTeam::Toy && Recipient != Subject;
+	case ETBSoundEvent::Pickup:
+	case ETBSoundEvent::BatteryLast:
+	case ETBSoundEvent::RescueCancel:
 	case ETBSoundEvent::RescueComplete:
 		return Recipient->Team == ETBTeam::Toy;
+	case ETBSoundEvent::Ready:
+	case ETBSoundEvent::CaptureHard:
 	case ETBSoundEvent::Capture:
 	case ETBSoundEvent::Store:
 		return true;
@@ -40,7 +57,7 @@ void UTBAudioEvents::Emit(UObject* WorldContext, ETBSoundEvent Event, APlayerSta
 		return;
 	}
 	const ATBGameState* State = TB::GS(World);
-	const ETBPhase RequiredPhase = Event == ETBSoundEvent::Ready ? ETBPhase::Lobby : ETBPhase::Playing;
+	const ETBPhase RequiredPhase = (Event == ETBSoundEvent::Ready || Event == ETBSoundEvent::Unready) ? ETBPhase::Lobby : ETBPhase::Playing;
 	if (!State || State->Phase != RequiredPhase)
 	{
 		return;

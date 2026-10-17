@@ -165,6 +165,8 @@ bool ATBBox::Store(ATBCharacter* Toy)
 	Toy->SetToyState(ETBToyState::Boxed);
 	Toy->ForceNetUpdate();
 	UTBAudioEvents::Emit(this, ETBSoundEvent::Store, Toy->TBPS(), InteractionPoint->GetComponentLocation());
+	UTBAudioEvents::Emit(this, ETBSoundEvent::BoxedTransition, Toy->TBPS(), FVector::ZeroVector);
+	UTBAudioEvents::Emit(this, ETBSoundEvent::TeamNotice, Toy->TBPS(), FVector::ZeroVector);
 	if (auto* GameMode = GetWorld()->GetAuthGameMode<ATBGameMode>())
 	{
 		GameMode->CheckWin();
@@ -208,6 +210,8 @@ void ATBBox::Tick(float DeltaSeconds)
 	}
 	if (RescueCount == 0)
 	{
+		if (RescueProgress > 0.f && HasPrisoners())
+			UTBAudioEvents::Emit(this, ETBSoundEvent::RescueCancel, nullptr, FVector::ZeroVector);
 		Rescuers = 0;
 		RescueProgress = 0;
 		return;

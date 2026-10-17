@@ -64,7 +64,7 @@ private:
 	bool bUpdatingLobbyOpen = false;
 	void LobbyUpdated(FName Name, bool bSucceeded);
 	bool Acquire();
-	void Message(const FString& Text);
+	void Message(const FString& Text, bool bError = false);
 	void Created(FName Name, bool bSucceeded);
 	void Found(bool bSucceeded);
 	void Joined(FName Name, EOnJoinSessionCompleteResult::Type Result);

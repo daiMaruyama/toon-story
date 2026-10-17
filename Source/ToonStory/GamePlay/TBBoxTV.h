@@ -92,6 +92,7 @@ private:
 	TObjectPtr<UMaterialInstanceDynamic> ScreenInstance;
 	FTimerHandle CaptureTimer;
 	bool bViewing = false;
+	bool bWasStatic = false;
 	double NoiseUntil = 0;
 
 	UFUNCTION()

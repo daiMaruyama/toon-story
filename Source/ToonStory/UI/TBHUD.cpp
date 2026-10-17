@@ -131,7 +131,9 @@ void ATBHUD::NotifyHitBoxClick(FName Name)
 	}
 	if (auto* Audio = PC->GetGameInstance()->GetSubsystem<UTBAudioSubsystem>())
 	{
-		Audio->PlaySoundEvent(ETBSoundEvent::UIClick);
+		if (Name != TEXT("Ready") && Name != TEXT("Child") && Name != TEXT("Toy") && Name != TEXT("Either") &&
+		    Name != TEXT("MoreChildren") && Name != TEXT("FewerChildren") && Name != TEXT("MoreToys") && Name != TEXT("FewerToys"))
+			Audio->PlaySoundEvent(Name == TEXT("Resume") || Name == TEXT("Leave") ? ETBSoundEvent::UIBack : ETBSoundEvent::UIClick);
 	}
 	if (Name == TEXT("Resume"))
 	{
@@ -368,4 +370,11 @@ void ATBHUD::DrawDebugHUD()
 		Line(FString::Printf(TEXT("Rescue: %.0f%% | Rescuers: %d"), State->Box->RescueProgress * 100,
 		                     State->Box->Rescuers));
 	}
+}
+
+void ATBHUD::NotifyHitBoxBeginCursorOver(FName BoxName)
+{
+    Super::NotifyHitBoxBeginCursorOver(BoxName);
+    if (auto* PC = GetOwningPlayerController())
+        if (auto* Audio = PC->GetGameInstance()->GetSubsystem<UTBAudioSubsystem>()) Audio->PlaySoundEvent(ETBSoundEvent::UIHover);
 }

@@ -2,6 +2,7 @@
 #include "Audio/TBAudioSubsystem.h"
 #include "Audio/TBAudioTypes.h"
 #include "Character/TBCharacter.h"
+#include "GamePlay/TBPickup.h"
 #include "Core/TBGameHelpers.h"
 #include "Core/TBPlayerState.h"
 #include "Components/AudioComponent.h"
@@ -34,6 +35,7 @@ void UTBCharacterAudioComponent::EndPlay(const EEndPlayReason::Type EndPlayReaso
 {
 	const auto* GameInstance = GetWorld() ? GetWorld()->GetGameInstance() : nullptr;
 	StopStoreLoop(GameInstance ? GameInstance->GetSubsystem<UTBAudioSubsystem>() : nullptr);
+	StopCollectLoop(GameInstance ? GameInstance->GetSubsystem<UTBAudioSubsystem>() : nullptr);
 	Super::EndPlay(EndPlayReason);
 }
 
@@ -48,9 +50,11 @@ void UTBCharacterAudioComponent::TickComponent(float DeltaTime, ELevelTick TickT
 	{
 		ResetMovement();
 		StopStoreLoop(Audio);
+		StopCollectLoop(Audio);
 		return;
 	}
 	UpdateStoreLoop(OwnerCharacter, Audio);
+	UpdateCollectLoop(OwnerCharacter, Audio);
 	UpdateMovement(OwnerCharacter, Audio, DeltaTime);
 }
 
@@ -91,14 +95,14 @@ void UTBCharacterAudioComponent::UpdateMovement(ATBCharacter* OwnerCharacter, UT
 			bObservedAirborneDeparture = true;
 			StepDistance = 0.f;
 			// Walking off an edge should have a landing sound, but no jump sound.
-			if (Movement->Velocity.Z > 50.f)
+			if (Movement->Velocity.Z > 50.f && Player->Team == ETBTeam::Toy)
 			{
 				Audio->PlaySoundEvent(ETBSoundEvent::Jump, Feet);
 			}
 		}
 		if (bWasFalling && bGrounded && bObservedAirborneDeparture)
 		{
-			Audio->PlaySoundEvent(ETBSoundEvent::Land, Feet);
+			Audio->PlaySoundEvent(Player->Team == ETBTeam::Human ? ETBSoundEvent::HumanLand : ETBSoundEvent::Land, Feet);
 			bObservedAirborneDeparture = false;
 			StepDistance = 0.f;
 		}
@@ -139,7 +143,7 @@ void UTBCharacterAudioComponent::UpdateStoreLoop(ATBCharacter* OwnerCharacter, U
 	const bool bDesired = TB::Playing(GetWorld()) && PrimaryController &&
 	                      OwnerCharacter->GetController() == PrimaryController &&
 	                      OwnerCharacter->IsLocallyControlled() &&
-	                      OwnerCharacter->StoreStarted >= 0.0 && IsValid(OwnerCharacter->CarriedToy.Get());
+	                      OwnerCharacter->CanAct() && OwnerCharacter->StoreStarted >= 0.0 && IsValid(OwnerCharacter->CarriedToy.Get());
 	const uint32 Revision = Audio->GetSettingsRevision();
 	if (bDesired == bStoreLoopDesired && Revision == LastSettingsRevision)
 	{
@@ -169,4 +173,28 @@ void UTBCharacterAudioComponent::StopStoreLoop(UTBAudioSubsystem* Audio)
 	}
 	StoreAudio.Reset();
 	bStoreLoopDesired = false;
+}
+
+void UTBCharacterAudioComponent::UpdateCollectLoop(ATBCharacter* OwnerCharacter, UTBAudioSubsystem* Audio)
+{
+    const auto* Primary = GetWorld()->GetGameInstance()->GetFirstLocalPlayerController(GetWorld());
+    const bool bDesired = OwnerCharacter->GetController() == Primary && OwnerCharacter->IsLocallyControlled() &&
+        OwnerCharacter->CanAct() && IsValid(OwnerCharacter->ContactItem) && OwnerCharacter->ItemProgress > 0.f;
+    const uint32 Revision = Audio->GetSettingsRevision();
+    if (bDesired == bCollectLoopDesired && Revision == CollectSettingsRevision) return;
+    StopCollectLoop(Audio);
+    bCollectLoopDesired = bDesired;
+    CollectSettingsRevision = Revision;
+    if (bDesired) CollectAudio = Audio->StartLoop(ETBSoundEvent::CollectLoop, OwnerCharacter->GetRootComponent());
+}
+
+void UTBCharacterAudioComponent::StopCollectLoop(UTBAudioSubsystem* Audio)
+{
+    if (auto* Component = CollectAudio.Get())
+    {
+        if (Audio) Audio->StopLoop(Component);
+        else Component->Stop();
+    }
+    CollectAudio.Reset();
+    bCollectLoopDesired = false;
 }
