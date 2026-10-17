@@ -1,6 +1,6 @@
 # BGM・SE
 
-2026-10-17: 採用メモの44素材を仮登録済み。素材別の再生タイミング・予備素材は [AUDIO_SELECTION.md](AUDIO_SELECTION.md) を参照。
+2026-10-17: 採用メモの44素材を仮登録済み。素材の選定情報はContent側の [AUDIO_SELECTION.json](../Content/Audio/Notices/AUDIO_SELECTION.json) を参照。
 
 音素材が未登録でもゲームは通常どおり動作します。未登録のイベントは無音でスキップされます。素材が届いたら、プロジェクト設定に登録することで既存のゲーム操作から再生されます。
 
