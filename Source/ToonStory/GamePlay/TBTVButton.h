@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Mamodou. All Rights Reserved.
+
 #pragma once
 
 #include "CoreMinimal.h"
@@ -19,4 +21,5 @@ public:
 	          meta = (ClampMin = "0", ClampMax = "9", EditCondition = "CurrentKey == ETBRemoteKey::Digit",
 	                  EditConditionHides))
 	int32 Digit = 0;
+	FName GetGlowParameterName() const;
 };

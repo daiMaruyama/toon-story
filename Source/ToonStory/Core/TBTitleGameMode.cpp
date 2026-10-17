@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Mamodou. All Rights Reserved.
+
 #include "Core/TBTitleGameMode.h"
 #include "Core/TBSession.h"
 #include "UI/TBTitleMenu.h"

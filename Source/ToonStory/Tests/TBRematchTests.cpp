@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Mamodou. All Rights Reserved.
+
 #include "Misc/AutomationTest.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
@@ -244,10 +246,10 @@ bool FTBStorageHoldTest::RunTest(const FString& Parameters)
 	const FVector RoomPosition =
 	    Box->StorageRoom->GetComponentTransform().InverseTransformPosition(Toy->GetActorLocation());
 	bool bInStorageSlot = false;
-	for (int32 Slot = 0; Slot < 9; ++Slot)
+	for (int32 Slot = 0; Slot < ATBBox::StorageSlotCount; ++Slot)
 	{
 		// 回転した部屋の座標変換による丸め誤差を許容する。
-		bInStorageSlot |= RoomPosition.Equals(FVector(200 + (Slot % 3) * 180, -170 + (Slot / 3) * 170, 60), .1);
+		bInStorageSlot |= RoomPosition.Equals(ATBBox::StorageSlot(Slot), .1);
 	}
 	TestTrue(TEXT("Storage teleports to the separate room"), bInStorageSlot);
 	TestTrue(TEXT("Storage destination is separate from the visible chest"),

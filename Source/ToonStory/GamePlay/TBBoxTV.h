@@ -1,10 +1,11 @@
+// Copyright (c) 2026 Mamodou. All Rights Reserved.
+
 #pragma once
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "TBBoxTV.generated.h"
 
-class ATBBox;
 class ATBCharacter;
 class ATBPlayerState;
 class ATBTVCamera;
@@ -13,6 +14,9 @@ class UMaterialInterface;
 class USceneCaptureComponent2D;
 class UStaticMeshComponent;
 class UTextureRenderTarget2D;
+class UWidgetComponent;
+
+DECLARE_MULTICAST_DELEGATE(FTBTVPowerChanged);
 
 /** 0〜2は固定カメラ、3〜9は箱にいないプレイヤー（人間→おもちゃ、各PlayerId順。最大8人−捕まった1人＝7人）。映すものが無い番号は砂嵐。 */
 USTRUCT()
@@ -39,14 +43,15 @@ public:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
-	UPROPERTY(EditInstanceOnly, BlueprintReadWrite, Replicated, Category = "Television")
-	TObjectPtr<ATBBox> SourceBox;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Television")
 	TObjectPtr<UStaticMeshComponent> Frame;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Television")
 	TObjectPtr<UStaticMeshComponent> Screen;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Television")
 	TObjectPtr<USceneCaptureComponent2D> Capture;
+	// 画面右上のチャンネル表示をマテリアルで重ねて表現する。
+	UPROPERTY(VisibleAnywhere, Category = "Television")
+	TObjectPtr<UWidgetComponent> ChannelOSD;
 	UPROPERTY(EditDefaultsOnly, Category = "Television")
 	TObjectPtr<UMaterialInterface> ScreenMaterial;
 	UPROPERTY(EditDefaultsOnly, Category = "Television", meta = (ClampMin = "0"))
@@ -76,6 +81,8 @@ public:
 	{
 		return bPowerOn;
 	}
+	// 電源が変わった時に各PCで呼ばれる。
+	FTBTVPowerChanged OnPowerChanged;
 	bool IsCapturing() const
 	{
 		return bViewing;
@@ -84,7 +91,7 @@ public:
 private:
 	UPROPERTY(ReplicatedUsing = OnRep_Channel)
 	FTBTVChannel Channel;
-	UPROPERTY(Replicated)
+	UPROPERTY(ReplicatedUsing = OnRep_PowerOn)
 	bool bPowerOn = true;
 	UPROPERTY(Transient)
 	TObjectPtr<UTextureRenderTarget2D> RenderTarget;
@@ -94,12 +101,18 @@ private:
 	bool bViewing = false;
 	bool bWasStatic = false;
 	double NoiseUntil = 0;
+	bool bOSDBound = false;
 
 	UFUNCTION()
 	void OnRep_Channel();
+	UFUNCTION()
+	void OnRep_PowerOn();
+	void SetPowerOn(bool bOn);
 	bool CanOperate(const ATBCharacter* Viewer) const;
 	TArray<ATBPlayerState*> GetPlayerChannels() const;
 	ATBTVCamera* FindCamera(int32 Number) const;
+	void UpdateChannelOSD();
+	void BindChannelOSD();
 	bool HasPicture(int32 Number, const TArray<ATBPlayerState*>& Players) const;
 	void SetChannel(int32 Number);
 	bool HasLocalViewer() const;

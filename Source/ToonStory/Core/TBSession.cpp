@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Mamodou. All Rights Reserved.
+
 #include "TBSession.h"
 #include "Audio/TBAudioSubsystem.h"
 #include "Core/TBGameState.h"

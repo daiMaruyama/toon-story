@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Mamodou. All Rights Reserved.
+
 #include "Character/TBVoiceComponent.h"
 #include "Audio/TBPitchShift.h"
 #include "Audio/TBAudioSubsystem.h"

@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Mamodou. All Rights Reserved.
+
 #pragma once
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
@@ -8,6 +10,8 @@ class ATBCharacter;
 class ATBBox;
 class UStaticMesh;
 class UStaticMeshComponent;
+
+DECLARE_MULTICAST_DELEGATE(FTBBoxOpened);
 
 /** 固定された箱への収納と、箱外への救助をサーバーで管理する。 */
 UCLASS(Config = Game)
@@ -46,4 +50,13 @@ public:
 	bool CanStoreFrom(const ATBCharacter* Character) const;
 	bool Store(ATBCharacter* Toy);
 	bool HasPrisoners() const;
+	// 収納先の候補位置（StorageRoom のローカル座標）。
+	static constexpr int32 StorageSlotCount = 9;
+	static FVector StorageSlot(int32 Slot);
+	// 収納・救助でフタが開く時に各PCで呼ばれる。
+	FTBBoxOpened OnOpened;
+
+private:
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastOpened();
 };

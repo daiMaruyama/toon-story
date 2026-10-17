@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Mamodou. All Rights Reserved.
+
 #include "TBGameState.h"
 #include "GamePlay/TBBox.h"
 #include "Net/UnrealNetwork.h"

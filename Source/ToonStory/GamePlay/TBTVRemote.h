@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Mamodou. All Rights Reserved.
+
 #pragma once
 
 #include "CoreMinimal.h"
@@ -5,7 +7,9 @@
 #include "TBTVRemote.generated.h"
 
 class ATBBoxTV;
+class UMaterialInstanceDynamic;
 class UStaticMeshComponent;
+class UTBTVButton;
 
 /** 箱内テレビのリモコン。ボタンはBPで、アクタのスケールで全体の大きさを変えられる。 */
 UCLASS(Blueprintable)
@@ -26,7 +30,19 @@ public:
 
 private:
 	double LastPressTime = -1;
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UTBTVButton>> Buttons;
+	// Buttons と同じ並びのマテリアルのパラメータ名。
+	TArray<FName> GlowParameters;
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInstanceDynamic> GlowMaterial;
 	UFUNCTION()
 	void OnButtonOverlap(UPrimitiveComponent* Component, AActor* OtherActor, UPrimitiveComponent* OtherComponent,
 	                     int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
+	UFUNCTION()
+	void OnButtonEndOverlap(UPrimitiveComponent* Component, AActor* OtherActor, UPrimitiveComponent* OtherComponent,
+	                        int32 OtherBodyIndex);
+	// 押せる・踏まれている・押せない をボタンごとにマテリアルへ反映する。
+	void UpdateGlow();
+	void UpdateButtonGlow(int32 Index);
 };

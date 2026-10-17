@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Mamodou. All Rights Reserved.
+
 #pragma once
 // UEに依存しないルール計算。ゲーム本体と単体テストで同じ式を使う。
 namespace TBRuleMath

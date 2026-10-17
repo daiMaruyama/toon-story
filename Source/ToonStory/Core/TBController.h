@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Mamodou. All Rights Reserved.
+
 #pragma once
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
