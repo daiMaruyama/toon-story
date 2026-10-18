@@ -1,6 +1,8 @@
 // Copyright (c) 2026 Mamodou. All Rights Reserved.
 
 #include "TBGameMode.h"
+#include "Camera/CameraActor.h"
+#include "Camera/CameraComponent.h"
 #include "TBLobbySettings.h"
 #include "Core/TBPlayerState.h"
 #include "Core/TBGameState.h"
@@ -72,9 +74,72 @@ void ATBGameMode::BeginPlay()
 	SyncLobbyCounts();
 }
 
+void ATBGameMode::RestartPlayer(AController* NewPlayer)
+{
+	Super::RestartPlayer(NewPlayer);
+	PlaceInLobby(NewPlayer);
+}
+
+bool ATBGameMode::PlaceInLobby(AController* Player)
+{
+	const auto* State = TB::GS(GetWorld());
+	auto* Pawn = Player ? Cast<ATBCharacter>(Player->GetPawn()) : nullptr;
+	if (!State || State->Phase != ETBPhase::Lobby || !Pawn) return false;
+	Pawn->ApplyState();
+	for (TActorIterator<ACameraActor> It(GetWorld()); It; ++It)
+	{
+		if (!It->ActorHasTag(TEXT("TBLobbyCamera"))) continue;
+		const auto* Camera = It->GetCameraComponent();
+		const FVector Eye = Camera->GetComponentLocation();
+		const FVector Forward = Camera->GetForwardVector();
+		const FVector Right = Camera->GetRightVector();
+		const float HalfHeight = Pawn->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+		const float Radius = Pawn->GetCapsuleComponent()->GetScaledCapsuleRadius();
+		FCollisionQueryParams Query(SCENE_QUERY_STAT(LobbySpawn), false, Pawn);
+		// Search visible, walkable ground in front of the actual authored lobby camera.
+		for (float Distance : {350.f, 500.f, 750.f, 1000.f, 1400.f, 1900.f})
+		{
+			for (float Side : {0.f, -80.f, 80.f, -160.f, 160.f, -280.f, 280.f, -420.f, 420.f})
+			{
+				const FVector Target = Eye + Forward * Distance + Right * Side;
+				FHitResult Floor;
+				if (!GetWorld()->SweepSingleByChannel(Floor, FVector(Target.X, Target.Y, Eye.Z),
+				    FVector(Target.X, Target.Y, Eye.Z - 2000), FQuat::Identity, ECC_Pawn,
+				    FCollisionShape::MakeCapsule(Radius + 4, HalfHeight), Query) ||
+				    Floor.bStartPenetrating || Floor.ImpactNormal.Z < .7f) continue;
+				const FVector Center = Floor.Location + FVector(0, 0, 3);
+				const FVector View = Camera->GetComponentTransform().InverseTransformPosition(Center);
+				const float TanHalfFOV = FMath::Tan(FMath::DegreesToRadians(Camera->FieldOfView * .5f));
+				if (View.X < 100 || FMath::Abs(View.Y) + Radius > View.X * TanHalfFOV * .8f ||
+				    FMath::Abs(View.Z) + HalfHeight > View.X * TanHalfFOV / 1.7778f * .8f) continue;
+				FCollisionQueryParams VisibilityQuery = Query;
+				VisibilityQuery.bTraceComplex = true;
+				FHitResult Obstacle;
+				if (GetWorld()->LineTraceSingleByChannel(Obstacle, Eye, Center, ECC_Visibility, VisibilityQuery))
+				{
+					continue;
+				}
+				if (GetWorld()->OverlapBlockingTestByChannel(Center, FQuat::Identity, ECC_Pawn,
+				        FCollisionShape::MakeCapsule(Radius + 4, HalfHeight), Query))
+				{
+					continue;
+				}
+				if (Pawn->TeleportTo(Center, FRotator(0, (Eye - Center).Rotation().Yaw, 0)))
+				{
+					Player->SetControlRotation(Pawn->GetActorRotation());
+					Pawn->ForceNetUpdate();
+					return true;
+				}
+			}
+		}
+	}
+	return false; // Keep the map's PlayerStart if no safe camera-visible ground exists.
+}
+
 void ATBGameMode::PostSeamlessTravel()
 {
 	Super::PostSeamlessTravel();
+	for (auto It = GetWorld()->GetPlayerControllerIterator(); It; ++It) PlaceInLobby(It->Get());
 	TBLobbySettings::Restore(this);
 	SyncLobbyCounts();
 }
@@ -582,12 +647,18 @@ void ATBGameMode::Finish(ETBWinner Winner, const FString& Why, bool Abort)
 // 退出者の状態を整理し、両陣営が残っていれば試合を続ける。
 void ATBGameMode::Logout(AController* Exiting)
 {
+	if (!Exiting) return;
+	if (GetWorld()->bIsTearingDown)
+	{
+		Super::Logout(Exiting);
+		return;
+	}
 	auto* MatchInfo = TB::GS(GetWorld());
 	const bool WasPlaying = MatchInfo && MatchInfo->Phase == ETBPhase::Playing;
 	if (auto* ToyCharacter = Cast<ATBCharacter>(Exiting->GetPawn()))
 	{
 		ToyCharacter->ClearHeldInteraction();
-		if (ToyCharacter->Carrier)
+		if (IsValid(ToyCharacter->Carrier))
 		{
 			ToyCharacter->Carrier->DropToy();
 		}

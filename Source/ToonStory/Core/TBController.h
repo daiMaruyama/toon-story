@@ -15,6 +15,9 @@ class TOONSTORY_API ATBController : public APlayerController
 public:
 	virtual void BeginPlay() override;
 	virtual void PostSeamlessTravel() override;
+	virtual void PreClientTravel(const FString& PendingURL, ETravelType TravelType, bool bIsSeamlessTravel) override;
+	UFUNCTION(Client, Reliable)
+	void ClientRoomClosed();
 	virtual void PlayerTick(float DeltaTime) override;
 	virtual void SetupInputComponent() override;
 	bool IsLeaveMenuOpen() const { return bLeaveMenuOpen; }

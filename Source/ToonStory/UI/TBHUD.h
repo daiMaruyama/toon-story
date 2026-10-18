@@ -19,6 +19,8 @@ public:
 	virtual void NotifyHitBoxBeginCursorOver(FName BoxName) override;
 
 private:
+	FName LastClickedButton;
+	double LastButtonClickTime = -1;
 	bool bLobbySettingsOpen = false;
 	bool bStagePickerOpen = false;
 	bool HandleLobbyPanelClick(FName Name);

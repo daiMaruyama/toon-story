@@ -17,6 +17,20 @@
 #include "UI/TBScreenTransition.h"
 #include "Kismet/KismetSystemLibrary.h"
 
+void ATBController::PreClientTravel(const FString& PendingURL, ETravelType TravelType, bool bIsSeamlessTravel)
+{
+	SetViewTarget(this);
+	LobbyCamera.Reset();
+	bLobbyCameraSearched = false;
+	bLobbyCameraActive = false;
+	Super::PreClientTravel(PendingURL, TravelType, bIsSeamlessTravel);
+}
+
+void ATBController::ClientRoomClosed_Implementation()
+{
+	if (auto* Session = GetGameInstance()->GetSubsystem<UTBSession>()) Session->RoomClosed();
+}
+
 void ATBController::PlayerTick(float DeltaTime)
 {
 	Super::PlayerTick(DeltaTime);

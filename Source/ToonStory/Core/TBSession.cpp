@@ -1,6 +1,8 @@
 // Copyright (c) 2026 Mamodou. All Rights Reserved.
 
 #include "TBSession.h"
+#include "Core/TBController.h"
+#include "UObject/UObjectGlobals.h"
 #include "Audio/TBAudioSubsystem.h"
 #include "Core/TBGameState.h"
 #include "Core/TBGameHelpers.h"
@@ -26,6 +28,19 @@ namespace
 void UTBSession::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
+	MapLoadedHandle = FCoreUObjectDelegates::PostLoadMapWithWorld.AddWeakLambda(this, [this](UWorld* World)
+	{
+		if (World && World->GetGameInstance() == GetGameInstance() && bReturningOffline &&
+		    World->GetMapName().EndsWith(TEXT("Title")))
+		{
+			GetGameInstance()->GetTimerManager().ClearTimer(CloseTimer);
+			bReturningOffline = false;
+			CurrentOperation = ESessionOperation::Idle;
+			Message(bRoomClosed ? TEXT("ホストが退出したため、部屋が解散しました。") :
+			    TEXT("Offline. Last match ended; TBHost / TBFind for a new lobby."));
+			bRoomClosed = false;
+		}
+	});
 	if (GEngine)
 	{
 		NetworkFailureHandle = GEngine->OnNetworkFailure().AddUObject(this, &UTBSession::NetworkFailed);
@@ -35,6 +50,8 @@ void UTBSession::Initialize(FSubsystemCollectionBase& Collection)
 
 void UTBSession::Deinitialize()
 {
+	FCoreUObjectDelegates::PostLoadMapWithWorld.Remove(MapLoadedHandle);
+	GetGameInstance()->GetTimerManager().ClearTimer(CloseTimer);
 	if (UWorld* World = GetWorld())
 	{
 		World->GetTimerManager().ClearTimer(CloseTimer);
@@ -402,6 +419,15 @@ void UTBSession::Leave()
 		return;
 	}
 	CurrentOperation = ESessionOperation::Closing;
+	// GameInstance timers survive network-driver teardown and map changes.
+	GetGameInstance()->GetTimerManager().SetTimer(CloseTimer, this, &UTBSession::ReturnOffline, 5.f, false);
+	if (GetWorld() && GetWorld()->GetNetMode() == NM_ListenServer)
+	{
+		for (auto It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+		{
+			if (auto* PC = Cast<ATBController>(It->Get()); PC && !PC->IsLocalController()) PC->ClientRoomClosed();
+		}
+	}
 	if (UWorld* World = GetWorld())
 	{
 		World->GetTimerManager().ClearTimer(LobbyUpdateTimer);
@@ -411,8 +437,7 @@ void UTBSession::Leave()
 	{
 		if (!Sessions->DestroySession(NAME_GameSession))
 		{
-			CurrentOperation = ESessionOperation::Idle;
-			Message(TEXT("DestroySession could not start. Retry TBLeave."), true);
+			ReturnOffline();
 		}
 	}
 	else
@@ -427,58 +452,48 @@ void UTBSession::Destroyed(FName Name, bool bSucceeded)
 	{
 		return;
 	}
-	if (!bSucceeded)
-	{
-		CurrentOperation = ESessionOperation::Idle;
-		Message(TEXT("Session cleanup failed; retry TBLeave or restart the game."), true);
-		return;
-	}
 	ReturnOffline();
 }
 
 void UTBSession::ReturnOffline()
 {
-	if (auto* Audio = GetGameInstance()->GetSubsystem<UTBAudioSubsystem>()) Audio->QueueTravelSound(ETBSoundEvent::LobbyLeave);
+	if (bReturningOffline) return;
+	bReturningOffline = true;
+	CurrentOperation = ESessionOperation::Closing;
 	bLobbyUpdateInFlight = false;
-	if (UWorld* World = GetWorld())
-	{
-		World->GetTimerManager().ClearTimer(LobbyUpdateTimer);
-	}
-	CurrentOperation = ESessionOperation::Idle;
+	if (UWorld* World = GetWorld()) World->GetTimerManager().ClearTimer(LobbyUpdateTimer);
 	Results.Reset();
 	Rooms.Reset();
-	UGameplayStatics::OpenLevel(GetGameInstance(), FName(TEXT("/Game/Maps/Title")), true);
-	Message(TEXT("Offline. Last match ended; TBHost / TBFind for a new lobby."));
+	Search.Reset();
+	if (auto* Audio = GetGameInstance()->GetSubsystem<UTBAudioSubsystem>()) Audio->QueueTravelSound(ETBSoundEvent::LobbyLeave);
+	// Do not browse from a net-driver/session callback. Give the close RPC time to flush.
+	GetGameInstance()->GetTimerManager().SetTimer(CloseTimer, FTimerDelegate::CreateWeakLambda(this, [this]()
+	{
+		UGameplayStatics::OpenLevel(GetGameInstance(), FName(TEXT("/Game/Maps/Title")), true);
+	}), .25f, false);
 }
 
-// 自分のWorldの通信失敗だけを扱い、通知後に通常の退出処理へ進む。
+void UTBSession::RoomClosed()
+{
+	if (bReturningOffline || CurrentOperation == ESessionOperation::Closing) return;
+	bRoomClosed = true;
+	CurrentOperation = ESessionOperation::Idle;
+	Leave();
+}
+
 void UTBSession::NetworkFailed(UWorld* World, UNetDriver* Driver, ENetworkFailure::Type Type, const FString& Error)
 {
-	if (!World || World != GetWorld())
-	{
-		return;
-	}
-	// サーバー側での単一クライアント切断はLogoutが扱う。ホストの部屋は閉じない。
+	if (!World || World != GetWorld()) return;
 	if (World->GetNetMode() != NM_Client &&
-	    (Type == ENetworkFailure::ConnectionLost || Type == ENetworkFailure::ConnectionTimeout))
-	{
-		return;
-	}
-	Message(FString::Printf(TEXT("Network failure: %s"), *Error), true);
-	// 切断理由を表示してから退出する。
-	if (CurrentOperation == ESessionOperation::Idle)
-	{
-		World->GetTimerManager().SetTimer(CloseTimer, FTimerDelegate::CreateUObject(this, &UTBSession::Leave), 2.f,
-		                                  false);
-	}
+	    (Type == ENetworkFailure::ConnectionLost || Type == ENetworkFailure::ConnectionTimeout)) return;
+	UE_LOG(LogTemp, Warning, TEXT("[ToyBoxSession] Connection ended: %s"), *Error);
+	RoomClosed();
 }
 
 void UTBSession::TravelFailed(UWorld* World, ETravelFailure::Type Type, const FString& Error)
 {
-	if (World != GetWorld())
-	{
-		return;
-	}
-	Message(FString::Printf(
-	    TEXT("Travel failed: %s. Check the destination map is saved/cooked; TBLeave cleans session."), *Error), true);
+	if (!World || World->GetGameInstance() != GetGameInstance() || bReturningOffline) return;
+	UE_LOG(LogTemp, Warning, TEXT("[ToyBoxSession] Travel failed: %s"), *Error);
+	CurrentOperation = ESessionOperation::Idle;
+	Leave();
 }

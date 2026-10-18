@@ -43,6 +43,7 @@ public:
 	bool PickUp(ATBCharacter* Human);
 	void PutDown();
 	void ResetPlacement();
+	void ChooseRandomToy();
 
 private:
 	void Fall(float DeltaSeconds);

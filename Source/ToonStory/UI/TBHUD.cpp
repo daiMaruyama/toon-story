@@ -20,6 +20,8 @@
 void ATBHUD::NotifyHitBoxClick(FName Name)
 {
 	Super::NotifyHitBoxClick(Name);
+	LastClickedButton = Name;
+	LastButtonClickTime = GetWorld()->GetTimeSeconds();
 	auto* PC = Cast<ATBController>(GetOwningPlayerController());
 	const auto* State = TB::GS(GetWorld());
 	if (!PC || !State)

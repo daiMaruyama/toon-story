@@ -19,6 +19,7 @@ protected:
 	virtual void NativeOnInitialized() override;
 	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
+	virtual void NativeTick(const FGeometry& Geometry, float DeltaTime) override;
 private:
 	void BuildPaperLayout();
 	UPROPERTY(Transient) TObjectPtr<UTBSession> Session;

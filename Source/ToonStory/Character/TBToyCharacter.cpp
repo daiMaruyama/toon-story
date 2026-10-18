@@ -23,19 +23,8 @@ void ATBToyCharacter::ChooseRandomToy()
 	{
 		return;
 	}
-	TArray<int32> Candidates;
-	for (int32 Index = 0; Index < ToyCatalogue.Num(); ++Index)
-	{
-		if (ToyCatalogue[Index])
-		{
-			Candidates.Add(Index);
-		}
-	}
-	if (Candidates.IsEmpty())
-	{
-		return;
-	}
-	SelectedToyIndex = Candidates[FMath::RandHelper(Candidates.Num())];
+	SelectedToyIndex = TBToyPresentation::SelectToy(ToyCatalogue);
+	if (SelectedToyIndex == INDEX_NONE) return;
 	RefreshToyPresentation();
 	ForceNetUpdate();
 }

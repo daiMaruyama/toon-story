@@ -30,6 +30,7 @@ public:
 	void Join(int32 Index);
 	UFUNCTION(BlueprintCallable)
 	void Leave();
+	void RoomClosed();
 	// 現在のPhaseに合わせ、検索・招待からの参加を開閉する（サーバー専用）。
 	void RefreshLobbyAvailability();
 	UFUNCTION(BlueprintPure)
@@ -61,6 +62,9 @@ private:
 	FDelegateHandle CreateSessionHandle, FindSessionsHandle, JoinSessionHandle, DestroySessionHandle,
 	    InviteAcceptedHandle, NetworkFailureHandle, TravelFailureHandle, UpdateSessionHandle;
 	FTimerHandle CloseTimer;
+	FDelegateHandle MapLoadedHandle;
+	bool bReturningOffline = false;
+	bool bRoomClosed = false;
 	FTimerHandle LobbyUpdateTimer;
 	bool bLobbyUpdateInFlight = false;
 	bool bUpdatingLobbyOpen = false;

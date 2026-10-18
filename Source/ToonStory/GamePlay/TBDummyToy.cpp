@@ -4,6 +4,8 @@
 #include "TimerManager.h"
 #include "Character/TBCharacter.h"
 #include "Character/TBToyPresentation.h"
+#include "Character/TBToyCharacter.h"
+#include "GameFramework/GameModeBase.h"
 #include "Components/ChildActorComponent.h"
 #include "Components/SphereComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -33,6 +35,7 @@ ATBDummyToy::ATBDummyToy()
 	Collision->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 	Collision->SetCollisionResponseToAllChannels(ECR_Block);
 	Collision->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+	Collision->SetCollisionResponseToChannel(ECC_GameTraceChannel1, ECR_Ignore);
 	Collision->SetCanEverAffectNavigation(false);
 	Visual = CreateDefaultSubobject<UChildActorComponent>(TEXT("Visual"));
 	Visual->SetupAttachment(Root);
@@ -42,8 +45,23 @@ void ATBDummyToy::BeginPlay()
 {
 	Super::BeginPlay();
 	InitialTransform = GetActorTransform();
+	ChooseRandomToy();
 	RefreshVisual();
 }
+void ATBDummyToy::ChooseRandomToy()
+{
+	if (!HasAuthority()) return;
+	const auto* Mode = GetWorld()->GetAuthGameMode();
+	const auto* Defaults = Mode && Mode->DefaultPawnClass
+	    ? Cast<ATBToyCharacter>(Mode->DefaultPawnClass->GetDefaultObject()) : nullptr;
+	if (!Defaults) return;
+	const int32 Index = TBToyPresentation::SelectToy(Defaults->ToyCatalogue);
+	if (Index == INDEX_NONE) return;
+	VisualClass = Defaults->ToyCatalogue[Index];
+	RefreshVisual();
+	ForceNetUpdate();
+}
+
 void ATBDummyToy::RefreshVisual()
 {
 	Visual->SetRelativeScale3D(FVector(TBToyPresentation::SizeScale));
@@ -172,6 +190,7 @@ void ATBDummyToy::ResetPlacement()
 	FallSpeed = 0;
 	OnRep_Holder();
 	SetActorTransform(InitialTransform, false, nullptr, ETeleportType::TeleportPhysics);
+	ChooseRandomToy();
 	ForceNetUpdate();
 }
 void ATBDummyToy::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const

@@ -10,6 +10,27 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/SkeletalMesh.h"
 #include "Misc/PackageName.h"
+#include "Materials/MaterialInstanceDynamic.h"
+#include "Materials/Material.h"
+
+int32 TBToyPresentation::SelectionWeight(const UClass* VisualClass)
+{
+	return !VisualClass ? 0 : VisualClass->GetName().Contains(TEXT("SpaceRanger")) ? 1 : 4;
+}
+
+int32 TBToyPresentation::SelectToy(const TArray<TSubclassOf<AActor>>& Catalogue)
+{
+	int32 Total = 0;
+	for (auto Class : Catalogue) Total += SelectionWeight(Class.Get());
+	if (Total == 0) return INDEX_NONE;
+	int32 Roll = FMath::RandHelper(Total);
+	for (int32 Index = 0; Index < Catalogue.Num(); ++Index)
+	{
+		Roll -= SelectionWeight(Catalogue[Index].Get());
+		if (Roll < 0) return Index;
+	}
+	return INDEX_NONE;
+}
 
 void TBToyPresentation::Initialize(AActor* Visual)
 {
@@ -17,10 +38,27 @@ void TBToyPresentation::Initialize(AActor* Visual)
 	{
 		return;
 	}
+	Visual->SetActorEnableCollision(false);
 	TInlineComponentArray<USkeletalMeshComponent*> Parts(Visual);
 	for (auto* Part : Parts)
 	{
 		Part->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		if (Visual->GetClass()->GetName().Contains(TEXT("SpaceRanger")))
+		{
+			// Only recolor the plain armor; retain face, sticker and detail materials.
+			for (int32 Slot = 0; Slot < Part->GetNumMaterials(); ++Slot)
+			{
+				const auto* Original = Part->GetMaterial(Slot);
+				if (!Original || Original->GetName() != TEXT("M_plastic_base")) continue;
+				auto* Base = LoadObject<UMaterial>(nullptr, TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
+				if (Base)
+				{
+					auto* Tint = UMaterialInstanceDynamic::Create(Base, Part);
+					Tint->SetVectorParameterValue(TEXT("Color"), FLinearColor(.30f, .42f, .37f));
+					Part->SetMaterial(Slot, Tint);
+				}
+			}
+		}
 		Part->SetComponentTickEnabled(true);
 		Part->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
 		if (Part->LeaderPoseComponent.IsValid() || !Part->GetSkeletalMeshAsset())
