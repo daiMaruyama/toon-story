@@ -15,7 +15,8 @@
 
 int32 TBToyPresentation::SelectionWeight(const UClass* VisualClass)
 {
-	return !VisualClass ? 0 : VisualClass->GetName().Contains(TEXT("SpaceRanger")) ? 1 : 4;
+	if (!VisualClass) return 0;
+	return VisualClass->GetName().Contains(TEXT("SpaceRanger")) ? 1 : 4;
 }
 
 int32 TBToyPresentation::SelectToy(const TArray<TSubclassOf<AActor>>& Catalogue)

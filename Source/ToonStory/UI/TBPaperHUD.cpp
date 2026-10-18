@@ -327,9 +327,11 @@ void ATBHUD::DrawMatch(const ATBGameState& MatchState, ATBController& Controller
 		DrawRect(Accent, W * .5f - 220 * S, H * .76f + 37 * S, 440 * S * Elapsed / Duration, 7 * S);
 		DrawText(TEXT("Eを離すと中止 ／ Qでおろす"), Ink, W * .5f - 220 * S, H * .76f + 49 * S, PaperFont, .75f * S);
 	}
- if (Controller.bStuckHint)
-  DrawText(TEXT("動けない場合：Esc → スタック解除"), TBPaper::Accent, 24 * S, H * .65f, PaperFont, S);
- if (!Controller.Notice.IsEmpty())
+	if (Controller.bStuckHint)
+	{
+		DrawText(TEXT("動けない場合：Esc → スタック解除"), TBPaper::Accent, 24 * S, H * .65f, PaperFont, S);
+	}
+	if (!Controller.Notice.IsEmpty())
 	{
 		PaperPanel(FLinearColor::White, W - 450 * S, H - 155 * S, 426 * S, 70 * S);
 		DrawText(Controller.Notice.Left(80), TBPaper::Ink, W - 428 * S, H - 132 * S, PaperFont, .72f * S);

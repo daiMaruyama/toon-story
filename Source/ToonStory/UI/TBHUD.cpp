@@ -102,13 +102,19 @@ void ATBHUD::DrawHUD()
 	{
 		return;
 	}
- if (State->Phase == ETBPhase::Playing && !PC->IsLeaveMenuOpen())
- { bPlayersOpen = false; KickSelection.Reset(); }
- if (bPlayersOpen)
- { DrawPlayers(); return; }
- if (State->Phase == ETBPhase::Lobby)
- {
-  DrawLobby();
+	if (State->Phase == ETBPhase::Playing && !PC->IsLeaveMenuOpen())
+	{
+		bPlayersOpen = false;
+		KickSelection.Reset();
+	}
+	if (bPlayersOpen)
+	{
+		DrawPlayers();
+		return;
+	}
+	if (State->Phase == ETBPhase::Lobby)
+	{
+		DrawLobby();
 		return;
 	}
 	if (State->Phase == ETBPhase::Results || State->Phase == ETBPhase::Aborted)
@@ -127,13 +133,21 @@ void ATBHUD::DrawHUD()
 			DrawText(TEXT("ひとやすみ"), TBPaper::Accent, X + 32 * S, Y + 24 * S, PaperFont, 1.5f * S);
 			DrawText(TEXT("オンラインの試合は進み続けます。"), TBPaper::Muted, X + 32 * S, Y + 69 * S, PaperFont,
 			         .85f * S);
-			const TCHAR* Labels[] = {TEXT("あそびにもどる [Esc]"), TEXT("スタック解除（3秒待機）"), TEXT("参加者一覧"), TEXT("タイトルにもどる")};
-			const FName Names[] = {TEXT("Resume"), TEXT("Unstuck"), TEXT("Players"), TEXT("Leave")};
-			for (int32 I = 0; I < 4; ++I)
+			struct FMenuButton
+			{
+				FName Id;
+				const TCHAR* Label;
+			};
+			const FMenuButton Buttons[] = {{TEXT("Resume"), TEXT("あそびにもどる [Esc]")},
+			                               {TEXT("Unstuck"), TEXT("スタック解除（3秒待機）")},
+			                               {TEXT("Players"), TEXT("参加者一覧")},
+			                               {TEXT("Leave"), TEXT("タイトルにもどる")}};
+			for (int32 I = 0; I < UE_ARRAY_COUNT(Buttons); ++I)
 			{
 				PaperPanel(TBPaper::Cream, X + 25 * S, Y + (105 + I * 60) * S, 470 * S, 50 * S);
-				DrawText(Labels[I], TBPaper::Ink, X + 45 * S, Y + (117 + I * 60) * S, PaperFont, S);
-				AddHitBox(FVector2D(X + 25 * S, Y + (105 + I * 60) * S), FVector2D(470 * S, 50 * S), Names[I], true);
+				DrawText(Buttons[I].Label, TBPaper::Ink, X + 45 * S, Y + (117 + I * 60) * S, PaperFont, S);
+				AddHitBox(FVector2D(X + 25 * S, Y + (105 + I * 60) * S), FVector2D(470 * S, 50 * S), Buttons[I].Id,
+				          true);
 			}
 		}
 	}

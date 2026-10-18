@@ -24,7 +24,7 @@ public:
 	bool FindRecoveryLocation(FVector& Destination) const;
 	UPROPERTY(Replicated)
 	bool bStuckHint = false;
-	UPROPERTY(Replicated)
+	// サーバーだけで使う待機完了時刻。表示用の同期は不要。
 	double RecoveryEnds = 0;
 
 	virtual void PostSeamlessTravel() override;
@@ -79,11 +79,12 @@ public:
 	FString Notice;
 
 private:
-	void TickRecovery(float DeltaTime);
+	void TickRecovery();
 	TWeakObjectPtr<APawn> RecoveryPawn;
 	TWeakObjectPtr<UWorld> RecoveryWorld;
 	FVector RecoveryOrigin = FVector::ZeroVector;
 	FVector SampleOrigin = FVector::ZeroVector;
+	FVector StuckOrigin = FVector::ZeroVector;
 	ETBPhase RecoveryPhase = ETBPhase::Lobby;
 	float BlockedSeconds = 0;
 	double HintUntil = 0;

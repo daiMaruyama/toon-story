@@ -12,6 +12,24 @@
 #include "UObject/UObjectGlobals.h"
 #include "Misc/PackageName.h"
 
+namespace
+{
+	struct FStageDefinition
+	{
+		const TCHAR* Path;
+		const TCHAR* Name;
+		int32 ItemCount;
+	};
+	// ロビーでの表示・上限。実際のアイテム数はステージ到着時に再確認する。
+	constexpr FStageDefinition Stages[] = {{TEXT("/Game/Maps/TB_KidsRoom"), TEXT("Kids' Rooms"), 7},
+	                                       {TEXT("/Game/Maps/TB_ToyWorldDemoExpanded"), TEXT("Demo ＋ こども部屋"), 10},
+	                                       {TEXT("/Game/Maps/TB_ArchViz"), TEXT("ArchViz Apartment"), 8}};
+	const FStageDefinition* FindStage(int32 Index)
+	{
+		return Index >= 0 && Index < UE_ARRAY_COUNT(Stages) ? &Stages[Index] : nullptr;
+	}
+} // namespace
+
 void UTBLobbySettings::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
@@ -57,10 +75,8 @@ void UTBLobbySettings::Deinitialize()
 
 const TCHAR* TBLobbySettings::StagePath(int32 Index)
 {
-	return Index == 0   ? TEXT("/Game/Maps/TB_KidsRoom")
-	       : Index == 1 ? TEXT("/Game/Maps/TB_ToyWorldDemoExpanded")
-	       : Index == 2 ? TEXT("/Game/Maps/TB_ArchViz")
-	                    : nullptr;
+	const auto* Stage = FindStage(Index);
+	return Stage ? Stage->Path : nullptr;
 }
 int32 TBLobbySettings::StageIndex(const UWorld* World)
 {
@@ -79,9 +95,9 @@ int32 TBLobbySettings::AvailableItems(UWorld* World)
 	// so a later map edit cannot produce an impossible collection target.
 	if (IsLobby(World))
 	{
-		constexpr int32 Counts[] = {7, 10, 8};
 		const auto* State = World->GetGameState<ATBGameState>();
-		return State && StagePath(State->SelectedStage) ? Counts[State->SelectedStage] : 1;
+		const auto* Stage = State ? FindStage(State->SelectedStage) : nullptr;
+		return Stage ? Stage->ItemCount : 1;
 	}
 	int32 Count = 0;
 	for (TActorIterator<ATBPickup> It(World); It; ++It)
@@ -116,9 +132,7 @@ void TBLobbySettings::SelectStage(ATBController* Host, int32 Index)
 	Pending->SelectedStage = Index;
 	State->SelectedStage = Index;
 	State->Settings.RequiredItems = FMath::Min(State->Settings.RequiredItems, AvailableItems(World));
-	State->StageName = Index == 0   ? TEXT("Kids' Rooms")
-	                   : Index == 1 ? TEXT("Demo ＋ こども部屋")
-	                                : TEXT("ArchViz Apartment");
+	State->StageName = FindStage(Index)->Name;
 	State->ForceNetUpdate();
 }
 bool TBLobbySettings::IsLobby(const UWorld* World)
@@ -216,24 +230,25 @@ void TBLobbySettings::Restore(ATBGameMode* Mode)
 	{
 		return;
 	}
-	auto* Lobby = World->GetGameInstance()->GetSubsystem<UTBLobbySettings>();
+	auto* Pending = World->GetGameInstance()->GetSubsystem<UTBLobbySettings>();
 	if (IsLobby(World))
 	{
-		Lobby->bDedicatedLobby = true;
+		Pending->bDedicatedLobby = true;
 	}
-	if (!Lobby->bDedicatedLobby && StageIndex(World) != INDEX_NONE)
+	const int32 CurrentStage = StageIndex(World);
+	if (!Pending->bDedicatedLobby && CurrentStage != INDEX_NONE)
 	{
-		Lobby->SelectedStage = StageIndex(World);
+		Pending->SelectedStage = CurrentStage;
 	}
-	State->SelectedStage = Lobby->SelectedStage;
-	State->StageName = State->SelectedStage == 0   ? TEXT("Kids' Rooms")
-	                   : State->SelectedStage == 1 ? TEXT("Demo ＋ こども部屋")
-	                                               : TEXT("ArchViz Apartment");
-	if (World->GetMapName().Contains(TEXT("DemoExpanded")))
+	State->SelectedStage = Pending->SelectedStage;
+	// Arenaなどの直接起動時は、GameModeが設定したマップ名を維持する。
+	if (Pending->bDedicatedLobby || CurrentStage != INDEX_NONE)
 	{
-		State->StageName = TEXT("Demo ＋ こども部屋");
+		if (const auto* Stage = FindStage(State->SelectedStage))
+		{
+			State->StageName = Stage->Name;
+		}
 	}
-	auto* Pending = World->GetGameInstance()->GetSubsystem<UTBLobbySettings>();
 	if (!Pending->PendingMap.IsEmpty() && World->GetMapName().EndsWith(FPackageName::GetShortName(Pending->PendingMap)))
 	{
 		State->Settings = Pending->PendingRules;

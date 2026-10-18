@@ -13,11 +13,20 @@
 #include "EngineUtils.h"
 #include "Net/UnrealNetwork.h"
 
+namespace
+{
+	constexpr double RecoveryDelaySeconds = 3;
+	constexpr double RecoveryCooldownSeconds = 30;
+	constexpr double StuckSampleInterval = .25;
+	constexpr double StuckInputSeconds = 3;
+	constexpr double HintDurationSeconds = 10;
+	constexpr float MovementTolerance = 20.f;
+} // namespace
+
 void ATBController::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(ATBController, bStuckHint);
-	DOREPLIFETIME(ATBController, RecoveryEnds);
 }
 
 void ATBController::ClientWasKicked_Implementation(const FText& KickReason)
@@ -195,18 +204,21 @@ void ATBController::ServerUnstuck_Implementation()
 	RecoveryWorld = GetWorld();
 	RecoveryOrigin = Body->GetActorLocation();
 	RecoveryPhase = GetWorld()->GetGameState<ATBGameState>()->Phase;
-	RecoveryEnds = Now + 3;
+	RecoveryEnds = Now + RecoveryDelaySeconds;
 	ClientNotice(TEXT("3秒後に近くの安全な場所へ移動します。動くとキャンセルします。"), false);
 }
 
 // Remote controllers have no PlayerInput, so PlayerTick does not run on the server.
 void ATBController::TickActor(float DeltaTime, ELevelTick TickType, FActorTickFunction& ThisTickFunction)
 {
- Super::TickActor(DeltaTime, TickType, ThisTickFunction);
- if (IsValid(this)) TickRecovery(DeltaTime);
+	Super::TickActor(DeltaTime, TickType, ThisTickFunction);
+	if (IsValid(this))
+	{
+		TickRecovery();
+	}
 }
 
-void ATBController::TickRecovery(float DeltaTime)
+void ATBController::TickRecovery()
 {
 	if (!HasAuthority())
 	{
@@ -223,11 +235,17 @@ void ATBController::TickRecovery(float DeltaTime)
 		RecoveryPawn = Body;
 		RecoveryWorld = GetWorld();
 		RecoveryEnds = HintUntil = BlockedSeconds = 0;
+		bStuckHint = false;
 		RecoverySampleAt = Now;
 		SampleOrigin = Body ? Body->GetActorLocation() : FVector::ZeroVector;
 	}
+	// 待機中以外の衝突・視線判定はサンプリング時だけ行う。
+	if (RecoveryEnds <= 0 && Now - RecoverySampleAt < StuckSampleInterval)
+	{
+		return;
+	}
 	const bool Eligible = CanRecover();
-	if (Body && Now - RecoverySampleAt >= .25)
+	if (Body && Now - RecoverySampleAt >= StuckSampleInterval)
 	{
 		const auto* Move = Body->GetCharacterMovement();
 		const FVector Direction = Move->GetCurrentAcceleration().GetSafeNormal2D();
@@ -240,14 +258,19 @@ void ATBController::TickRecovery(float DeltaTime)
 		                         FQuat::Identity, Capsule->GetCollisionObjectType(), Capsule->GetCollisionShape(),
 		                         FCollisionQueryParams(SCENE_QUERY_STAT(TBStuck), false, Body),
 		                         FCollisionResponseParams(Capsule->GetCollisionResponseToChannels()));
-		BlockedSeconds = Blocked ? BlockedSeconds + FMath::Min(Now - RecoverySampleAt, .5) : 0;
-		if (BlockedSeconds >= 3)
+		BlockedSeconds = Blocked ? BlockedSeconds + FMath::Min(Now - RecoverySampleAt, 2 * StuckSampleInterval) : 0;
+		if (BlockedSeconds >= StuckInputSeconds)
 		{
-			HintUntil = Now + 10;
+			if (HintUntil <= Now)
+			{
+				StuckOrigin = Body->GetActorLocation();
+			}
+			HintUntil = Now + HintDurationSeconds;
 		}
-		if (FVector::DistSquared(SampleOrigin, Body->GetActorLocation()) > 100)
+		if (HintUntil > Now &&
+		    FVector::DistSquared(StuckOrigin, Body->GetActorLocation()) > FMath::Square(MovementTolerance))
 		{
-			HintUntil = 0;
+			HintUntil = BlockedSeconds = 0;
 		}
 		SampleOrigin = Body->GetActorLocation();
 		RecoverySampleAt = Now;
@@ -262,7 +285,7 @@ void ATBController::TickRecovery(float DeltaTime)
 		return;
 	}
 	if (!Eligible || GetWorld()->GetGameState<ATBGameState>()->Phase != RecoveryPhase ||
-	    FVector::DistSquared(RecoveryOrigin, Body->GetActorLocation()) > 400)
+	    FVector::DistSquared(RecoveryOrigin, Body->GetActorLocation()) > FMath::Square(MovementTolerance))
 	{
 		RecoveryEnds = 0;
 		ClientNotice(TEXT("状態が変わったため、スタック解除をキャンセルしました。"));
@@ -281,7 +304,7 @@ void ATBController::TickRecovery(float DeltaTime)
 	}
 	Body->GetCharacterMovement()->StopMovementImmediately();
 	Body->ForceNetUpdate();
-	RecoveryCooldown = Now + 30;
+	RecoveryCooldown = Now + RecoveryCooldownSeconds;
 	HintUntil = BlockedSeconds = 0;
 	bStuckHint = false;
 	ClientNotice(TEXT("近くの安全な場所へ移動しました。"), false);

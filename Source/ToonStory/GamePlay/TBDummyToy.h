@@ -43,9 +43,9 @@ public:
 	bool PickUp(ATBCharacter* Human);
 	void PutDown();
 	void ResetPlacement();
-	void ChooseRandomToy();
 
 private:
+	void ChooseRandomToy();
 	void Fall(float DeltaSeconds);
 	float FallSpeed = 0;
 	FTBGripCache GripCache;

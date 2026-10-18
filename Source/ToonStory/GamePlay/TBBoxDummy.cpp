@@ -32,18 +32,6 @@ bool ATBBox::StoreDummy(ATBDummyToy* Toy)
 	return false;
 }
 
-bool ATBBox::HasDummyPrisoners() const
-{
-	for (TActorIterator<ATBDummyToy> It(GetWorld()); It; ++It)
-	{
-		if (It->StoredBox == this)
-		{
-			return true;
-		}
-	}
-	return false;
-}
-
 int32 ATBBox::ReleaseDummyPrisoners(int32 FirstSlot)
 {
 	int Released = 0;

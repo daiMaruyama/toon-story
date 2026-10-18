@@ -162,7 +162,7 @@ void UTBSession::Host()
 	}
 }
 
-// 非同期の部屋作成が完了したら、ステージを1つ選んでリッスンサーバーとして開く。
+// 部屋作成後は専用ロビーをリッスンサーバーとして開く。
 void UTBSession::Created(FName Name, bool bSucceeded)
 {
 	if (Name != NAME_GameSession || CurrentOperation != ESessionOperation::Creating)
@@ -176,22 +176,13 @@ void UTBSession::Created(FName Name, bool bSucceeded)
 		return;
 	}
 	Message(TEXT("Room created. Opening listen server..."));
-	TArray<FName> Stages;
-	for (const TCHAR* Map : {TEXT("/Game/Maps/TB_Lobby")})
+	const TCHAR* LobbyMap = TEXT("/Game/Maps/TB_Lobby");
+	if (!FPackageName::DoesPackageExist(LobbyMap))
 	{
-		if (FPackageName::DoesPackageExist(Map))
-		{
-			Stages.Add(FName(Map));
-		}
+		Message(TEXT("Lobby map is not installed. Opening test arena."));
+		LobbyMap = TEXT("/Game/Maps/Arena");
 	}
-	if (Stages.IsEmpty())
-	{
-		Message(TEXT("Residential stages are not installed. Opening test arena."));
-	}
-	const FName Selected =
-	    Stages.IsEmpty() ? FName(TEXT("/Game/Maps/Arena")) : Stages[FMath::RandRange(0, Stages.Num() - 1)];
-	// 抽選はホストで1回だけ。参加者は接続時にホストと同じマップへ移動する。
-	UGameplayStatics::OpenLevel(GetGameInstance(), Selected, true, TEXT("listen"));
+	UGameplayStatics::OpenLevel(GetGameInstance(), FName(LobbyMap), true, TEXT("listen"));
 }
 
 // 同じビルド識別子の部屋を検索する。表示用文字列と参加用結果は分けて保持する。

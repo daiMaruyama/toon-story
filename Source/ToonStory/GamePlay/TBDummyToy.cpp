@@ -58,8 +58,6 @@ void ATBDummyToy::ChooseRandomToy()
 	const int32 Index = TBToyPresentation::SelectToy(Defaults->ToyCatalogue);
 	if (Index == INDEX_NONE) return;
 	VisualClass = Defaults->ToyCatalogue[Index];
-	RefreshVisual();
-	ForceNetUpdate();
 }
 
 void ATBDummyToy::RefreshVisual()
@@ -191,6 +189,7 @@ void ATBDummyToy::ResetPlacement()
 	OnRep_Holder();
 	SetActorTransform(InitialTransform, false, nullptr, ETeleportType::TeleportPhysics);
 	ChooseRandomToy();
+	RefreshVisual();
 	ForceNetUpdate();
 }
 void ATBDummyToy::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const

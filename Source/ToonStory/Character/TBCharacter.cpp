@@ -120,7 +120,10 @@ void ATBCharacter::UpdateAppearance(bool bToy)
 		Visual->SetRelativeScale3D(FVector(Scale));
 		// 速度の切り替えはABPに任せ、待機も含めた一律の早回しを避ける。
 		Visual->GlobalAnimRateScale = 1.f;
-		Visual->SetRelativeLocation(FVector(0, 0, -65 - (UCharacterMovementComponent::MIN_FLOOR_DIST + UCharacterMovementComponent::MAX_FLOOR_DIST) * .5f) - FVector(0, 0, Bounds.Origin.Z - Bounds.BoxExtent.Z) * Scale);
+		const float FloorClearance =
+		    (UCharacterMovementComponent::MIN_FLOOR_DIST + UCharacterMovementComponent::MAX_FLOOR_DIST) * .5f;
+		const float MeshBottom = (Bounds.Origin.Z - Bounds.BoxExtent.Z) * Scale;
+		Visual->SetRelativeLocation(FVector(0, 0, -65 - FloorClearance - MeshBottom));
 		// リターゲット後の子どもの姿勢はメッシュの+Yが正面。Pawnの+X（視点のYaw）へ合わせる。
 		Visual->SetRelativeRotation(FRotator(0, -90, 0));
 		// 他プレイヤー側の移動補間は記録済みのメッシュ位置へ毎フレーム戻すため、記録も更新しないと足が浮く。

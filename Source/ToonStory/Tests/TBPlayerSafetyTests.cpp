@@ -144,12 +144,143 @@ bool FTBSafetyGuards::RunTest(const FString& Parameters)
 	return true;
 }
 
+// 実際の入力と衝突で検知を確認する。静止した擬態は対象にしない。
+class FTBStuckDetection : public IAutomationLatentCommand
+{
+	FAutomationTestBase* Test;
+	TWeakObjectPtr<ATBController> Controller;
+	TWeakObjectPtr<ATBCharacter> Body;
+	TArray<TWeakObjectPtr<AActor>> Fixtures;
+	FTransform OriginalTransform;
+	ETBTeam OriginalTeam = ETBTeam::None;
+	FVector StuckPosition;
+	int32 Step = 0;
+	double Changed = 0;
+
+public:
+	explicit FTBStuckDetection(FAutomationTestBase* InTest) : Test(InTest)
+	{
+	}
+	~FTBStuckDetection()
+	{
+		if (Body.IsValid())
+		{
+			Body->TBPS()->Team = OriginalTeam;
+			Body->ApplyState();
+			Body->SetActorTransform(OriginalTransform);
+		}
+		if (Controller.IsValid())
+		{
+			Controller->bStuckHint = false;
+		}
+		for (auto Fixture : Fixtures)
+		{
+			if (Fixture.IsValid())
+			{
+				Fixture->Destroy();
+			}
+		}
+	}
+	bool Update() override
+	{
+		const double Now = FPlatformTime::Seconds();
+		if (Step == 0)
+		{
+			auto* World = SafetyWorld();
+			auto* PC = World ? Cast<ATBController>(World->GetFirstPlayerController()) : nullptr;
+			auto* Character = PC ? Cast<ATBCharacter>(PC->GetPawn()) : nullptr;
+			if (!Character || World->GetNetMode() != NM_Standalone)
+			{
+				Test->AddError(TEXT("Standalone character required"));
+				return true;
+			}
+			Controller = PC;
+			Body = Character;
+			OriginalTransform = Character->GetActorTransform();
+			OriginalTeam = Character->TBPS()->Team;
+			Character->TBPS()->Team = ETBTeam::Toy;
+			Character->ApplyState();
+			auto Box = [&](FVector Location, FVector Extent)
+			{
+				auto* Actor = World->SpawnActor<AActor>();
+				Fixtures.Add(Actor);
+				auto* Collision = NewObject<UBoxComponent>(Actor);
+				Actor->SetRootComponent(Collision);
+				Actor->AddInstanceComponent(Collision);
+				Collision->SetBoxExtent(Extent);
+				Collision->SetCollisionProfileName(TEXT("BlockAll"));
+				Collision->RegisterComponent();
+				Actor->SetActorLocation(Location);
+			};
+			Box(FVector(0, 0, 3000), FVector(1000, 1000, 10));
+			const auto* Capsule = Character->GetCapsuleComponent();
+			Character->SetActorLocation(FVector(0, 0, 3012.5f + Capsule->GetScaledCapsuleHalfHeight()));
+			Box(FVector(Capsule->GetScaledCapsuleRadius() + 15, 0, 3100), FVector(5, 500, 150));
+			PC->bStuckHint = false;
+			Changed = Now;
+			Step = 1;
+		}
+		if (!Body.IsValid() || !Controller.IsValid())
+		{
+			Test->AddError(TEXT("Character lost during detection test"));
+			return true;
+		}
+		if (Step == 1 && Now - Changed >= 4)
+		{
+			Test->TestFalse(TEXT("Idle disguise does not trigger stuck hint"), Controller->bStuckHint);
+			Changed = Now;
+			Step = 2;
+		}
+		if (Step == 2)
+		{
+			Body->AddMovementInput(FVector::ForwardVector, 1, true);
+			if (Controller->bStuckHint)
+			{
+				StuckPosition = Body->GetActorLocation();
+				Changed = Now;
+				Step = 3;
+			}
+			else if (Now - Changed > 8)
+			{
+				Test->AddError(TEXT("Blocked movement must trigger a hint"));
+				return true;
+			}
+		}
+		if (Step == 3 && Now - Changed >= 1.5)
+		{
+			Test->TestTrue(TEXT("Detection alone never teleports"),
+			               FVector::Dist(StuckPosition, Body->GetActorLocation()) < 5);
+			Changed = Now;
+			Step = 4;
+		}
+		if (Step == 4)
+		{
+			// 1回のサンプルでは10cm未満でも、合計20cm以上動けば古い検知は破棄する。
+			const float Distance = FMath::Min((Now - Changed) * 20, 35.0);
+			Body->SetActorLocation(StuckPosition + FVector(0, Distance, 0));
+			if (Now - Changed > 2)
+			{
+				Test->TestFalse(TEXT("Slow movement clears stale stuck hint"), Controller->bStuckHint);
+				return true;
+			}
+		}
+		return false;
+	}
+};
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBStuckDetectionTest, "ToonStory.Safety.MovementDetection",
+                                 EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+bool FTBStuckDetectionTest::RunTest(const FString& Parameters)
+{
+	ADD_LATENT_AUTOMATION_COMMAND(FTBStuckDetection(this));
+	return true;
+}
+
 class FTBSafetyNetwork : public IAutomationLatentCommand
 {
 	FAutomationTestBase* Test;
 	TWeakObjectPtr<UGameInstance> Instance;
 	bool Host;
- FVector RemoteOrigin = FVector::ZeroVector;
+	FVector RemoteOrigin = FVector::ZeroVector;
 	int32 Step = 0;
 	double Began = FPlatformTime::Seconds(), Changed = 0;
 
@@ -194,13 +325,16 @@ public:
 					if (auto* Info = Cast<ATBPlayerState>(P); Info && Info != PC->PlayerState && Info->bReady)
 					{
 						auto* Remote = Cast<ATBController>(Info->GetOwner());
-                        if (!Remote || !Remote->GetPawn()) return false;
-                        RemoteOrigin = Remote->GetPawn()->GetActorLocation();
-                        Remote->bStuckHint = true;
-                        Remote->ServerUnstuck();
-                        Test->TestTrue(TEXT("Remote recovery started"), Remote->RecoveryEnds > 0);
-                        Step = 1;
-                        Changed = FPlatformTime::Seconds();
+						if (!Remote || !Remote->GetPawn())
+						{
+							return false;
+						}
+						RemoteOrigin = Remote->GetPawn()->GetActorLocation();
+						Remote->bStuckHint = true;
+						Remote->ServerUnstuck();
+						Test->TestTrue(TEXT("Remote recovery started"), Remote->RecoveryEnds > 0);
+						Step = 1;
+						Changed = FPlatformTime::Seconds();
 					}
 				}
 			}
@@ -212,10 +346,11 @@ public:
 					if (P != PC->PlayerState)
 					{
 						auto* Remote = Cast<ATBController>(P->GetOwner());
-                        Test->TestTrue(TEXT("Remote recovery completes without PlayerInput"), Remote && Remote->RecoveryEnds == 0 &&
-                            Remote->GetPawn() && FVector::Dist(RemoteOrigin, Remote->GetPawn()->GetActorLocation()) > 20);
-                        PC->ServerKickPlayer(P->GetPlayerId());
-                        break;
+						Test->TestTrue(TEXT("Remote recovery completes without PlayerInput"),
+						               Remote && Remote->RecoveryEnds == 0 && Remote->GetPawn() &&
+						                   FVector::Dist(RemoteOrigin, Remote->GetPawn()->GetActorLocation()) > 20);
+						PC->ServerKickPlayer(P->GetPlayerId());
+						break;
 					}
 				}
 				Step = 2;
