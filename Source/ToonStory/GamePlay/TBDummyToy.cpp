@@ -108,6 +108,8 @@ void ATBDummyToy::Tick(float DeltaSeconds)
 }
 void ATBDummyToy::OnRep_Holder()
 {
+	// Stored decoys must be visible to storage/drop-area occupancy sweeps.
+	Collision->SetCollisionResponseToChannel(ECC_GameTraceChannel1, StoredBox ? ECR_Block : ECR_Ignore);
 	Collision->SetCollisionEnabled(Holder ? ECollisionEnabled::NoCollision : ECollisionEnabled::QueryAndPhysics);
 	SettleFrames = 12;
 	SetActorTickEnabled(true);

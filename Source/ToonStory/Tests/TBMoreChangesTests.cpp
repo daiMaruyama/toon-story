@@ -69,7 +69,21 @@ bool FTBRescueEligibilityTest::RunTest(const FString& Parameters)
 	State->Phase = ETBPhase::Playing;
 	TestEqual(TEXT("Default solo rescue is five seconds"), Box->BaseRescueSeconds, 5.f);
 	TestFalse(TEXT("Empty box cannot start rescue"), Box->HasPrisoners());
-	Dummy->StoredBox = Box;
+	TestEqual(TEXT("Free decoys do not block toy movement"),
+	          Dummy->Collision->GetCollisionResponseToChannel(ECC_GameTraceChannel1), ECR_Ignore);
+	Dummy->Place(FVector(0, 0, 5000), Box);
+	TestEqual(TEXT("Stored decoys block storage occupancy sweeps"),
+	          Dummy->Collision->GetCollisionResponseToChannel(ECC_GameTraceChannel1), ECR_Block);
+	FHitResult DropHit;
+	const FVector DummyCenter = Dummy->Collision->GetComponentLocation();
+	TestTrue(TEXT("Drop sweep detects a stored decoy"),
+	         World->SweepSingleByChannel(DropHit, DummyCenter + FVector(0, 0, 80), DummyCenter,
+	                                     FQuat::Identity, ECC_GameTraceChannel1,
+	                                     FCollisionShape::MakeSphere(2)) && DropHit.GetActor() == Dummy);
+	Dummy->Place(FVector(0, 0, 5000));
+	TestEqual(TEXT("Released decoys no longer block toy movement"),
+	          Dummy->Collision->GetCollisionResponseToChannel(ECC_GameTraceChannel1), ECR_Ignore);
+	Dummy->Place(FVector(0, 0, 5000), Box);
 	TestFalse(TEXT("A decoy alone cannot start rescue"), Box->HasPrisoners());
 	Toy->bRescuing = Toy->bHoldingInteract = true;
 	Box->RescueProgress = .6f;

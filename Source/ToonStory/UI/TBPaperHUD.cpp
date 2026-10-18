@@ -93,25 +93,25 @@ void ATBHUD::DrawLobby()
 		}
 	};
 	auto Button =
-	    [&](FName Id, const FString& Label, float PX, float PY, float W, bool Enabled = true, bool Selected = false)
+	    [&](FName Id, const FString& Label, float PX, float PY, float W, bool Enabled = true, bool Selected = false, float Height = 42)
 	{
 		float MX = 0, MY = 0;
 		const bool Hovered = PC->GetMousePosition(MX, MY) && MX >= X + PX * S && MX < X + (PX + W) * S &&
-		                     MY >= Y + PY * S && MY < Y + (PY + 42) * S;
+		                     MY >= Y + PY * S && MY < Y + (PY + Height) * S;
 		const FLinearColor Fill = Selected ? TBPaper::Cream : Enabled && Hovered ? TBPaper::Cream : FLinearColor::White;
 		const float Age = GetWorld()->GetTimeSeconds() - LastButtonClickTime;
 		const float Lift = Enabled ? (Id == LastClickedButton && Age >= 0 && Age < .25f
 		    ? 7.f * (1.f - Age / .25f) : Hovered ? 3.f : 0.f) : 0.f;
-		Panel(PX + 2, PY + 4, W, 42, FLinearColor(0, 0, 0, .18f));
-		Panel(PX, PY - Lift, W, 42, Fill);
-		Panel(PX, PY + 40 - Lift, W, 2, Selected ? Accent : FLinearColor(.20f, .31f, .32f, .8f));
+		Panel(PX + 2, PY + 4, W, Height, FLinearColor(0, 0, 0, .18f));
+		Panel(PX, PY - Lift, W, Height, Fill);
+		Panel(PX, PY + Height - 2 - Lift, W, 2, Selected ? Accent : FLinearColor(.20f, .31f, .32f, .8f));
 		float TextWidth = 0, TextHeight = 0;
 		GetTextSize(Label, TextWidth, TextHeight, PaperFont, 1.05f);
 		Text(Label, PX + 14, PY + 5 - Lift, FMath::Min(1.05f, 1.05f * (W - 28) / FMath::Max(TextWidth, 1.f)),
 		     Enabled ? Ink : Muted);
 		if (Enabled)
 		{
-			AddHitBox(FVector2D(X + PX * S, Y + PY * S), FVector2D(W * S, 42 * S), Id, true);
+			AddHitBox(FVector2D(X + PX * S, Y + PY * S), FVector2D(W * S, Height * S), Id, true);
 		}
 	};
 	const auto* Local = PC->GetPlayerState<ATBPlayerState>();
@@ -171,9 +171,14 @@ void ATBHUD::DrawLobby()
 		const float PY = 186 + Row++ * 34;
 		Panel(40, PY - 4, 666, 30, FLinearColor(.10f, .15f, .18f, Row % 2 ? .42f : .18f));
 		Panel(48, PY + 4, 4, 12, P->bReady ? Accent : Muted);
-		Text(P->GetPlayerName().Left(28), 62, PY - 5, 1.1f, Ink);
-		Text(PreferredRole, 365, PY - 5, 1.1f, Muted);
-		Text(P->bReady ? TEXT("準備OK") : TEXT("準備中"), 535, PY - 5, 1.1f, P->bReady ? Accent : Muted);
+		Text(P->GetPlayerName().Left(18), 62, PY - 5, 1.f, Ink);
+		Text(PreferredRole, 320, PY - 5, 1.1f, Muted);
+		Text(P->bReady ? TEXT("準備OK") : TEXT("準備中"), 455, PY - 5, 1.1f, P->bReady ? Accent : Muted);
+		if (PC->HasAuthority() && P != Local)
+		{
+			Button(FName(*FString::Printf(TEXT("Kick_%d"), P->GetPlayerId())), TEXT("キック"),
+			       610, PY - 4, 88, !State->bTravelPending, false, 28);
+		}
 	}
 	Panel(738, 130, 434, 360, FLinearColor::White);
 	Text(TEXT("今回のあそび"), 758, 146, 1.25f, Accent);
@@ -212,8 +217,6 @@ void ATBHUD::DrawLobby()
 		         : TEXT("全員の準備ができたら、はじめよう。"),
 		     48, 456, .85f, Muted);
 	}
-	Button(TEXT("Players"), TEXT("参加者一覧"), 28, 600, 240);
-	Button(TEXT("Unstuck"), TEXT("スタック解除"), 282, 600, 240);
 	Button(TEXT("Leave"), Host ? TEXT("部屋を閉じてタイトルへ") : TEXT("部屋を出てタイトルへ"), 922, 600, 250);
 	if (auto* Session = PC->GetGameInstance()->GetSubsystem<UTBSession>())
 	{

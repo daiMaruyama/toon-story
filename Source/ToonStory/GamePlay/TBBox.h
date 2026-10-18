@@ -63,5 +63,6 @@ private:
 	UFUNCTION(NetMulticast, Reliable)
 	void MulticastOpened();
 	void RefreshAppearance();
+	bool HasDummyPrisoners() const;
 	int32 ReleaseDummyPrisoners(int32 FirstSlot);
 };

@@ -28,7 +28,7 @@ public:
 	TSubclassOf<AActor> VisualClass;
 	UPROPERTY(ReplicatedUsing = OnRep_Holder)
 	TObjectPtr<ATBCharacter> Holder;
-	UPROPERTY(Replicated)
+	UPROPERTY(ReplicatedUsing = OnRep_Holder)
 	TObjectPtr<ATBBox> StoredBox;
 	UPROPERTY(ReplicatedUsing = OnRep_Placement)
 	bool bFalling = false;

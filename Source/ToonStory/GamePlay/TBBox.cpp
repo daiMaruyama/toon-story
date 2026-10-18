@@ -264,7 +264,10 @@ void ATBBox::ReleasePrisoners()
 			++Released;
 		}
 	}
-	Released += ReleaseDummyPrisoners(Slot);
+	if (HasDummyPrisoners())
+	{
+		Released += ReleaseDummyPrisoners(Slot);
+	}
 	if (Released > 0)
 	{
 		UTBAudioEvents::Emit(this, ETBSoundEvent::RescueComplete, nullptr, InteractionPoint->GetComponentLocation());

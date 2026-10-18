@@ -21,6 +21,21 @@ bool ATBHUD::HandleSafetyClick(FName Name)
 		KickSelection.Reset();
 		return true;
 	}
+	// Lobby rows open the same confirmation used by the in-match participant list.
+	if (!bPlayersOpen && State->Phase == ETBPhase::Lobby && bLobbySettingsOpen && !bStagePickerOpen &&
+	    PC->HasAuthority() && !State->bTravelPending)
+	{
+		for (APlayerState* Player : State->PlayerArray)
+		{
+			if (Player && Player != PC->PlayerState &&
+			    Name == FName(*FString::Printf(TEXT("Kick_%d"), Player->GetPlayerId())))
+			{
+				KickSelection = Player;
+				bPlayersOpen = true;
+				return true;
+			}
+		}
+	}
 	if (bPlayersOpen)
 	{
 		if (Name == TEXT("ClosePlayers"))
@@ -30,14 +45,16 @@ bool ATBHUD::HandleSafetyClick(FName Name)
 		}
 		else if (Name == TEXT("CancelKick"))
 		{
+			bPlayersOpen = State->Phase != ETBPhase::Lobby;
 			KickSelection.Reset();
 		}
 		else if (Name == TEXT("ConfirmKick"))
 		{
-			if (PC->HasAuthority() && KickSelection.IsValid() && State->PlayerArray.Contains(KickSelection.Get()))
+			if (PC->HasAuthority() && !State->bTravelPending && KickSelection.IsValid() && State->PlayerArray.Contains(KickSelection.Get()))
 			{
 				PC->ServerKickPlayer(KickSelection->GetPlayerId());
 			}
+			bPlayersOpen = State->Phase != ETBPhase::Lobby;
 			KickSelection.Reset();
 		}
 		else if (PC->HasAuthority() && !KickSelection.IsValid())
