@@ -31,6 +31,7 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void Leave();
 	void RoomClosed();
+	void Kicked();
 	// 現在のPhaseに合わせ、検索・招待からの参加を開閉する（サーバー専用）。
 	void RefreshLobbyAvailability();
 	UFUNCTION(BlueprintPure)
@@ -65,6 +66,7 @@ private:
 	FDelegateHandle MapLoadedHandle;
 	bool bReturningOffline = false;
 	bool bRoomClosed = false;
+	bool bKicked = false;
 	FTimerHandle LobbyUpdateTimer;
 	bool bLobbyUpdateInFlight = false;
 	bool bUpdatingLobbyOpen = false;

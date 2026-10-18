@@ -36,9 +36,10 @@ void UTBSession::Initialize(FSubsystemCollectionBase& Collection)
 			GetGameInstance()->GetTimerManager().ClearTimer(CloseTimer);
 			bReturningOffline = false;
 			CurrentOperation = ESessionOperation::Idle;
-			Message(bRoomClosed ? TEXT("ホストが退出したため、部屋が解散しました。") :
+			Message(bKicked ? TEXT("ホストによって部屋から退出しました。") : bRoomClosed ? TEXT("ホストが退出したため、部屋が解散しました。") :
 			    TEXT("Offline. Last match ended; TBHost / TBFind for a new lobby."));
 			bRoomClosed = false;
+			bKicked = false;
 		}
 	});
 	if (GEngine)
@@ -471,6 +472,12 @@ void UTBSession::ReturnOffline()
 	{
 		UGameplayStatics::OpenLevel(GetGameInstance(), FName(TEXT("/Game/Maps/Title")), true);
 	}), .25f, false);
+}
+
+void UTBSession::Kicked()
+{
+ bKicked = true;
+ RoomClosed();
 }
 
 void UTBSession::RoomClosed()

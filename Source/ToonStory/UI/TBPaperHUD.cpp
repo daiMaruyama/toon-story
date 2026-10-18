@@ -212,6 +212,8 @@ void ATBHUD::DrawLobby()
 		         : TEXT("全員の準備ができたら、はじめよう。"),
 		     48, 456, .85f, Muted);
 	}
+	Button(TEXT("Players"), TEXT("参加者一覧"), 28, 600, 240);
+	Button(TEXT("Unstuck"), TEXT("スタック解除"), 282, 600, 240);
 	Button(TEXT("Leave"), Host ? TEXT("部屋を閉じてタイトルへ") : TEXT("部屋を出てタイトルへ"), 922, 600, 250);
 	if (auto* Session = PC->GetGameInstance()->GetSubsystem<UTBSession>())
 	{
@@ -325,7 +327,9 @@ void ATBHUD::DrawMatch(const ATBGameState& MatchState, ATBController& Controller
 		DrawRect(Accent, W * .5f - 220 * S, H * .76f + 37 * S, 440 * S * Elapsed / Duration, 7 * S);
 		DrawText(TEXT("Eを離すと中止 ／ Qでおろす"), Ink, W * .5f - 220 * S, H * .76f + 49 * S, PaperFont, .75f * S);
 	}
-	if (!Controller.Notice.IsEmpty())
+ if (Controller.bStuckHint)
+  DrawText(TEXT("動けない場合：Esc → スタック解除"), TBPaper::Accent, 24 * S, H * .65f, PaperFont, S);
+ if (!Controller.Notice.IsEmpty())
 	{
 		PaperPanel(FLinearColor::White, W - 450 * S, H - 155 * S, 426 * S, 70 * S);
 		DrawText(Controller.Notice.Left(80), TBPaper::Ink, W - 428 * S, H - 132 * S, PaperFont, .72f * S);

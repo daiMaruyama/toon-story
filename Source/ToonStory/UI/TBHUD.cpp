@@ -35,6 +35,7 @@ void ATBHUD::NotifyHitBoxClick(FName Name)
 		    Name != TEXT("LessTime") && Name != TEXT("MoreTime") && Name != TEXT("FewerBatteries") && Name != TEXT("MoreBatteries"))
 			Audio->PlaySoundEvent(Name == TEXT("Resume") || Name == TEXT("Leave") || Name == TEXT("CloseSettings") || Name == TEXT("CancelStage") ? ETBSoundEvent::UIBack : ETBSoundEvent::UIClick);
 	}
+	if (HandleSafetyClick(Name)) return;
 	if (Name == TEXT("Resume"))
 	{
 		PC->ToggleLeaveMenu();
@@ -101,9 +102,13 @@ void ATBHUD::DrawHUD()
 	{
 		return;
 	}
-	if (State->Phase == ETBPhase::Lobby)
-	{
-		DrawLobby();
+ if (State->Phase == ETBPhase::Playing && !PC->IsLeaveMenuOpen())
+ { bPlayersOpen = false; KickSelection.Reset(); }
+ if (bPlayersOpen)
+ { DrawPlayers(); return; }
+ if (State->Phase == ETBPhase::Lobby)
+ {
+  DrawLobby();
 		return;
 	}
 	if (State->Phase == ETBPhase::Results || State->Phase == ETBPhase::Aborted)
@@ -118,13 +123,13 @@ void ATBHUD::DrawHUD()
 			const float S = FMath::Min(Canvas->ClipX / 1280.f, Canvas->ClipY / 800.f);
 			const float X = Canvas->ClipX * .5f - 260 * S, Y = Canvas->ClipY * .5f - 150 * S;
 			DrawRect(FLinearColor(0, 0, 0, .45f), 0, 0, Canvas->ClipX, Canvas->ClipY);
-			PaperPanel(FLinearColor::White, X, Y, 520 * S, 250 * S);
+			PaperPanel(FLinearColor::White, X, Y, 520 * S, 370 * S);
 			DrawText(TEXT("ひとやすみ"), TBPaper::Accent, X + 32 * S, Y + 24 * S, PaperFont, 1.5f * S);
 			DrawText(TEXT("オンラインの試合は進み続けます。"), TBPaper::Muted, X + 32 * S, Y + 69 * S, PaperFont,
 			         .85f * S);
-			const TCHAR* Labels[] = {TEXT("あそびにもどる [Esc]"), TEXT("タイトルにもどる")};
-			const FName Names[] = {TEXT("Resume"), TEXT("Leave")};
-			for (int32 I = 0; I < 2; ++I)
+			const TCHAR* Labels[] = {TEXT("あそびにもどる [Esc]"), TEXT("スタック解除（3秒待機）"), TEXT("参加者一覧"), TEXT("タイトルにもどる")};
+			const FName Names[] = {TEXT("Resume"), TEXT("Unstuck"), TEXT("Players"), TEXT("Leave")};
+			for (int32 I = 0; I < 4; ++I)
 			{
 				PaperPanel(TBPaper::Cream, X + 25 * S, Y + (105 + I * 60) * S, 470 * S, 50 * S);
 				DrawText(Labels[I], TBPaper::Ink, X + 45 * S, Y + (117 + I * 60) * S, PaperFont, S);
