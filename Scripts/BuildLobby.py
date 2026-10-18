@@ -24,8 +24,9 @@ def material(name,color):
  if not m:
   m=unreal.AssetToolsHelpers.get_asset_tools().create_asset('MI_'+name,'/Game/Environment/Lobby',unreal.MaterialInstanceConstant,unreal.MaterialInstanceConstantFactoryNew())
   unreal.MaterialEditingLibrary.set_material_instance_parent(m,unreal.load_asset('/Engine/BasicShapes/BasicShapeMaterial'))
- unreal.MaterialEditingLibrary.set_material_instance_vector_parameter_value(m,'Color',unreal.LinearColor(*color))
- unreal.EditorAssetLibrary.save_loaded_asset(m)
+ if unreal.MaterialEditingLibrary.get_material_instance_vector_parameter_value(m,'Color') != unreal.LinearColor(*color):
+  unreal.MaterialEditingLibrary.set_material_instance_vector_parameter_value(m,'Color',unreal.LinearColor(*color))
+  unreal.EditorAssetLibrary.save_loaded_asset(m)
  return m
 cream=material('Cream',(.76,.65,.46,1));sage=material('Sage',(.16,.29,.23,1));wood=material('Oak',(.34,.17,.065,1));coral=material('Coral',(.64,.17,.09,1));gold=material('Gold',(.83,.49,.12,1))
 def cube(name,p,size,mat):
@@ -40,6 +41,18 @@ def prop(name,x,y,z,width,yaw=0,collision=True):
  a=spawn(unreal.StaticMeshActor,(x,y,z-b.min.z*s),yaw);a.set_actor_label('Club_'+name)
  a.static_mesh_component.set_static_mesh(m);a.set_actor_scale3d(unreal.Vector(s,s,s))
  if not collision:a.static_mesh_component.set_collision_enabled(unreal.CollisionEnabled.NO_COLLISION)
+ return a
+def flat_prop(name,x,y,z,length,yaw=0):
+ # Long upright source meshes (pens/books) must be sized along all three axes.
+ m=unreal.load_asset('/Game/ToyWorld/Meshes/'+name)
+ b=m.get_bounding_box();scale=length/max(b.max.x-b.min.x,b.max.y-b.min.y,b.max.z-b.min.z)
+ a=spawn(unreal.StaticMeshActor,(x,y,z),yaw)
+ a.static_mesh_component.set_static_mesh(m)
+ a.set_actor_scale3d(unreal.Vector(scale,scale,scale))
+ a.set_actor_rotation(unreal.Rotator(yaw=yaw,roll=90),False)
+ center,extent=a.get_actor_bounds(False)
+ a.set_actor_location(a.get_actor_location()+unreal.Vector(x-center.x,y-center.y,z-center.z+extent.z),False,False)
+ a.static_mesh_component.set_collision_enabled(unreal.CollisionEnabled.NO_COLLISION)
  return a
 # Timber parquet with actual normal/roughness textures at the source mesh's scale.
 floor=unreal.load_asset('/Game/ToyWorld/Meshes/SM_FloorDetailed01')
@@ -95,6 +108,78 @@ for i,(z,n) in enumerate(((17,'SM_BooksSet04'),(80,'SM_BooksSet03'),(150,'SM_Boo
 prop('SM_Train_01',300,400,220,65,collision=False)
 prop('SM_Toy',160,400,80,45,collision=False)
 prop('SM_ToyCar_01',300,400,150,50,collision=False)
+# Lived-in playroom corners. The central arrival lane stays clear.
+prop('SM_Sofa_02',-475,-5,0,185,0)
+prop('SM_Pillow_02',-490,-10,53,38,15,False)
+activity=prop('SM_KidsTable',370,-160,0,150,12)
+activity_center,activity_extent=activity.get_actor_bounds(False)
+activity_top=activity_center.z+activity_extent.z
+prop('SM_WoodChair02',495,-185,0,55,180)
+prop('SM_WoodChair01',340,-285,0,52,90)
+for name,x,y,width,yaw in (
+ ('SM_Notebook',395,-240,35,22),
+ ('SM_standForPens',450,-215,15,-10),
+ ('SM_pen_on',375,-215,18,35),
+ ('SM_PuzzleCube',425,-275,16,12),
+ ('SM_ToyCar_01',365,-270,23,-25)):
+ if name in ('SM_Notebook','SM_pen_on'):flat_prop(name,x-35,y+80,activity_top,width,yaw)
+ else:prop(name,x-35,y+80,activity_top,width,yaw,False)
+storage=prop('SM_Drawer_01',-465,-185,0,120,0)
+storage_center,storage_extent=storage.get_actor_bounds(False)
+storage_top=storage_center.z+storage_extent.z
+prop('SM_DollHouse01',-465,-185,storage_top,85,0,False)
+prop('SM_TeddyBear_01',-510,-180,storage_top,25,25,False)
+prop('SM_Box_empty',-295,-285,0,80,-12)
+prop('SM_Box_closed',475,290,0,60,8)
+prop('SM_Guitar',-550,185,0,46,-15,False)
+prop('SM_Carpet08',305,-155,.3,300,90,False)
+# Coffee table and reading corner details are grounded on their supporting surfaces.
+for name,x,y,width,yaw in (
+ ('SM_CoffeeCup_01',-290,115,12,0),
+ ('SM_Remote_Control_01',-250,125,22,20),
+ ('SM_Gamepad02',-320,165,25,-12)):
+ prop(name,x,y,center.z+extent.z,width,yaw,False)
+for name,x,y,z,width,yaw in (
+ ('SM_TeddyBear_01',310,400,17,40,0),
+ ('SM_PuzzleCube',145,400,150,24,10),
+ ('SM_Plastic_Truck_01',175,400,220,55,-10),
+ ('SM_BooksSet03',290,400,80,65,0),
+ ('SM_PhotoFrame01',180,400,282.5,32,90),
+ ('SM_Book03',465,300,61,40,15)):
+ prop(name,x,y,z,width,yaw,False)
+# Hand-placed play trails: train cars, toy vehicles, soldiers, puzzles and plush toys.
+# Small decorations do not snag the lobby characters' movement capsule.
+floor_toys=[
+ ('SM_Train_01',260,-85,42,15),
+ ('SM_Train_02',295,-95,35,15),
+ ('SM_Train_03',330,-105,35,15),
+ ('SM_ToyCar_01',220,-205,28,-35),
+ ('SM_Tractor_01',310,-345,38,32),
+ ('SM_Plastic_Truck_01',150,-330,40,-15),
+ ('SM_Plastic_Truck_02',-250,-135,38,65),
+ ('SM_Tractor_02',-325,-190,34,-40),
+ ('SM_TeddyBear_01',-230,-310,46,25),
+ ('SM_Toy',-355,-260,38,-20),
+ ('SM_BasketBall',80,-290,26,0),
+ ('SM_PuzzleCube',-145,-220,20,18),
+ ('SM_Puzzle_01',290,-180,22,15),
+ ('SM_Puzzle_02',320,-190,20,-30),
+ ('SM_Puzzle_03',270,-215,23,75),
+ ('SM_Puzzle_04',325,-235,18,-15),
+ ('SM_Puzzle_05',345,-165,20,35),
+ ('SM_soldier_toy01',-240,5,18,30),
+ ('SM_Soldier_1',-275,-25,19,-15),
+ ('SM_Soldier_2',-300,20,18,60),
+ ('SM_ToyCar_01',-95,-365,25,110),
+ ('SM_TeddyBear_01',485,175,38,-65),
+ ('SM_Book06',-390,-140,35,20),
+ ('SM_Notebook',365,-110,32,-15),
+ ('SM_ToyCar_01',-380,85,24,140),
+ ('SM_PuzzleCube',185,260,19,-20),
+]
+for name,x,y,width,yaw in floor_toys:
+ if name in ('SM_Book06','SM_Notebook'):flat_prop(name,x,y,.2,width,yaw)
+ else:prop(name,x,y,.2,width,yaw,False)
 # Art above the seating area, modest club plaque beside the shelving.
 prop('SM_Picture_01',-260,431,205,95,90,False)
 cube('Small club plaque',(35,438,240),(100,5,45),wood)
