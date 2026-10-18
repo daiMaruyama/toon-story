@@ -5,7 +5,9 @@
 #include "Audio/TBAudioSubsystem.h"
 #include "Engine/GameInstance.h"
 #include "TBTVCamera.h"
+#include "TBBox.h"
 #include "Character/TBCharacter.h"
+#include "Components/BoxComponent.h"
 #include "Core/TBGameHelpers.h"
 #include "Core/TBGameState.h"
 #include "Core/TBPlayerState.h"
@@ -95,6 +97,27 @@ bool ATBBoxTV::HasLocalViewer() const
 	return false;
 }
 
+// 目の位置は落下エリアの床から求める。入った直後は、本人のPCに届いている自分の位置がまだ箱の外のことがある。
+void ATBBoxTV::FaceArrival() const
+{
+	const UBoxComponent* Area = ATBBox::FindDropArea(GetWorld());
+	if (!Area)
+	{
+		return;
+	}
+	const FVector Floor = Area->GetComponentLocation() - Area->GetUpVector() * Area->GetScaledBoxExtent().Z;
+	for (auto It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		APlayerController* PC = It->Get();
+		const auto* Player = PC ? PC->GetPlayerState<ATBPlayerState>() : nullptr;
+		if (PC && PC->IsLocalController() && PC->GetPawn() && Player && Player->ToyState == ETBToyState::Boxed)
+		{
+			const FVector Eye = Floor + FVector(0.f, 0.f, PC->GetPawn()->BaseEyeHeight);
+			PC->SetControlRotation((Screen->Bounds.Origin + FVector(0.f, 0.f, ArrivalLookAbove) - Eye).Rotation());
+		}
+	}
+}
+
 // 人間はいつでも映せる。おもちゃは掴まれた時点で砂嵐にし、降ろされて自由になれば再び映す。
 bool ATBBoxTV::IsAvailableTarget(const ATBPlayerState* Player) const
 {
@@ -165,6 +188,15 @@ void ATBBoxTV::SetChannel(int32 Number)
 	UTBAudioEvents::Emit(this, ETBSoundEvent::TVChannel, nullptr, FVector::ZeroVector);
 	UTBAudioEvents::Emit(this, ETBSoundEvent::TVGlitch, nullptr, FVector::ZeroVector);
 	OnRep_Channel(); // リッスンサーバーのローカル視聴者にも切替演出を適用する。
+}
+
+// 誰も見ていない時に戻すので、切替音や砂嵐は出さない。
+void ATBBoxTV::ResetChannel()
+{
+	Channel.Number = 0;
+	Channel.Target = nullptr;
+	++Channel.Revision;
+	ForceNetUpdate();
 }
 
 bool ATBBoxTV::SelectChannel(ATBCharacter* Viewer, int32 Number)
@@ -247,11 +279,27 @@ void ATBBoxTV::OnRep_Channel()
 void ATBBoxTV::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
-	if (HasAuthority() && !bPowerOn && !TB::Playing(GetWorld()))
+	// 箱に誰もいない間は、次に入った人が電源ON・0番から見始められるように戻す。
+	const auto* State = TB::GS(GetWorld());
+	if (HasAuthority() && (!TB::Playing(GetWorld()) || !State || State->BoxedCount == 0))
 	{
-		SetPowerOn(true); // 次の試合は電源ONから始める。
+		if (!bPowerOn)
+		{
+			SetPowerOn(true);
+		}
+		if (Channel.Number != 0 || Channel.Target)
+		{
+			ResetChannel();
+		}
 	}
-	SetViewing(GetNetMode() != NM_DedicatedServer && bPowerOn && HasLocalViewer());
+	// 箱に入れられた瞬間だけ、本人の画面をテレビの少し上へ向ける。向きは本人のPCが持っているので、ここで決める。
+	const bool bLocalBoxed = GetNetMode() != NM_DedicatedServer && HasLocalViewer();
+	if (bLocalBoxed && !bWasLocalBoxed)
+	{
+		FaceArrival();
+	}
+	bWasLocalBoxed = bLocalBoxed;
+	SetViewing(bPowerOn && bLocalBoxed);
 	// テクスチャは最初の描画で作られるので、できるまでTickで試す。
 	if (bViewing && !bOSDBound)
 	{

@@ -239,8 +239,20 @@ bool FTBTVTest::RunTest(const FString& Parameters)
 			    default:
 				    TestEqual(TEXT("Empty channel shows static"), Noise(), 1.f);
 				    State->Box->ReleasePrisoners();
+				    Mode->CheckWin(); // 箱の中の人数はゲームモードの更新で反映される。
 				    TV->Tick(0);
 				    TestFalse(TEXT("Rescue stops capturing"), TV->IsCapturing());
+				    TestEqual(TEXT("Empty box resets channel to camera 0"), TV->GetChannel().Number, 0);
+				    TestTrue(TEXT("Empty box resets target"), !TV->GetChannel().Target);
+				    // 箱の中の人が電源を切ったまま救助されても、次に入った人は電源ONから見る。
+				    if (TestTrue(TEXT("Viewer can be stored again"), State->Box->Store(Viewer)))
+				    {
+					    TestTrue(TEXT("Boxed viewer turns power off"), TV->TogglePower(Viewer) && !TV->IsPowerOn());
+					    State->Box->ReleasePrisoners();
+					    Mode->CheckWin();
+					    TV->Tick(0);
+					    TestTrue(TEXT("Empty box turns power back on"), TV->IsPowerOn());
+				    }
 				    Mode->Finish(ETBWinner::Humans, TEXT("TV test cleanup"));
 				    TV->Tick(0);
 				    TestFalse(TEXT("Results do not capture"), TV->IsCapturing());
