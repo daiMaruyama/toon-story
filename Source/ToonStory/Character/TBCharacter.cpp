@@ -380,12 +380,18 @@ void ATBCharacter::CalcCamera(float DeltaTime, FMinimalViewInfo& OutResult)
 	}
 	// 段差の上り下りで目線が一気に跳ねて酔わないよう、速度では説明できない高さの変化（段差でのワープ）だけ少し遅らせる。
 	// 高い段差は一瞬空中扱いを挟むので、地面にいるかでは判定しない。ジャンプや落下は速度どおりなので遅らせない。
-	const float StepZ = bHasLastView ? ActorLocation.Z - LastActorLocation.Z - GetVelocity().Z * DeltaTime : 0.f;
-	StepOffset = bHasLastView && !bTeleported && !Carrier
+	// 運ばれている間と降ろされた直後（手元から落下位置へのワープ）は比べない。しゃがみの切替で体が上下した分も数えない。
+	const bool bCompareStep = bHasLastView && !bTeleported && !Carrier && !bLastViewCarried;
+	const float StepZ = bCompareStep && bIsCrouched == bLastViewCrouched
+	                        ? ActorLocation.Z - LastActorLocation.Z - GetVelocity().Z * DeltaTime
+	                        : 0.f;
+	StepOffset = bCompareStep
 	                 ? TBRuleMath::SmoothStepOffset(StepOffset, StepZ, DeltaTime, StepSmoothSpeed, StepSmoothMax)
 	                 : 0.f;
 	OutResult.Location.Z += StepOffset;
 	LastActorLocation = ActorLocation;
+	bLastViewCarried = Carrier != nullptr;
+	bLastViewCrouched = bIsCrouched;
 	const double Elapsed = GetWorld()->GetTimeSeconds() - CarryBlendStarted;
 	if (CarryBlendStarted >= 0 && Elapsed < CarryBlendDuration)
 	{

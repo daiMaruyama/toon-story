@@ -164,6 +164,9 @@ private:
 	float CarryBlendDuration = 0;
 	// 段差で遅らせている目線の高さ。0 に向かって戻っていく。
 	float StepOffset = 0;
+	// 前フレームの視点を出した時点で運ばれていたか・しゃがんでいたか。切り替わった分の移動は段差に数えない。
+	bool bLastViewCarried = false;
+	bool bLastViewCrouched = false;
 
 protected:
 	// 親子で表示の切り替え状態を共有する。

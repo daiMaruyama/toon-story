@@ -18,6 +18,9 @@ int main()
 	assert(Near(SmoothStepOffset(SmoothStepOffset(-40, 0, .05f, 12, 60), 0, .05f, 12, 60),
 	            SmoothStepOffset(-40, 0, .1f, 12, 60)));
 	assert(SmoothStepOffset(-40, 0, .2f, 12, 60) < -3); // カクついて間が空いても、一気には戻らない
+	assert(Near(SmoothStepOffset(0, 40, .1f, 12, 60), -40)); // フレームが長くても、跳ねたフレームでは目線を動かさない
+	// 追いつく途中で次の段に乗ったら、縮めた残りに今回の分を足す。
+	assert(Near(SmoothStepOffset(-20, 10, .05f, 12, 60), -20 * std::exp(-.6f) - 10));
 	assert(Near(SmoothStepOffset(0, -30, 0, 12, 60), 30));  // 下りも同じ
 	assert(Near(SmoothStepOffset(0, 200, 0, 12, 60), -60)); // 大きな変化でも遅れは上限で止める
 	assert(Near(SmoothStepOffset(-50, 20, 0, 12, 60), -60)); // たまった分と合わせて超えても上限で止める
