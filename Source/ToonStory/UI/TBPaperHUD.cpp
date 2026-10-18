@@ -139,8 +139,8 @@ void ATBHUD::DrawLobby()
 	{
 		Panel(280, 150, 640, 470, FLinearColor::White);
 		Text(TEXT("ステージを選ぶ"), 312, 194, 1.6f, Accent);
-		Text(TEXT("選んだステージへ、みんなで移動します。"), 312, 241, .95f, Muted);
-		const int32 Current = TBLobbySettings::StageIndex(GetWorld());
+		Text(TEXT("試合開始時に、選んだステージへ移動します。"), 312, 241, .95f, Muted);
+		const int32 Current = State->SelectedStage;
 		Button(TEXT("StageExpanded"), TEXT("Demo ＋ こども部屋"), 312, 284, 576, PC->HasAuthority(), Current == 1);
 		Text(TEXT("リビングと、ドアでつながる子ども部屋"), 328, 330, .85f, Muted);
 		Button(TEXT("StageKidsRoom"), TEXT("Kids' Rooms"), 312, 369, 576, PC->HasAuthority(), Current == 0);

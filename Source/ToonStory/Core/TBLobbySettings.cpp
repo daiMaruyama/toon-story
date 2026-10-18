@@ -1,5 +1,6 @@
 #include "TBLobbySettings.h"
 #include "TBController.h"
+#include "TBSession.h"
 #include "TBGameMode.h"
 #include "TBGameState.h"
 #include "TBPlayerState.h"
@@ -23,6 +24,11 @@ void UTBLobbySettings::Initialize(FSubsystemCollectionBase& Collection)
 			                                             if (World && World->GetGameInstance() == GetGameInstance())
 			                                             {
 				                                             PendingMap.Reset();
+				                                             bStartOnArrival = false;
+				                                             if (auto* State = World->GetGameState<ATBGameState>())
+				                                             {
+					                                             State->bTravelPending = false;
+				                                             }
 			                                             }
 		                                             });
 	}
@@ -33,6 +39,9 @@ void UTBLobbySettings::Initialize(FSubsystemCollectionBase& Collection)
 		    if (World && World->GetGameInstance() == GetGameInstance() && World->GetMapName().Contains(TEXT("Title")))
 		    {
 			    PendingMap.Reset();
+			    bStartOnArrival = false;
+			    bDedicatedLobby = false;
+			    SelectedStage = 1;
 		    }
 	    });
 }
@@ -66,6 +75,14 @@ int32 TBLobbySettings::StageIndex(const UWorld* World)
 }
 int32 TBLobbySettings::AvailableItems(UWorld* World)
 {
+	// Authored pickup counts for KidsRoom, Expanded and ArchViz. Revalidated on arrival
+	// so a later map edit cannot produce an impossible collection target.
+	if (IsLobby(World))
+	{
+		constexpr int32 Counts[] = {7, 10, 8};
+		const auto* State = World->GetGameState<ATBGameState>();
+		return State && StagePath(State->SelectedStage) ? Counts[State->SelectedStage] : 1;
+	}
 	int32 Count = 0;
 	for (TActorIterator<ATBPickup> It(World); It; ++It)
 	{
@@ -87,30 +104,110 @@ void TBLobbySettings::SelectStage(ATBController* Host, int32 Index)
 	auto* State = World->GetGameState<ATBGameState>();
 	const auto* Path = StagePath(Index);
 	auto* Pending = World->GetGameInstance()->GetSubsystem<UTBLobbySettings>();
-	if (!Mode || !Mode->IsHost(Host) || !State || State->Phase != ETBPhase::Lobby || !Path ||
+	if (!Mode || !Mode->IsHost(Host) || !State || State->Phase != ETBPhase::Lobby || State->bTravelPending || !Path ||
 	    !Pending->PendingMap.IsEmpty())
-	{
-		return;
-	}
-	if (World->GetMapName().EndsWith(FPackageName::GetShortName(Path)))
 	{
 		return;
 	}
 	if (!FPackageName::DoesPackageExist(Path))
 	{
-		Host->ClientNotice(TEXT("ステージが見つかりません。"));
 		return;
 	}
+	Pending->SelectedStage = Index;
+	State->SelectedStage = Index;
+	State->Settings.RequiredItems = FMath::Min(State->Settings.RequiredItems, AvailableItems(World));
+	State->StageName = Index == 0   ? TEXT("Kids' Rooms")
+	                   : Index == 1 ? TEXT("Demo ＋ こども部屋")
+	                                : TEXT("ArchViz Apartment");
+	State->ForceNetUpdate();
+}
+bool TBLobbySettings::IsLobby(const UWorld* World)
+{
+	return World && World->GetMapName().EndsWith(TEXT("TB_Lobby"));
+}
+bool TBLobbySettings::Travel(ATBGameMode* Mode, bool StartMatch)
+{
+	auto* World = Mode->GetWorld();
+	auto* State = World->GetGameState<ATBGameState>();
+	auto* Pending = World->GetGameInstance()->GetSubsystem<UTBLobbySettings>();
+	if (!State || State->bTravelPending || !Pending->PendingMap.IsEmpty())
+	{
+		return false;
+	}
+	const TCHAR* Destination = StartMatch ? StagePath(State->SelectedStage) : TEXT("/Game/Maps/TB_Lobby");
+	if (!Destination)
+	{
+		return false;
+	}
+	const FString Path(Destination);
+	if (!FPackageName::DoesPackageExist(Path))
+	{
+		return false;
+	}
 	Pending->PendingRules = State->Settings;
-	// Restore clamps against the destination's saved pickups, including later editor changes.
+	Pending->SelectedStage = State->SelectedStage;
+	Pending->ExpectedPlayers = State->PlayerArray.Num();
 	Pending->PendingMap = Path;
+	Pending->bStartOnArrival = StartMatch;
+	Pending->ArrivalDeadline = FPlatformTime::Seconds() + 60;
+	State->bTravelPending = true;
 	Mode->bUseSeamlessTravel = true;
 	if (!World->ServerTravel(Path))
 	{
+		State->bTravelPending = false;
 		Pending->PendingMap.Reset();
-		Host->ClientNotice(TEXT("ステージを切り替えられませんでした。"));
+		Pending->bStartOnArrival = false;
+		return false;
+	}
+	if (auto* Session = World->GetGameInstance()->GetSubsystem<UTBSession>())
+	{
+		Session->RefreshLobbyAvailability();
+	}
+	return true;
+}
+void TBLobbySettings::TickArrival(ATBGameMode* Mode)
+{
+	auto* World = Mode->GetWorld();
+	auto* Pending = World->GetGameInstance()->GetSubsystem<UTBLobbySettings>();
+	if (!Pending->bStartOnArrival || !Pending->PendingMap.IsEmpty() || World->IsInSeamlessTravel())
+	{
+		return;
+	}
+	auto* State = World->GetGameState<ATBGameState>();
+	if (!State)
+	{
+		return;
+	}
+	bool Ready = State->PlayerArray.Num() == Pending->ExpectedPlayers;
+	for (APlayerState* Player : State->PlayerArray)
+	{
+		auto* Info = Cast<ATBPlayerState>(Player);
+		auto* Controller = Info ? Cast<APlayerController>(Info->GetOwner()) : nullptr;
+		Ready &= Info && Info->bReady && Info->GetPawn() && Controller && Controller->HasClientLoadedCurrentWorld();
+	}
+	if (!Ready && FPlatformTime::Seconds() < Pending->ArrivalDeadline)
+	{
+		return;
+	}
+	Pending->bStartOnArrival = false;
+	State->bTravelPending = false;
+	if (Ready)
+	{
+		for (auto It = World->GetPlayerControllerIterator(); It; ++It)
+		{
+			if (Mode->IsHost(It->Get()))
+			{
+				Mode->StartRound(It->Get());
+				break;
+			}
+		}
+	}
+	if (State->Phase != ETBPhase::Playing)
+	{
+		Travel(Mode, false);
 	}
 }
+
 void TBLobbySettings::Restore(ATBGameMode* Mode)
 {
 	auto* World = Mode->GetWorld();
@@ -119,6 +216,19 @@ void TBLobbySettings::Restore(ATBGameMode* Mode)
 	{
 		return;
 	}
+	auto* Lobby = World->GetGameInstance()->GetSubsystem<UTBLobbySettings>();
+	if (IsLobby(World))
+	{
+		Lobby->bDedicatedLobby = true;
+	}
+	if (!Lobby->bDedicatedLobby && StageIndex(World) != INDEX_NONE)
+	{
+		Lobby->SelectedStage = StageIndex(World);
+	}
+	State->SelectedStage = Lobby->SelectedStage;
+	State->StageName = State->SelectedStage == 0   ? TEXT("Kids' Rooms")
+	                   : State->SelectedStage == 1 ? TEXT("Demo ＋ こども部屋")
+	                                               : TEXT("ArchViz Apartment");
 	if (World->GetMapName().Contains(TEXT("DemoExpanded")))
 	{
 		State->StageName = TEXT("Demo ＋ こども部屋");
@@ -130,7 +240,12 @@ void TBLobbySettings::Restore(ATBGameMode* Mode)
 		State->Settings.RequiredItems =
 		    FMath::Clamp(State->Settings.RequiredItems, 1, FMath::Max(1, AvailableItems(World)));
 		Pending->PendingMap.Reset();
+		State->bTravelPending = Pending->bStartOnArrival;
 		State->ForceNetUpdate();
+		if (auto* Session = World->GetGameInstance()->GetSubsystem<UTBSession>())
+		{
+			Session->RefreshLobbyAvailability();
+		}
 	}
 }
 bool TBLobbySettings::HandleClick(ATBController* Controller, FName Name)

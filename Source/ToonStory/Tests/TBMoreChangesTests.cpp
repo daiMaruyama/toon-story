@@ -13,8 +13,12 @@
 #include "Engine/World.h"
 #include "Kismet/GameplayStatics.h"
 #include "Misc/ScopeExit.h"
+#include "Tests/AutomationCommon.h"
+#include "UnrealClient.h"
+#include "Misc/Paths.h"
 #include "Core/TBController.h"
 #include "Core/TBSession.h"
+#include "Core/TBLobbySettings.h"
 #include "Engine/GameInstance.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Materials/MaterialInstanceDynamic.h"
@@ -135,6 +139,18 @@ bool FTBLobbyVisibleTest::RunTest(const FString& Parameters)
 		if (Context.WorldType == EWorldType::Game) World = Context.World();
 	if (!World || !World->GetAuthGameMode<ATBGameMode>()) return false;
 	auto* Mode = World->GetAuthGameMode<ATBGameMode>();
+	if (TBLobbySettings::IsLobby(World))
+	{
+		auto* PC = CastChecked<ATBController>(World->GetFirstPlayerController());
+		APawn* OriginalPawn = PC->GetPawn();
+		const int32 Counts[] = {7, 10, 8};
+		for (int32 Index = 0; Index < 3; ++Index)
+		{
+			PC->ServerSelectStage(Index);
+			TestTrue(TEXT("All stage selections retain the lobby pawn"), PC->GetPawn() == OriginalPawn);
+			TestEqual(TEXT("Selected stage item limit"), TBLobbySettings::AvailableItems(World), Counts[Index]);
+		}
+	}
 	TestTrue(TEXT("Host has a visible, clear lobby position"), Mode->PlaceInLobby(World->GetFirstPlayerController()));
 	TArray<APlayerController*> Added;
 	ON_SCOPE_EXIT { for (auto* PC : Added) UGameplayStatics::RemovePlayer(PC, true); };
@@ -168,25 +184,52 @@ public:
 		auto* World = GI->GetWorld();
 		if (!World || !World->HasBegunPlay()) return false;
 		auto* State = World->GetGameState<ATBGameState>();
-		auto* PC = Cast<ATBController>(World->GetFirstPlayerController());
+		auto* PC = Cast<ATBController>(GI->GetFirstLocalPlayerController(World));
 		auto* Session = GI->GetSubsystem<UTBSession>();
 		if (Step == 0 && State && State->PlayerArray.Num() >= 2 && PC)
 		{
+			Test->TestTrue(TEXT("Room opens dedicated lobby"), World->GetMapName().EndsWith(TEXT("TB_Lobby")));
 			if (Host) PC->ServerSelectStage(0);
 			Step = 1;
 		}
-		else if (Step == 1 && State && World->GetMapName().EndsWith(TEXT("TB_KidsRoom")) && State->PlayerArray.Num() >= 2)
+		else if (Step == 1 && State && State->SelectedStage == 0 && PC)
 		{
-			Test->TestEqual(TEXT("Travel retains multiplayer"), World->GetNetMode(), Host ? NM_ListenServer : NM_Client);
+			Test->TestTrue(TEXT("Selecting a stage does not move lobby"), World->GetMapName().EndsWith(TEXT("TB_Lobby")));
+			PC->ServerReady();
 			Step = 2;
-			Deadline = FPlatformTime::Seconds() + 60;
 		}
-		else if (Step == 2 && Host && FPlatformTime::Seconds() > Deadline - 50)
+		else if (Step == 2 && State)
 		{
-			Session->Leave();
-			Step = 3;
+			if (Host && !State->bTravelPending && World->GetMapName().EndsWith(TEXT("TB_Lobby")))
+			{
+				bool Ready = true;
+				for (APlayerState* Player : State->PlayerArray) Ready &= CastChecked<ATBPlayerState>(Player)->bReady;
+				if (Ready) PC->ServerStart();
+			}
+			if (State->Phase == ETBPhase::Playing)
+			{
+				Test->TestTrue(TEXT("Start travels to selected stage"), World->GetMapName().EndsWith(TEXT("TB_KidsRoom")));
+				Test->TestEqual(TEXT("Travel retains multiplayer"), World->GetNetMode(), Host ? NM_ListenServer : NM_Client);
+				Step = 3; Deadline = FPlatformTime::Seconds() + 60;
+			}
 		}
-		else if (Step >= 2 && World->GetMapName().EndsWith(TEXT("Title")) && !Session->IsBusy())
+		else if (Step == 3 && Host && FPlatformTime::Seconds() > Deadline - 50 && State)
+		{
+			auto* Mode = World->GetAuthGameMode<ATBGameMode>();
+			Mode->Finish(ETBWinner::Humans, TEXT("Lifecycle test"));
+			Mode->ReturnToLobby(PC); Step = 4;
+		}
+		else if ((Step == 3 || Step == 4) && State && PC && PC->GetPlayerState<ATBPlayerState>() && World->GetMapName().EndsWith(TEXT("TB_Lobby")) && State->PlayerArray.Num() >= 2)
+		{
+			Test->TestEqual(TEXT("Selected stage survives return"), State->SelectedStage, 0);
+			Test->TestFalse(TEXT("Return clears ready"), PC->GetPlayerState<ATBPlayerState>()->bReady);
+			Step = 5; Deadline = FPlatformTime::Seconds() + 60;
+		}
+		else if (Step == 5 && Host && FPlatformTime::Seconds() > Deadline - 50)
+		{
+			Session->Leave(); Step = 6;
+		}
+		else if (Step >= 5 && World->GetMapName().EndsWith(TEXT("Title")) && !Session->IsBusy())
 		{
 			Test->TestEqual(TEXT("Host leave returns to offline title"), World->GetNetMode(), NM_Standalone);
 			if (!Host) Test->TestTrue(TEXT("Client sees room closed message"), Session->Status.Contains(TEXT("部屋が解散")));
@@ -223,6 +266,19 @@ bool FTBClientLifecycleTest::RunTest(const FString& Parameters)
 			return true;
 		}
 	return false;
+}
+class FTBLobbyPhoto : public IAutomationLatentCommand
+{
+ bool Update() override { FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir() / TEXT("LobbyPreview.png"), true, false); return true; }
+};
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBLobbyPhotoTest, "ToonStory.Lobby.Preview",
+ EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+bool FTBLobbyPhotoTest::RunTest(const FString& Parameters)
+{
+ ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(15));
+ ADD_LATENT_AUTOMATION_COMMAND(FTBLobbyPhoto());
+ ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(3));
+ return true;
 }
 #endif
 

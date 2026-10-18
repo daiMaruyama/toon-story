@@ -32,7 +32,7 @@ void ATBGameMode::InitGame(const FString& MapName, const FString& Options, FStri
 	{
 		SpawnPoints.Add(*It);
 	}
-	bBuildTestArena = bBuildTestArena && !TActorIterator<ATBBox>(GetWorld());
+	bBuildTestArena = !TBLobbySettings::IsLobby(GetWorld()) && bBuildTestArena && !TActorIterator<ATBBox>(GetWorld());
 }
 
 ATBGameMode::ATBGameMode()
@@ -99,6 +99,8 @@ bool ATBGameMode::PlaceInLobby(AController* Player)
 		// Search visible, walkable ground in front of the actual authored lobby camera.
 		for (float Distance : {350.f, 500.f, 750.f, 1000.f, 1400.f, 1900.f})
 		{
+			// Keep the dedicated lobby group above the bottom ready panel.
+			if (TBLobbySettings::IsLobby(GetWorld()) && Distance < 700.f) continue;
 			for (float Side : {0.f, -80.f, 80.f, -160.f, 160.f, -280.f, 280.f, -420.f, 420.f})
 			{
 				const FVector Target = Eye + Forward * Distance + Right * Side;
@@ -211,7 +213,7 @@ void ATBGameMode::PreLogin(const FString& Options, const FString& Address, const
 		return;
 	}
 	auto* MatchInfo = TB::GS(GetWorld());
-	if (MatchInfo && MatchInfo->Phase != ETBPhase::Lobby)
+	if (MatchInfo && (MatchInfo->Phase != ETBPhase::Lobby || MatchInfo->bTravelPending))
 	{
 		Error = TEXT("Match already started. Join the next lobby.");
 	}
@@ -252,7 +254,7 @@ int32 ATBGameMode::LobbyPlayerCount() const
 void ATBGameMode::SyncLobbyCounts()
 {
 	auto* State = TB::GS(GetWorld());
-	if (!State || State->Phase != ETBPhase::Lobby) return;
+	if (!State || State->Phase != ETBPhase::Lobby || State->bTravelPending) return;
 	const int32 Count = LobbyPlayerCount();
 	// Preserve children where possible, leaving one toy when there are at least two players.
 	const int32 Humans = Count < 2 ? Count : FMath::Clamp(State->Settings.Humans, 1, Count - 1);
@@ -266,7 +268,7 @@ void ATBGameMode::SyncLobbyCounts()
 void ATBGameMode::SetRules(APlayerController* PlayerController, const FTBSettings& Rules)
 {
 	auto* MatchInfo = TB::GS(GetWorld());
-	if (!IsHost(PlayerController) || !MatchInfo || MatchInfo->Phase != ETBPhase::Lobby)
+	if (!IsHost(PlayerController) || !MatchInfo || (MatchInfo->Phase != ETBPhase::Lobby || MatchInfo->bTravelPending))
 	{
 		return;
 	}
@@ -289,15 +291,7 @@ void ATBGameMode::SetRules(APlayerController* PlayerController, const FTBSetting
 	{
 		return;
 	}
-	int32 Items = 0;
-	for (TActorIterator<ATBPickup> It(GetWorld()); It; ++It)
-	{
-		if (!It->bTaken)
-		{
-			++Items;
-		}
-	}
-	if (Rules.RequiredItems > Items)
+	if (Rules.RequiredItems > TBLobbySettings::AvailableItems(GetWorld()))
 	{
 		return;
 	}
@@ -311,7 +305,7 @@ void ATBGameMode::StartRound(APlayerController* PlayerController)
 {
 	auto* MatchInfo = TB::GS(GetWorld());
 	auto* HostController = Cast<ATBController>(PlayerController);
-	if (!IsHost(PlayerController) || !MatchInfo || MatchInfo->Phase != ETBPhase::Lobby)
+	if (!IsHost(PlayerController) || !MatchInfo || (MatchInfo->Phase != ETBPhase::Lobby || MatchInfo->bTravelPending))
 	{
 		return;
 	}
@@ -342,6 +336,11 @@ void ATBGameMode::StartRound(APlayerController* PlayerController)
 			}
 			return;
 		}
+	}
+	if (TBLobbySettings::IsLobby(GetWorld()))
+	{
+		if (!TBLobbySettings::Travel(this, true) && HostController) HostController->ClientNotice(TEXT("試合ステージへ移動できませんでした。"));
+		return;
 	}
 	int32 Items = 0, Boxes = 0;
 	for (TActorIterator<ATBPickup> It(GetWorld()); It; ++It)
@@ -422,6 +421,15 @@ void ATBGameMode::ReturnToLobby(APlayerController* PlayerController)
 	auto* State = TB::GS(GetWorld());
 	if (!IsHost(PlayerController) || !State || (State->Phase != ETBPhase::Results && State->Phase != ETBPhase::Aborted))
 	{
+		return;
+	}
+	if (GetGameInstance()->GetSubsystem<UTBLobbySettings>()->bDedicatedLobby)
+	{
+		if (!TBLobbySettings::Travel(this, false)) return;
+		for (APlayerState* Player : State->PlayerArray)
+		{
+			if (auto* Info = Cast<ATBPlayerState>(Player)) { Info->Team = ETBTeam::None; Info->bReady = false; }
+		}
 		return;
 	}
 	DestroyRoundCharacters();
@@ -577,6 +585,7 @@ void ATBGameMode::EvaluateGaze()
 void ATBGameMode::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+	TBLobbySettings::TickArrival(this);
 	if (!TB::Playing(GetWorld()))
 	{
 		return;

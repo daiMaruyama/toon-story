@@ -9,6 +9,8 @@ void ATBGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(ATBGameState, Settings);
 	DOREPLIFETIME(ATBGameState, StageName);
+	DOREPLIFETIME(ATBGameState, SelectedStage);
+	DOREPLIFETIME(ATBGameState, bTravelPending);
 	DOREPLIFETIME(ATBGameState, PlayerLimit);
 	DOREPLIFETIME(ATBGameState, Phase);
 	DOREPLIFETIME(ATBGameState, Winner);

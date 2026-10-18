@@ -176,7 +176,7 @@ void UTBSession::Created(FName Name, bool bSucceeded)
 	}
 	Message(TEXT("Room created. Opening listen server..."));
 	TArray<FName> Stages;
-	for (const TCHAR* Map : {TEXT("/Game/Maps/TB_ToyWorldDemoExpanded")})
+	for (const TCHAR* Map : {TEXT("/Game/Maps/TB_Lobby")})
 	{
 		if (FPackageName::DoesPackageExist(Map))
 		{
@@ -241,7 +241,7 @@ void UTBSession::RefreshLobbyAvailability()
 		return; // PIEの直接接続にはオンラインセッションがない。
 	}
 	FOnlineSessionSettings Settings = *Current;
-	bUpdatingLobbyOpen = State->Phase == ETBPhase::Lobby;
+	bUpdatingLobbyOpen = State->Phase == ETBPhase::Lobby && !State->bTravelPending;
 	Settings.bShouldAdvertise = bUpdatingLobbyOpen;
 	// ゲームのPhaseに合わせる。常にfalseだと、Steamが待機中の部屋まで検索から隠す。
 	Settings.bAllowJoinInProgress = bUpdatingLobbyOpen;
@@ -280,7 +280,7 @@ void UTBSession::LobbyUpdated(FName Name, bool bSucceeded)
 			World->GetTimerManager().ClearTimer(LobbyUpdateTimer);
 		}
 		const auto* State = TB::GS(GetWorld());
-		if (State && bUpdatingLobbyOpen != (State->Phase == ETBPhase::Lobby))
+		if (State && bUpdatingLobbyOpen != (State->Phase == ETBPhase::Lobby && !State->bTravelPending))
 		{
 			RefreshLobbyAvailability();
 		}

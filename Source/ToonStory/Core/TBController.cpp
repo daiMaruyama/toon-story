@@ -241,7 +241,7 @@ void ATBController::ServerReady_Implementation()
 {
 	auto* MatchInfo = TB::GS(GetWorld());
 	auto* ToyPlayerInfo = GetPlayerState<ATBPlayerState>();
-	if (MatchInfo && MatchInfo->Phase == ETBPhase::Lobby && ToyPlayerInfo)
+	if (MatchInfo && MatchInfo->Phase == ETBPhase::Lobby && !MatchInfo->bTravelPending && ToyPlayerInfo)
 	{
 		ToyPlayerInfo->bReady = !ToyPlayerInfo->bReady;
 		ToyPlayerInfo->ForceNetUpdate();
@@ -269,7 +269,7 @@ void ATBController::ServerPreference_Implementation(ETBTeam Team)
 {
 	auto* MatchInfo = TB::GS(GetWorld());
 	auto* ToyPlayerInfo = GetPlayerState<ATBPlayerState>();
-	if (MatchInfo && MatchInfo->Phase == ETBPhase::Lobby && ToyPlayerInfo &&
+	if (MatchInfo && MatchInfo->Phase == ETBPhase::Lobby && !MatchInfo->bTravelPending && ToyPlayerInfo &&
 	    (Team == ETBTeam::None || Team == ETBTeam::Human || Team == ETBTeam::Toy))
 	{
 		if (ToyPlayerInfo->Preference != Team) ClientPlaySoundEvent(ETBSoundEvent::UIChange, FVector::ZeroVector);
