@@ -372,10 +372,19 @@ void ATBCharacter::CalcCamera(float DeltaTime, FMinimalViewInfo& OutResult)
 	Super::CalcCamera(DeltaTime, OutResult);
 	// 箱への収納など瞬間移動を伴う切替はつながず、壁越しに視点が流れるのを防ぐ。降ろす位置は1m程度。
 	const FVector ActorLocation = GetActorLocation();
-	if (bHasLastView && FVector::DistSquared(ActorLocation, LastActorLocation) > FMath::Square(300.f))
+	const bool bTeleported =
+	    bHasLastView && FVector::DistSquared(ActorLocation, LastActorLocation) > FMath::Square(300.f);
+	if (bTeleported)
 	{
 		CarryBlendStarted = -1;
 	}
+	// 段差の上り下りで目線が一気に跳ねて酔わないよう、速度では説明できない高さの変化（段差でのワープ）だけ少し遅らせる。
+	// 高い段差は一瞬空中扱いを挟むので、地面にいるかでは判定しない。ジャンプや落下は速度どおりなので遅らせない。
+	const float StepZ = bHasLastView ? ActorLocation.Z - LastActorLocation.Z - GetVelocity().Z * DeltaTime : 0.f;
+	StepOffset = bHasLastView && !bTeleported && !Carrier
+	                 ? TBRuleMath::SmoothStepOffset(StepOffset, StepZ, DeltaTime, StepSmoothSpeed, StepSmoothMax)
+	                 : 0.f;
+	OutResult.Location.Z += StepOffset;
 	LastActorLocation = ActorLocation;
 	const double Elapsed = GetWorld()->GetTimeSeconds() - CarryBlendStarted;
 	if (CarryBlendStarted >= 0 && Elapsed < CarryBlendDuration)

@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Mamodou. All Rights Reserved.
 
 #pragma once
+#include <cmath>
 // UEに依存しないルール計算。ゲーム本体と単体テストで同じ式を使う。
 namespace TBRuleMath
 {
@@ -8,6 +9,17 @@ namespace TBRuleMath
 	inline float FrozenVerticalSpeed(float Speed)
 	{
 		return Speed > 0.f ? 0.f : Speed;
+	}
+
+	// 段差で跳ねた分だけ目線を元の高さに残し、0 へ向けて追いつかせる。遅れは上限で止め、一気に戻さない。
+	// 指数で減らすので、フレームレートが落ちたり一瞬止まったりしても、同じ速さで追いつく。
+	inline float SmoothStepOffset(float Offset, float StepZ, float DeltaSeconds, float Speed, float MaxOffset)
+	{
+		const float Limit = MaxOffset > 0.f ? MaxOffset : 0.f;
+		const float Raw = Offset - StepZ;
+		const float Held = Raw > Limit ? Limit : (Raw < -Limit ? -Limit : Raw);
+		const float Rate = Speed > 0.f ? Speed : 0.f;
+		return Held * std::exp(-Rate * (DeltaSeconds > 0.f ? DeltaSeconds : 0.f));
 	}
 
 	// 進捗は0～1。接触解除・資格喪失でリセットし、凍結中は保持する。
