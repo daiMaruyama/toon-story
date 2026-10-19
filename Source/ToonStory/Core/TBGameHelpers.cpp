@@ -4,6 +4,8 @@
 #include "Core/TBGameState.h"
 #include "Core/TBController.h"
 #include "Character/TBCharacter.h"
+#include "Camera/CameraComponent.h"
+#include "Data/TBRuleData.h"
 #include "Engine/World.h"
 
 namespace TB
@@ -33,5 +35,12 @@ namespace TB
 		{
 			PlayerController->ClientNotice(Text);
 		}
+	}
+
+	void ConstrainToRuleAspect(UCameraComponent* Camera)
+	{
+		if (!Camera) return;
+		Camera->AspectRatio = Rules().Vision.AspectRatio();
+		Camera->bConstrainAspectRatio = true;
 	}
 }

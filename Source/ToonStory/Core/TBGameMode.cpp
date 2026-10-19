@@ -128,7 +128,7 @@ bool ATBGameMode::PlaceInLobby(AController* Player)
 				const FVector View = Camera->GetComponentTransform().InverseTransformPosition(Center);
 				const float TanHalfFOV = FMath::Tan(FMath::DegreesToRadians(Camera->FieldOfView * .5f));
 				if (View.X < 100 || FMath::Abs(View.Y) + Radius > View.X * TanHalfFOV * .8f ||
-				    FMath::Abs(View.Z) + HalfHeight > View.X * TanHalfFOV / 1.7778f * .8f) continue;
+				    FMath::Abs(View.Z) + HalfHeight > View.X * TanHalfFOV / TB::Rules().Vision.AspectRatio() * .8f) continue;
 				FCollisionQueryParams VisibilityQuery = Query;
 				VisibilityQuery.bTraceComplex = true;
 				FHitResult Obstacle;

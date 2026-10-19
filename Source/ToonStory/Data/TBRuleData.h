@@ -5,6 +5,7 @@
 #include "Curves/CurveFloat.h"
 #include "Engine/Attenuation.h"
 #include "Engine/DataAsset.h"
+#include "GamePlay/TBRuleMath.h"
 #include "TBRuleData.generated.h"
 
 USTRUCT(BlueprintType)
@@ -15,7 +16,7 @@ struct FTBVisionRules
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "視界",
 	          meta = (DisplayName = "視野角", Units = "Degrees", ClampMin = "60", ClampMax = "120"))
 	float FieldOfView = 90.f;
-	/** 判定の縦の広さはこの比率から決まる。実際の画面の比率が違っても、判定はこの比率で行う */
+	/** カメラはこの比率に固定し（モニターと合わない分は黒帯）、判定の縦の広さもこの比率から決まる */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "視界",
 	          meta = (DisplayName = "画面比率（幅）", ClampMin = "1", ClampMax = "32"))
 	int32 AspectWidth = 16;
@@ -30,6 +31,8 @@ struct FTBVisionRules
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "視界",
 	          meta = (DisplayName = "頭と足の判定点", ClampMin = "0", ClampMax = "1"))
 	float BodySampleRatio = .85f;
+
+	float AspectRatio() const { return TBRuleMath::AspectRatio(AspectWidth, AspectHeight); }
 };
 
 USTRUCT(BlueprintType)
@@ -203,6 +206,11 @@ public:
 	FTBVoiceRules Voice;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "人形の見た目", meta = (ShowOnlyInnerProperties))
 	FTBToyRules Toys;
+
+#if WITH_EDITOR
+	// 1つずつの範囲は ClampMin/Max で守り、ここでは値どうしの関係だけを確かめる。
+	virtual EDataValidationResult IsDataValid(FDataValidationContext& Context) const override;
+#endif
 };
 
 namespace TB

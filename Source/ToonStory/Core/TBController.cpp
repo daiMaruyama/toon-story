@@ -96,7 +96,7 @@ void ATBController::UpdateLobbyCamera(bool InLobby)
 				if (It->ActorHasTag(TEXT("TBLobbyCamera")))
 				{
 					LobbyCamera = *It;
-					It->GetCameraComponent()->bConstrainAspectRatio = false;
+					TB::ConstrainToRuleAspect(It->GetCameraComponent());
 					break;
 				}
 			}

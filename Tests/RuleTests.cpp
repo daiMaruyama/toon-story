@@ -52,6 +52,8 @@ int main()
 	assert(JudgeHalfAngles(90, 16, 9, 60).Horizontal == 0); // 余白が大きくてもマイナスにならない
 	assert(JudgeHalfAngles(90, 16, 9, 60).Vertical == 0);
 	assert(std::isfinite(JudgeHalfAngles(90, 0, 0, 5).Vertical)); // 比率が 0 でも壊れない
+	assert(Near(AspectRatio(16, 9), 16.f / 9)); // カメラと判定が同じ比率を使う
+	assert(AspectRatio(0, -1) == 1);
 	assert(!HumansWin(0, 0));
 	assert(!HumansWin(2, 1));
 	assert(HumansWin(2, 2));

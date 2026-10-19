@@ -50,9 +50,6 @@ ATBCharacter::ATBCharacter(const FObjectInitializer& Init)
 	Camera = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
 	Camera->SetupAttachment(GetRootComponent());
 	Camera->bUsePawnControlRotation = true;
-	Camera->FieldOfView = 90.f;
-	Camera->AspectRatio = 16.f / 9.f;
-	Camera->bConstrainAspectRatio = false;
 	Camera->SetRelativeLocation(FVector(0, 0, 64));
 	CarryCameraArm = CreateDefaultSubobject<USpringArmComponent>(TEXT("CarryCameraArm"));
 	CarryCameraArm->SetupAttachment(GetRootComponent());
@@ -64,7 +61,6 @@ ATBCharacter::ATBCharacter(const FObjectInitializer& Init)
 	CarryCameraArm->bEnableCameraLag = false;
 	CarryCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("CarryCamera"));
 	CarryCamera->SetupAttachment(CarryCameraArm, USpringArmComponent::SocketName);
-	CarryCamera->FieldOfView = 90.f;
 	CarryCamera->SetAutoActivate(false);
 	Body = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Body"));
 	// 表示する身体も運搬カメラと同じ補間に追従させる。
@@ -94,9 +90,11 @@ void ATBCharacter::BeginPlay()
 	ChildAnimation.LoadSynchronous();
 	GetMesh()->SetOwnerNoSee(true);
 	GetMesh()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	// 視界判定と同じ視野角で映す。運ばれている間も同じにして、切り替えのたびに視野角が伸び縮みしないようにする。
+	// 視界判定と同じ視野角・画面比率で映す。運ばれている間も同じにして、切り替えのたびに見え方が伸び縮みしないようにする。
 	Camera->FieldOfView = TB::Rules().Vision.FieldOfView;
 	CarryCamera->FieldOfView = Camera->FieldOfView;
+	TB::ConstrainToRuleAspect(Camera);
+	TB::ConstrainToRuleAspect(CarryCamera);
 	const auto& CarryView = TB::CharacterData().CarryCamera;
 	CarryCameraArm->TargetArmLength = CarryView.ArmLength;
 	CarryCameraArm->TargetOffset = FVector(0, 0, CarryView.LookHeight);
