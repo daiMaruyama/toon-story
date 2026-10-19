@@ -22,8 +22,6 @@ public:
 	bool bInitiallyLightsOn = true;
 	UPROPERTY(ReplicatedUsing = OnRep_LightsOn, BlueprintReadOnly, Category = "Room")
 	bool bLightsOn = true;
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Room", meta = (ClampMin = "0.0", Units = "m"))
-	float DarkProtectionDistanceMeters = 3.f;
 	// Each light should belong to exactly one room. Use Movable local lights.
 	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = "Room")
 	TArray<TObjectPtr<ALight>> Lights;

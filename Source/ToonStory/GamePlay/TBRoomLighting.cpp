@@ -1,5 +1,6 @@
 #include "TBRoomLighting.h"
 #include "TBRuleMath.h"
+#include "Data/TBRuleData.h"
 #include "Components/BoxComponent.h"
 #include "Components/LightComponent.h"
 #include "Engine/Light.h"
@@ -69,7 +70,7 @@ bool ATBRoomLighting::ProtectsFromGaze(const UWorld* World, const FVector& ToyPo
 	for (TActorIterator<ATBRoomLighting> It(World); It; ++It)
 	{
 		if (!It->Contains(ToyPosition)) continue;
-		if (!TBRuleMath::DarknessProtects(It->bLightsOn, DistanceSquared, It->DarkProtectionDistanceMeters)) return false;
+		if (!TBRuleMath::DarknessProtects(It->bLightsOn, DistanceSquared, TB::Rules().Vision.DarkProtectionDistanceMeters)) return false;
 		bInDarkRoom = true;
 	}
 	return bInDarkRoom;

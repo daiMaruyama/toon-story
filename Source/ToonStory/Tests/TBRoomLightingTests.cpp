@@ -14,6 +14,8 @@
 #include "GamePlay/Items/TBInteractionTarget.h"
 #include "GameFramework/PlayerController.h"
 #include "Misc/ScopeExit.h"
+#include "Data/TBLightSwitchData.h"
+#include "Data/TBRuleData.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBRoomLightingTest, "ToonStory.Lighting.RoomRules",
                                  EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -22,7 +24,11 @@ bool FTBRoomLightingTest::RunTest(const FString& Parameters)
 {
 	UWorld* World = UWorld::CreateWorld(EWorldType::Game, false);
 	if (!TestNotNull(TEXT("Test world"), World)) return false;
-	World->InitializeNewWorld(UWorld::InitializationValues().AllowAudioPlayback(false).CreatePhysicsScene(false));
+	// Isolate rule-boundary assertions from designers' authored values.
+	auto& Vision = const_cast<FTBVisionRules&>(TB::Rules().Vision);
+	const float OldProtectionDistance = Vision.DarkProtectionDistanceMeters;
+	Vision.DarkProtectionDistanceMeters = 3.f;
+	ON_SCOPE_EXIT { Vision.DarkProtectionDistanceMeters = OldProtectionDistance; };
 	auto* Room = World->SpawnActor<ATBRoomLighting>();
 	auto* Light = World->SpawnActor<APointLight>();
 	Room->Lights.Add(Light);
@@ -35,6 +41,9 @@ bool FTBRoomLightingTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Dark toy protected from observer outside room"), ATBRoomLighting::ProtectsFromGaze(World, Toy, FarHuman));
 	TestFalse(TEXT("Nearby observer still freezes"), ATBRoomLighting::ProtectsFromGaze(World, Toy, NearHuman));
 	TestTrue(TEXT("Exactly three meters protects"), ATBRoomLighting::ProtectsFromGaze(World, Toy, FVector(300, 0, 0)));
+	Vision.DarkProtectionDistanceMeters = 5.f;
+	TestFalse(TEXT("Authored rule distance changes protection"), ATBRoomLighting::ProtectsFromGaze(World, Toy, FarHuman));
+	Vision.DarkProtectionDistanceMeters = 3.f;
 	TestFalse(TEXT("Outside any room retains normal freeze"), ATBRoomLighting::ProtectsFromGaze(World, FVector(200, 0, 0), FarHuman));
 	auto* OtherRoom = World->SpawnActor<ATBRoomLighting>();
 	TestFalse(TEXT("Lit overlap wins independent of iteration order"), ATBRoomLighting::ProtectsFromGaze(World, Toy, FarHuman));
@@ -95,6 +104,10 @@ bool FTBLightSwitchItemTest::RunTest(const FString& Parameters)
 	const FVector Aim = Character->GetControlRotation().Vector();
 	Switch->SetActorLocation(Eye + Aim * 100.f);
 	Switch->Actions[0].bRequiresLineOfSight = false; // Shared Conditions test covers walls.
+	auto* CustomData = NewObject<UTBLightSwitchData>(Switch);
+	CustomData->InteractionDistance = 180.f;
+	Switch->SwitchData = CustomData;
+	Switch->OnConstruction(Switch->GetActorTransform());
 	FTBInteractionContext Use;
 	Use.InstigatorCharacter = Character;
 	Use.ActionId = TEXT("Toggle");
@@ -118,6 +131,25 @@ bool FTBLightSwitchItemTest::RunTest(const FString& Parameters)
 	Use.ActionId = TEXT("Missing");
 	TestFalse(TEXT("Unknown action cannot toggle"), Switch->TryInteract(Use));
 	TestTrue(TEXT("Rejected interactions preserve lighting"), Room->bLightsOn);
+	CustomData->InteractionDistance = 250.f;
+	Switch->OnConstruction(Switch->GetActorTransform());
+	Switch->SetActorLocation(Eye + Aim * 220.f);
+	Use.ActionId = TEXT("Toggle");
+	TestTrue(TEXT("Selected data asset controls actual reach"), Switch->TryInteract(Use));
+	Switch->SwitchData.Reset();
+	Switch->OnConstruction(Switch->GetActorTransform());
+	TestEqual(TEXT("Unset data falls back to original reach"), Switch->Actions[0].MaxDistance, 180.f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBLightingDataTest, "ToonStory.Data.Lighting",
+                                 EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FTBLightingDataTest::RunTest(const FString& Parameters)
+{
+	TestEqual(TEXT("Original protection default"), GetDefault<UTBRuleData>()->Vision.DarkProtectionDistanceMeters, 3.f);
+	const auto& Selected = GetDefault<ATBLightSwitch>()->SwitchData;
+	TestEqual(TEXT("Shared switch data path"), Selected.ToSoftObjectPath().ToString(), FString(TEXT("/Game/Data/DA_LightSwitch.DA_LightSwitch")));
+	TestNotNull(TEXT("Shared switch data asset exists"), Selected.LoadSynchronous());
 	return true;
 }
 #endif
