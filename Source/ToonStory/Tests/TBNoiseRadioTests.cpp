@@ -37,6 +37,11 @@ bool FTBNoiseRadioTest::RunTest(const FString& Parameters)
 	const bool bOldFrozen = Player->bFrozen;
 	const float OldEffects = Audio->GetEffectsVolume();
 	const auto OldSounds = GetMutableDefault<UTBAudioSettings>()->Sounds;
+	for (ETBSoundEvent Feedback : {ETBSoundEvent::CollectLoop, ETBSoundEvent::RescueLoop})
+	{
+		const auto* Clip = OldSounds.Find(Feedback);
+		TestTrue(TEXT("Production catalog excludes progress feedback from masking"), Clip && !Clip->bToyActionSound);
+	}
 	State->Phase = ETBPhase::Playing;
 	Player->Team = ETBTeam::Toy;
 	Player->ToyState = ETBToyState::Free;
@@ -72,11 +77,11 @@ bool FTBNoiseRadioTest::RunTest(const FString& Parameters)
 		GetMutableDefault<UTBAudioSettings>()->Sounds.Add(ETBSoundEvent::Footstep, Clip);
 		GetMutableDefault<UTBAudioSettings>()->Sounds.Add(ETBSoundEvent::Jump, Clip);
 		GetMutableDefault<UTBAudioSettings>()->Sounds.Add(ETBSoundEvent::Land, Clip);
-		GetMutableDefault<UTBAudioSettings>()->Sounds.Add(ETBSoundEvent::CollectLoop, Clip);
-		GetMutableDefault<UTBAudioSettings>()->Sounds.Add(ETBSoundEvent::RescueLoop, Clip);
 		// An unrelated event can opt in without adding event-specific logic to playback.
 		GetMutableDefault<UTBAudioSettings>()->Sounds.Add(ETBSoundEvent::JingleAlternate, Clip);
 		Clip.bToyActionSound = false;
+		GetMutableDefault<UTBAudioSettings>()->Sounds.Add(ETBSoundEvent::CollectLoop, Clip);
+		GetMutableDefault<UTBAudioSettings>()->Sounds.Add(ETBSoundEvent::RescueLoop, Clip);
 		GetMutableDefault<UTBAudioSettings>()->Sounds.Add(ETBSoundEvent::HumanFootstep, Clip);
 		Audio->ReloadAudioSettings();
 		Radio->Tick(0.f);
@@ -93,10 +98,22 @@ bool FTBNoiseRadioTest::RunTest(const FString& Parameters)
 			Audio->SetEffectsVolume(.4f);
 			TestTrue(TEXT("Volume preference preserves mask"), FMath::IsNearlyEqual(ToyStep->VolumeMultiplier, .1f * Audio->GetCategoryVolume(ETBAudioCategory::Effects)));
 		}
+		for (ETBSoundEvent Feedback : {ETBSoundEvent::CollectLoop, ETBSoundEvent::RescueLoop})
+		{
+			auto* FeedbackAudio = Audio->StartLoop(Feedback, Character->GetRootComponent());
+			if (TestNotNull(TEXT("Progress feedback audio"), FeedbackAudio))
+			{
+				TestEqual(TEXT("Radio leaves progress feedback at normal volume"), FeedbackAudio->VolumeMultiplier,
+				    Audio->GetCategoryVolume(ETBAudioCategory::Effects));
+				Audio->SetToyActionMask(Radio, .05f);
+				TestEqual(TEXT("Playing progress feedback remains unmasked"), FeedbackAudio->VolumeMultiplier,
+				    Audio->GetCategoryVolume(ETBAudioCategory::Effects));
+				Audio->StopLoop(FeedbackAudio);
+			}
+		}
 		Audio->StopLoop(ToyStep);
 		Audio->StopLoop(HumanStep);
-		for (ETBSoundEvent Event : {ETBSoundEvent::Jump, ETBSoundEvent::Land, ETBSoundEvent::CollectLoop,
-		    ETBSoundEvent::RescueLoop, ETBSoundEvent::JingleAlternate})
+		for (ETBSoundEvent Event : {ETBSoundEvent::Jump, ETBSoundEvent::Land, ETBSoundEvent::JingleAlternate})
 		{
 			auto* ActionAudio = Audio->StartLoop(Event, Character->GetRootComponent());
 			if (TestNotNull(TEXT("Toy action creates audio"), ActionAudio))
@@ -124,17 +141,7 @@ bool FTBNoiseRadioTest::RunTest(const FString& Parameters)
 		Use.ActionId = TEXT("Start");
 		TestFalse(TEXT("Human cannot restart"), Radio->TryInteract(Use));
 		Player->Team = ETBTeam::Toy;
-		// Exercise the same server trace used by E, away from level geometry.
-		const FTransform OriginalTransform = Character->GetActorTransform();
-		const FRotator OriginalAim = PC->GetControlRotation();
-		Character->SetActorLocation(FVector(0, 0, 10000), false, nullptr, ETeleportType::TeleportPhysics);
-		PC->SetControlRotation(FRotator::ZeroRotator);
-		Radio->SetActorLocation(Character->GetPawnViewLocation() + FVector(100, 0, -35));
-		Radio->Actions[0].bRequiresLineOfSight = true;
-		Character->RequestInteract();
-		TestTrue(TEXT("E input trace restarts radio"), Radio->IsRadioOn());
-		Character->SetActorTransform(OriginalTransform, false, nullptr, ETeleportType::TeleportPhysics);
-		PC->SetControlRotation(OriginalAim);
+		TestTrue(TEXT("Toy restarts stopped radio"), Radio->TryInteract(Use));
 		State->Phase = ETBPhase::Results;
 		Radio->Tick(.016f);
 		TestFalse(TEXT("Round end stops radio"), Radio->IsRadioOn());

@@ -20,6 +20,15 @@ ATBItemBase::ATBItemBase()
 	Actions.AddDefaulted();
 }
 
+void ATBItemBase::BeginPlay()
+{
+	Super::BeginPlay();
+	// Default/placed values may never receive an OnRep, but still need an initial visual refresh.
+	OnRep_InteractionEnabled();
+}
+
+void ATBItemBase::InteractionEnabledChanged_Implementation() {}
+
 TArray<FTBItemAction> ATBItemBase::GetInteractionActions() const { return Actions; }
 FVector ATBItemBase::GetInteractionLocation() const { return InteractionPoint->GetComponentLocation(); }
 

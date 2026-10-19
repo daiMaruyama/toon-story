@@ -14,6 +14,7 @@ class TOONSTORY_API ATBItemBase : public AActor, public ITBInteractable
 	GENERATED_BODY()
 public:
 	ATBItemBase();
+	virtual void BeginPlay() override;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Item")
 	TObjectPtr<USceneComponent> Root;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Item")
@@ -45,7 +46,7 @@ protected:
 	UFUNCTION(BlueprintNativeEvent, BlueprintAuthorityOnly, Category = "Interaction")
 	bool PerformAction(const FTBInteractionContext& Context);
 	// Local visual refresh on the server and on clients receiving enabled-state replication.
-	UFUNCTION(BlueprintImplementableEvent, Category = "Interaction")
+	UFUNCTION(BlueprintNativeEvent, Category = "Interaction")
 	void InteractionEnabledChanged();
 
 private:

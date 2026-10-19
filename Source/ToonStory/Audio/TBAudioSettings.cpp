@@ -12,7 +12,7 @@ UTBAudioSettings::UTBAudioSettings()
 		const auto Event = ETBSoundEvent(Index);
 		auto& Clip = Sounds.Add(Event);
 		Clip.bToyActionSound = Event == ETBSoundEvent::Footstep || Event == ETBSoundEvent::Jump ||
-		    Event == ETBSoundEvent::Land || Event == ETBSoundEvent::CollectLoop || Event == ETBSoundEvent::RescueLoop;
+		    Event == ETBSoundEvent::Land;
 		Clip.bSpatial = Event == ETBSoundEvent::Capture || Event == ETBSoundEvent::Store ||
 		                Event == ETBSoundEvent::Footstep || Event == ETBSoundEvent::Jump ||
 		                Event == ETBSoundEvent::Land || Event == ETBSoundEvent::RescueLoop ||

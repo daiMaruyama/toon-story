@@ -12,6 +12,7 @@
 #include "GamePlay/TBDummyToy.h"
 #include "GamePlay/TBPickup.h"
 #include "GamePlay/Items/TBInteractable.h"
+#include "GamePlay/Items/TBInteractionTarget.h"
 #include "GamePlay/TBRuleMath.h"
 #include "Core/TBGameHelpers.h"
 #include "Camera/CameraComponent.h"
@@ -537,24 +538,14 @@ void ATBCharacter::ServerInteract_Implementation()
 		return;
 	}
 	LastRequest = Now;
-	// Trace on the authority: clients cannot supply an arbitrary item or bypass reach/LOS checks.
-	FHitResult ItemHit;
-	const FVector ItemTraceStart = GetPawnViewLocation();
-	FCollisionQueryParams ItemQuery(SCENE_QUERY_STAT(TBItemUse), false, this);
-	if (!HasCarriedToy() && !CarriedDummy && GetWorld()->LineTraceSingleByChannel(ItemHit,
-	    ItemTraceStart, ItemTraceStart + GetControlRotation().Vector() * 350.f, ECC_Visibility, ItemQuery))
+	const FTBInteractionTarget Target = TB::FindInteractionTarget(this);
+	if (auto* Item = Cast<ITBInteractable>(Target.Actor))
 	{
-		if (auto* Item = Cast<ITBInteractable>(ItemHit.GetActor()))
-		{
-			FTBInteractionContext Context;
-			Context.InstigatorCharacter = this;
-			for (const auto& Action : Item->GetInteractionActions())
-			{
-				Context.ActionId = Action.Id;
-				if (Item->CanInteract(Context) && Item->TryInteract(Context)) return;
-			}
-			return;
-		}
+		FTBInteractionContext Context;
+		Context.InstigatorCharacter = this;
+		Context.ActionId = Target.ActionId;
+		Item->TryInteract(Context);
+		return;
 	}
 	bHoldingInteract = true;
 	auto* MatchInfo = TB::GS(GetWorld());
@@ -576,35 +567,12 @@ void ATBCharacter::ServerInteract_Implementation()
 			}
 			return;
 		}
-		ATBCharacter* ClosestToy = nullptr;
-		float ClosestDistance = 180.f;
-		for (TActorIterator<ATBCharacter> It(GetWorld()); It; ++It)
+		if (auto* Dummy = Cast<ATBDummyToy>(Target.Actor))
 		{
-			auto* Toy = *It;
-			auto* TargetState = Toy->TBPS();
-			if (!TargetState || TargetState->Team != ETBTeam::Toy || Toy->Carrier)
-			{
-				continue;
-			}
-			if (TargetState->ToyState != ETBToyState::Free)
-			{
-				continue;
-			}
-			const FVector Delta = Toy->GetActorLocation() - GetActorLocation();
-			const float Distance = Delta.Size();
-			if (Distance > ClosestDistance ||
-			    FVector::DotProduct(GetControlRotation().Vector(), Delta.GetSafeNormal()) < .35f)
-			{
-				continue;
-			}
-			if (!TB::ClearPath(this, Toy, GetPawnViewLocation(), Toy->GetActorLocation()))
-			{
-				continue;
-			}
-			ClosestToy = Toy;
-			ClosestDistance = Distance;
+			Dummy->PickUp(this);
+			return;
 		}
-		if (ATBDummyToy::TryPickUpNearest(this, ClosestDistance)) return;
+		auto* ClosestToy = Cast<ATBCharacter>(Target.Actor);
 		if (ClosestToy)
 		{
 			ClosestToy->ClearHeldInteraction();
