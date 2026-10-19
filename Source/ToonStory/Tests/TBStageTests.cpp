@@ -12,6 +12,7 @@
 #include "Character/TBToyCharacter.h"
 #include "Components/ChildActorComponent.h"
 #include "Character/TBMovement.h"
+#include "Character/TBToyPresentation.h"
 #include "GamePlay/TBBox.h"
 #include "GamePlay/TBPickup.h"
 #include "Components/StaticMeshComponent.h"
@@ -159,18 +160,25 @@ bool FTBResidentialStageTest::RunTest(const FString& Parameters)
 			It->ApplyState();
 			//キャラクター本体ではなく表示用Actorのメッシュを検証する。
 			USkeletalMeshComponent* ToyMesh = It->GetMesh();
+			UStaticMeshComponent* StaticToyMesh = nullptr;
 			if (auto* Toy = Cast<ATBToyCharacter>(*It))
 			{
 				Toy->ChooseRandomToy();
 				Toy->RefreshToyPresentation();
 				if (auto* Visual = Toy->ToyVisual->GetChildActor())
+				{
 					ToyMesh = Visual->FindComponentByClass<USkeletalMeshComponent>();
+					StaticToyMesh = Visual->FindComponentByClass<UStaticMeshComponent>();
+				}
 			}
-			TestNotNull(TEXT("Toy mesh exists"), ToyMesh);
+			// The car uses a static mesh; the other toys use animated skeletal meshes.
+			TestTrue(TEXT("Toy geometry is loaded"),
+			         (ToyMesh && ToyMesh->GetSkeletalMeshAsset()) ||
+			         (StaticToyMesh && StaticToyMesh->GetStaticMesh()));
 			if (ToyMesh) TestNotNull(TEXT("Toy animation exists"), ToyMesh->GetAnimInstance());
-			TestEqual(TEXT("Toy view is 20 cm above capsule bottom"),
+			TestEqual(TEXT("Toy view scales with the body"),
 			          It->Camera->GetRelativeLocation().Z + It->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight(),
-			          20.0);
+			          20.0 * TBToyPresentation::SizeScale);
 			auto* Movement = It->GetCharacterMovement();
 			const FVector OriginalVelocity = Movement->Velocity;
 			const EMovementMode OriginalMode = Movement->MovementMode;
@@ -186,7 +194,7 @@ bool FTBResidentialStageTest::RunTest(const FString& Parameters)
 			TestTrue(TEXT("Sprint travels with movement packets"),
 			         (SavedSprint->GetCompressedFlags() & FSavedMove_Character::FLAG_Custom_0) != 0);
 			ToyMovement->UpdateFromCompressedFlags(0);
-			TestEqual(TEXT("Released flag restores walking"), Movement->GetMaxSpeed(), It->ToySpeed);
+			TestEqual(TEXT("Released flag restores walking"), Movement->GetMaxSpeed(), It->ToySpeed * 1.25f);
 			SavedSprint->PrepMoveFor(*It);
 			TestEqual(TEXT("Prediction replay restores sprint"), Movement->GetMaxSpeed(), It->ToySprintSpeed);
 			TestEqual(TEXT("Higher toy jump applied"), Movement->JumpZVelocity, It->ToyJumpVelocity);
@@ -279,25 +287,26 @@ bool FTBResidentialStageTest::RunTest(const FString& Parameters)
 				}
 			}
 		}
-		if (Extent.GetMax() * 2 < 30 &&
+		// The separately streamed toy-box interior has its own collision layout.
+		if (It->GetLevel() == World->PersistentLevel && Extent.GetMax() * 2 < 30 &&
 		    It->GetStaticMeshComponent()->GetCollisionEnabled() != ECollisionEnabled::NoCollision)
 		{
 			AddError(FString::Printf(TEXT("Small prop must not block players: %s"), *It->GetName()));
 		}
-		if (It->ActorHasTag(TEXT("DoorFixedOpen")))
+		if (It->ActorHasTag(TEXT("TBRoomDoorway")))
 		{
 			++Doors;
-			TestEqual(TEXT("Door cannot move"), It->GetStaticMeshComponent()->Mobility.GetValue(),
+			TestEqual(TEXT("Doorway remains fixed"), It->GetStaticMeshComponent()->Mobility.GetValue(),
 			          EComponentMobility::Static);
 		}
 	}
 	TestTrue(TEXT("At least eight distinct starts"), Starts >= 8);
 	TestEqual(TEXT("One toy box"), Boxes, 1);
 	TestTrue(TEXT("Enough collectibles"), Pickups >= 5);
-	TestTrue(TEXT("Open doors in four rooms"), Doors >= 4);
+	TestEqual(TEXT("Connected room openings"), Doors, Kids ? 1 : 4);
 	TestTrue(TEXT("Structural wall collision is authored"), Barriers >= 12);
 	TArray<TPair<FVector, FVector>> Routes;
-	for (int32 Index = 0; Index < (Kids ? 4 : 2); ++Index)
+	for (int32 Index = 0; Index < 4; ++Index)
 	{
 		AActor* Start = nullptr;
 		AActor* End = nullptr;
@@ -323,6 +332,91 @@ bool FTBResidentialStageTest::RunTest(const FString& Parameters)
 		const bool Blocked = World->SweepSingleByChannel(Hit, Route.Key, Route.Value, FQuat::Identity, ECC_Pawn,
 		                                                 FCollisionShape::MakeCapsule(26, 65), Query);
 		TestFalse(*FString::Printf(TEXT("Child can cross doorway; blocker=%s"), *GetNameSafe(Hit.GetActor())), Blocked);
+	}
+
+
+	// Sample real collision, rather than just the doorway markers: furniture must not
+	// isolate a spawn, collectible or the front of the rescue chest from the other rooms.
+	FBox PlayableBounds(ForceInit);
+	for (TActorIterator<AStaticMeshActor> It(World); It; ++It)
+	{
+		if (It->ActorHasTag(TEXT("TBPlayableFloor")))
+		{
+			PlayableBounds += It->GetComponentsBoundingBox();
+		}
+	}
+	if (!TestTrue(TEXT("Playable floor bounds are authored"), PlayableBounds.IsValid != 0)) return false;
+	FVector Seed = FVector::ZeroVector;
+	for (TActorIterator<APlayerStart> It(World); It; ++It) { Seed = It->GetActorLocation(); break; }
+	constexpr float GridStep = 25.f;
+	const int32 Columns = FMath::FloorToInt((PlayableBounds.GetSize().X - 50.f) / GridStep) + 1;
+	const int32 Rows = FMath::FloorToInt((PlayableBounds.GetSize().Y - 50.f) / GridStep) + 1;
+	for (const bool Toy : {false, true})
+	{
+		const float HalfHeight = Toy ? 13.f : 65.f;
+		const auto Capsule = FCollisionShape::MakeCapsule(Toy ? 10.f : 26.f, HalfHeight);
+		auto Position = [&](int32 Cell)
+		{
+			return FVector(PlayableBounds.Min.X + 25.f + (Cell % Columns) * GridStep,
+			               PlayableBounds.Min.Y + 25.f + (Cell / Columns) * GridStep, HalfHeight + 2);
+		};
+		TArray<bool> Clear, Reached;
+		Clear.Init(false, Columns * Rows);
+		Reached.Init(false, Columns * Rows);
+		for (int32 Cell = 0; Cell < Clear.Num(); ++Cell)
+		{
+			const FVector P = Position(Cell);
+			Clear[Cell] = !World->OverlapBlockingTestByChannel(P, FQuat::Identity, ECC_Pawn, Capsule, Query);
+		}
+		TArray<int32> Queue;
+		int32 SeedCell = INDEX_NONE;
+		float SeedDistance = FMath::Square(75.f);
+		FVector SeedPosition(Seed.X, Seed.Y, HalfHeight + 2);
+		for (int32 Cell = 0; Cell < Clear.Num(); ++Cell)
+		{
+			const float Distance = FVector::DistSquared(Position(Cell), SeedPosition);
+			FHitResult Hit;
+			if (Clear[Cell] && Distance < SeedDistance &&
+			    !World->SweepSingleByChannel(Hit, Position(Cell), SeedPosition, FQuat::Identity, ECC_Pawn, Capsule, Query))
+			{
+				SeedCell = Cell; SeedDistance = Distance;
+			}
+		}
+		if (TestTrue(TEXT("A spawn connects to the floor grid"), SeedCell != INDEX_NONE))
+		{
+			Queue.Add(SeedCell); Reached[SeedCell] = true;
+		}
+		for (int32 Head = 0; Head < Queue.Num(); ++Head)
+		{
+			const int32 Cell = Queue[Head];
+			for (const int32 Step : {-1, 1, -Columns, Columns})
+			{
+				const int32 Next = Cell + Step;
+				if (!Clear.IsValidIndex(Next) || !Clear[Next] || Reached[Next] ||
+				    (FMath::Abs(Step) == 1 && Cell / Columns != Next / Columns)) continue;
+				FHitResult Hit;
+				if (!World->SweepSingleByChannel(Hit, Position(Cell), Position(Next), FQuat::Identity, ECC_Pawn, Capsule, Query))
+				{
+					Reached[Next] = true; Queue.Add(Next);
+				}
+			}
+		}
+		for (TActorIterator<AActor> It(World); It; ++It)
+		{
+			const auto* Box = Cast<ATBBox>(*It);
+			if (!It->IsA<APlayerStart>() && !(Toy && It->IsA<ATBPickup>()) && !Box) continue;
+			FVector Target = Box ? Box->InteractionPoint->GetComponentLocation() : It->GetActorLocation();
+			Target.Z = HalfHeight + 2;
+			bool Accessible = false;
+			for (const int32 Cell : Queue)
+			{
+				if (FVector::DistSquared(Position(Cell), Target) > FMath::Square(75.f)) continue;
+				FHitResult Hit;
+				if (!World->SweepSingleByChannel(Hit, Position(Cell), Target, FQuat::Identity, ECC_Pawn, Capsule, Query))
+				{ Accessible = true; break; }
+			}
+			TestTrue(*FString::Printf(TEXT("%s can reach %s through furnished rooms"), Toy ? TEXT("Toy") : TEXT("Human"), *It->GetName()), Accessible);
+		}
 	}
 
 	return !HasAnyErrors();

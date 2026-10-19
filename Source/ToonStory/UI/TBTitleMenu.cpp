@@ -7,6 +7,7 @@
 #include "Components/TextBlock.h"
 #include "Engine/GameInstance.h"
 #include "TBPaperStyle.h"
+#include "Blueprint/WidgetTree.h"
 
 void UTBTitleMenu::NativeOnInitialized()
 {
@@ -27,6 +28,22 @@ void UTBTitleMenu::NativeDestruct()
 {
 	if (Session) Session->Changed.RemoveDynamic(this, &ThisClass::Refresh);
 	Super::NativeDestruct();
+}
+
+void UTBTitleMenu::NativeTick(const FGeometry& Geometry, float DeltaTime)
+{
+	Super::NativeTick(Geometry, DeltaTime);
+	WidgetTree->ForEachWidget([DeltaTime](UWidget* Widget)
+	{
+		if (auto* Button = Cast<UButton>(Widget))
+		{
+			const float Target = !Button->GetIsEnabled() ? 0.f : Button->IsPressed() ? -7.f :
+			    Button->IsHovered() || Button->HasKeyboardFocus() ? -3.f : 0.f;
+			const float Y = FMath::FInterpTo(Button->GetRenderTransform().Translation.Y, Target, DeltaTime, 18.f);
+			Button->SetRenderTranslation(FVector2D(0, Y));
+			Button->SetRenderScale(FVector2D(1.f - Y * .002f));
+		}
+	});
 }
 
 void UTBTitleMenu::Refresh()

@@ -38,7 +38,7 @@ public:
 	TObjectPtr<USceneComponent> StorageRoom;
 	void ReleasePrisoners();
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
-	float BaseRescueSeconds = 10.f;
+	float BaseRescueSeconds = 5.f;
 	// 追加の救助者1人あたりの基準速度に対する加算割合。
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Rescue", meta = (ClampMin = "0.0"))
 	float AdditionalRescuerBonus = .5f;

@@ -19,6 +19,8 @@ protected:
 	virtual void NativeOnInitialized() override;
 	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
+	virtual FReply NativeOnPreviewKeyDown(const FGeometry& Geometry, const FKeyEvent& KeyEvent) override;
+	virtual void NativeTick(const FGeometry& Geometry, float DeltaTime) override;
 private:
 	void BuildPaperLayout();
 	UPROPERTY(Transient) TObjectPtr<UTBSession> Session;
@@ -38,6 +40,11 @@ private:
 	void Quit();
 	UFUNCTION()
 	void Help();
+	UFUNCTION() void CloseHelp();
+	UPROPERTY(Transient) TObjectPtr<UWidget> TitleContent;
+	UPROPERTY(Transient) TObjectPtr<UWidget> HelpOverlay;
+	UPROPERTY(Transient) TObjectPtr<UButton> HelpButton;
+	UPROPERTY(Transient) TObjectPtr<UButton> CloseHelpButton;
 	UFUNCTION()
 	class UWidget* RoomLabel(FString Item);
 	UPROPERTY(Transient)

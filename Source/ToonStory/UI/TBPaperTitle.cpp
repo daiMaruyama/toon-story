@@ -16,6 +16,7 @@
 #include "Components/ScaleBox.h"
 #include "Components/Image.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "InputCoreTypes.h"
 
 void UTBTitleMenu::BuildPaperLayout()
 {
@@ -98,7 +99,7 @@ void UTBTitleMenu::BuildPaperLayout()
 	};
 	HostButton = AddButton(TEXT("Host"), TEXT("部屋をつくる"), 90, 445, 370);
 	FindButton = AddButton(TEXT("Find"), TEXT("部屋をさがす"), 90, 523, 370, true);
-	auto* HelpButton = AddButton(TEXT("Help"), TEXT("あそびかた"), 90, 601, 175, true);
+	HelpButton = AddButton(TEXT("Help"), TEXT("あそびかた"), 90, 601, 175, true);
 	auto* QuitButton = AddButton(TEXT("Quit"), TEXT("ゲームを閉じる"), 280, 601, 180, true);
 	auto* Card = WidgetTree->ConstructWidget<UBorder>();
 	Card->SetBrush(TBPaper::Brush(PaperTexture));
@@ -127,6 +128,40 @@ void UTBTitleMenu::BuildPaperLayout()
 	QuitButton->OnClicked.AddDynamic(this, &ThisClass::Quit);
 	HelpButton->OnClicked.AddDynamic(this, &ThisClass::Help);
 	RoomList->OnSelectionChanged.AddDynamic(this, &ThisClass::SelectionChanged);
+	TitleContent = Scale;
+	auto* Overlay = WidgetTree->ConstructWidget<UCanvasPanel>();
+	HelpOverlay = Overlay;
+	Fill(Overlay);
+	auto* Dim = WidgetTree->ConstructWidget<UImage>();
+	Dim->SetColorAndOpacity(FLinearColor(0.015f, .025f, .02f, .78f));
+	auto* DimSlot = Overlay->AddChildToCanvas(Dim);
+	DimSlot->SetAnchors(FAnchors(0, 0, 1, 1));
+	DimSlot->SetOffsets(FMargin(0));
+	auto* PopupScale = WidgetTree->ConstructWidget<UScaleBox>();
+	PopupScale->SetStretch(EStretch::ScaleToFit);
+	auto* PopupSlot = Overlay->AddChildToCanvas(PopupScale);
+	PopupSlot->SetAnchors(FAnchors(0, 0, 1, 1));
+	PopupSlot->SetOffsets(FMargin(0));
+	auto* PopupSize = WidgetTree->ConstructWidget<USizeBox>();
+	PopupSize->SetWidthOverride(1280);
+	PopupSize->SetHeightOverride(800);
+	PopupScale->SetContent(PopupSize);
+	Canvas = WidgetTree->ConstructWidget<UCanvasPanel>();
+	PopupSize->SetContent(Canvas);
+	auto* HelpCard = WidgetTree->ConstructWidget<UBorder>();
+	HelpCard->SetBrush(TBPaper::Brush(PaperTexture, TBPaper::Cream));
+	Place(HelpCard, 170, 60, 940, 680);
+	Place(Label(TEXT("あそびかた"), 32, TBPaper::Accent), 220, 90, 840, 55);
+	Place(Label(TEXT("おもちゃとにんげんに分かれて、かくれんぼ！"), 20, TBPaper::Ink), 220, 155, 840, 45);
+	Place(Label(TEXT("おもちゃ"), 24, TBPaper::Accent), 220, 215, 390, 45);
+	Place(Label(TEXT("電池を集めよう。にんげんに見られると動けなくなるよ。\n仲間が箱に捕まったら、箱のそばでEを長押しして救助！"), 19, TBPaper::Ink), 220, 265, 390, 165);
+	Place(Label(TEXT("にんげん"), 24, TBPaper::Accent), 660, 215, 390, 45);
+	Place(Label(TEXT("おもちゃに近づいてEでつかもう。\n箱の正面まで運び、Eを長押しして箱にしまおう。Qでおろせるよ。"), 19, TBPaper::Ink), 660, 265, 390, 165);
+	Place(Label(TEXT("基本操作"), 23, TBPaper::Accent), 220, 445, 840, 40);
+	Place(Label(TEXT("WASD：移動 ／ マウス：見回す ／ Space：ジャンプ\nShift：ダッシュ（おもちゃ） ／ Ctrl：しゃがむ（にんげん）\nE：つかむ・収納・救助 ／ Q：おろす ／ Esc：メニュー"), 18, TBPaper::Ink), 220, 495, 840, 120);
+	CloseHelpButton = AddButton(TEXT("CloseHelp"), TEXT("閉じる [Esc]"), 465, 640, 350);
+	CloseHelpButton->OnClicked.AddDynamic(this, &ThisClass::CloseHelp);
+	HelpOverlay->SetVisibility(ESlateVisibility::Collapsed);
 }
 
 void UTBTitleMenu::Quit()
@@ -145,8 +180,24 @@ UWidget* UTBTitleMenu::RoomLabel(FString Item)
 
 void UTBTitleMenu::Help()
 {
-	StatusText->SetText(FText::FromString(
-	    TEXT("おもちゃ：電池を集めて、E長押しで仲間を救助。にんげん：Eでつかみ、箱の前でE長押し。\nWASD 移動 ／ マウス "
-	         "見回す ／ Space ジャンプ ／ Shift ダッシュ（おもちゃ） ／ Ctrl しゃがむ（にんげん） ／ Q おろす ／ Esc "
-	         "メニュー")));
+	TitleContent->SetIsEnabled(false);
+	HelpOverlay->SetVisibility(ESlateVisibility::Visible);
+	CloseHelpButton->SetKeyboardFocus();
+}
+
+void UTBTitleMenu::CloseHelp()
+{
+	HelpOverlay->SetVisibility(ESlateVisibility::Collapsed);
+	TitleContent->SetIsEnabled(true);
+	HelpButton->SetKeyboardFocus();
+}
+
+FReply UTBTitleMenu::NativeOnPreviewKeyDown(const FGeometry& Geometry, const FKeyEvent& KeyEvent)
+{
+	if (HelpOverlay && HelpOverlay->GetVisibility() == ESlateVisibility::Visible && KeyEvent.GetKey() == EKeys::Escape)
+	{
+		CloseHelp();
+		return FReply::Handled();
+	}
+	return Super::NativeOnPreviewKeyDown(Geometry, KeyEvent);
 }

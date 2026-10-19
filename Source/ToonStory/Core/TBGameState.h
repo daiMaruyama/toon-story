@@ -19,6 +19,10 @@ public:
 	UPROPERTY(Replicated, BlueprintReadOnly)
 	int32 PlayerLimit = 0;
 	UPROPERTY(Replicated, BlueprintReadOnly)
+	int32 SelectedStage = 1;
+	UPROPERTY(Replicated, BlueprintReadOnly)
+	bool bTravelPending = false;
+	UPROPERTY(Replicated, BlueprintReadOnly)
 	FTBSettings Settings;
 	UPROPERTY(Replicated, BlueprintReadOnly)
 	ETBPhase Phase = ETBPhase::Lobby;
