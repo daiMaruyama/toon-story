@@ -56,15 +56,7 @@ public:
 	TObjectPtr<UMaterialInterface> ScreenMaterial;
 	UPROPERTY(EditDefaultsOnly, Category = "Television", meta = (ClampMin = "0"))
 	int32 ScreenMaterialIndex = 0;
-	UPROPERTY(EditDefaultsOnly, Category = "Television")
-	FIntPoint CaptureResolution = FIntPoint(512, 288);
-	UPROPERTY(EditDefaultsOnly, Category = "Television", meta = (ClampMin = "1", ClampMax = "30"))
-	float CaptureRate = 15.f;
-	UPROPERTY(EditDefaultsOnly, Category = "Television", meta = (ClampMin = "0.0", ClampMax = "2.0"))
-	float NoiseSeconds = .4f;
-	// 箱に入れられた瞬間に見る位置の、画面中心からの高さ。
-	UPROPERTY(EditAnywhere, Category = "Television")
-	float ArrivalLookAbove = 100.f;
+	// 映像の解像度・更新回数・砂嵐・入ったときの向きはマスターデータ（TB::PresentationData().Television）にある。
 
 	static constexpr int32 CameraChannels = 3;
 	static constexpr int32 MaxChannel = 9;

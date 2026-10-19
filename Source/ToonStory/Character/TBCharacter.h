@@ -4,7 +4,6 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
 #include "Data/TBTypes.h"
-#include "Kismet/KismetMathLibrary.h" // EEasingFunc用
 #include "TBCharacter.generated.h"
 
 class UCameraComponent;
@@ -40,26 +39,7 @@ public:
 	TObjectPtr<USpringArmComponent> CarryCameraArm;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	TObjectPtr<UCameraComponent> CarryCamera;
-	// 運ばれている間の見下ろし角。左右には回り込めるが、上下は固定。
-	UPROPERTY(EditDefaultsOnly, Category = "Carry Camera")
-	float CarryViewPitch = -40.f;
-	// 一人称と運搬カメラの切替をつなぐ時間。
-	UPROPERTY(EditDefaultsOnly, Category = "Carry Camera", meta = (ClampMin = "0.0"))
-	float CarryBlendTime = .45f;
-	// 降ろされる時は運ぶ人の頭を横切るので短くする。
-	UPROPERTY(EditDefaultsOnly, Category = "Carry Camera", meta = (ClampMin = "0.0"))
-	float CarryReleaseBlendTime = .12f;
-	UPROPERTY(EditDefaultsOnly, Category = "Carry Camera")
-	TEnumAsByte<EEasingFunc::Type> CarryBlendEase = EEasingFunc::EaseInOut;
-	// Easeの効きの強さ。
-	UPROPERTY(EditDefaultsOnly, Category = "Carry Camera", meta = (ClampMin = "1.0"))
-	float CarryBlendExp = 2.f;
-	// 段差を上り下りしたとき、目線の高さがこの速さで追いつく。大きいほど速い。
-	UPROPERTY(EditDefaultsOnly, Category = "Camera Comfort", meta = (ClampMin = "1.0"))
-	float StepSmoothSpeed = 12.f;
-	// 目線を遅らせる最大高さ。これを超える分は遅らせずに追従する。
-	UPROPERTY(EditDefaultsOnly, Category = "Camera Comfort", meta = (ClampMin = "0.0"))
-	float StepSmoothMax = 60.f;
+	// 速さ・ジャンプ・段差・担がれカメラの値はマスターデータ（TB::CharacterData()）にある。
 	virtual void CalcCamera(float DeltaTime, FMinimalViewInfo& OutResult) override;
 	UPROPERTY(VisibleAnywhere)
 	TObjectPtr<UStaticMeshComponent> Body;
@@ -78,18 +58,8 @@ public:
 	TObjectPtr<ATBCharacter> CarriedToy;
 	UPROPERTY(Replicated, BlueprintReadOnly)
 	TObjectPtr<ATBDummyToy> CarriedDummy;
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
-	float HumanSpeed = 270.f;
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
-	float ToySpeed = 180.f;
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement")
-	float ToySprintSpeed = 320.f;
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement")
-	float ToyJumpVelocity = 400.f;
 	UFUNCTION(BlueprintCallable, Category = "Movement")
 	void SetSprintRequested(bool bRequested);
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
-	float CarrySpeed = 180.f;
 	UFUNCTION()
 	void OnRep_Carrier();
 	ATBPlayerState* TBPS() const;

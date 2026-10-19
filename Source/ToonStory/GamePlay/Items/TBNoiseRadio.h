@@ -4,9 +4,9 @@
 #include "TBNoiseRadio.generated.h"
 
 class UAudioComponent;
-class USoundBase;
 class USoundWaveProcedural;
 class UTextRenderComponent;
+class UTBNoiseRadioData;
 
 /** Place in a level. Toys start it with E; humans stop it. No external assets required. */
 UCLASS(Blueprintable)
@@ -16,24 +16,16 @@ class TOONSTORY_API ATBNoiseRadio : public ATBItemBase
 public:
 	ATBNoiseRadio();
 	virtual void OnConstruction(const FTransform& Transform) override;
+	virtual void PostInitializeComponents() override;
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaSeconds) override;
 	virtual void EndPlay(const EEndPlayReason::Type Reason) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out) const override;
 	UFUNCTION(BlueprintPure, Category = "Radio")
 	bool IsRadioOn() const { return bRadioOn; }
-	// Optional replacement: plain waves repeat; authored loops/Cues provide gapless playback.
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Radio|Audio")
-	TObjectPtr<USoundBase> LoopSound;
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Radio|Audio", meta = (ClampMin = "0", ClampMax = "4"))
-	float RadioVolume = .6f;
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Radio|Audio", meta = (ClampMin = "1"))
-	float AudibleDistance = 1800.f;
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Radio|Masking", meta = (ClampMin = "1"))
-	float MaskRadius = 1200.f;
-	// Keep the serialized name for already placed radios; applies to all marked toy actions now.
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Radio|Masking", meta = (ClampMin = "0", ClampMax = "1", DisplayName = "Toy Action Volume Multiplier"))
-	float ToyFootstepMultiplier = .25f;
+	// Sound, volume, reach and toy-action masking. Defaults to /Game/Data/DA_NoiseRadio; a placed radio may use another.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Radio")
+	TSoftObjectPtr<UTBNoiseRadioData> RadioData;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Radio|Visual")
 	bool bAnimateSpeaker = true;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Radio|Visual")
@@ -49,6 +41,10 @@ protected:
 private:
 	UPROPERTY(ReplicatedUsing = OnRep_RadioOn)
 	bool bRadioOn = false;
+	// Loaded in PostInitializeComponents, before a client's first OnRep can start playback.
+	UPROPERTY(Transient)
+	TObjectPtr<UTBNoiseRadioData> LoadedData;
+	const UTBNoiseRadioData& Data() const;
 	UPROPERTY(Transient)
 	TObjectPtr<USoundWaveProcedural> PlaceholderSound;
 	UPROPERTY()

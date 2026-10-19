@@ -7,6 +7,7 @@
 #include "TBBoxTV.h"
 #include "TBTVButton.h"
 #include "Character/TBCharacter.h"
+#include "Data/TBPresentationData.h"
 #include "Components/StaticMeshComponent.h"
 #include "Materials/MaterialInstanceDynamic.h"
 
@@ -85,7 +86,7 @@ void ATBTVRemote::OnButtonOverlap(UPrimitiveComponent* Component, AActor* OtherA
 	const auto* Button = Cast<UTBTVButton>(Component);
 	auto* Viewer = Cast<ATBCharacter>(OtherActor);
 	const double Now = GetWorld()->GetTimeSeconds();
-	if (!Button || !Viewer || !IsValid(TV) || (LastPressTime >= 0 && Now - LastPressTime < PressCooldown))
+	if (!Button || !Viewer || !IsValid(TV) || (LastPressTime >= 0 && Now - LastPressTime < TB::PresentationData().Remote.PressCooldown))
 	{
 		return;
 	}

@@ -14,6 +14,7 @@
 #include "GamePlay/Items/TBInteractable.h"
 #include "GamePlay/Items/TBInteractionTarget.h"
 #include "GamePlay/TBRuleMath.h"
+#include "Data/TBCharacterData.h"
 #include "Data/TBRuleData.h"
 #include "Core/TBGameHelpers.h"
 #include "Camera/CameraComponent.h"
@@ -27,6 +28,7 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "GameFramework/SpringArmComponent.h"
+#include "Kismet/KismetMathLibrary.h"
 #include "Net/UnrealNetwork.h"
 #include "UObject/ConstructorHelpers.h"
 
@@ -54,8 +56,6 @@ ATBCharacter::ATBCharacter(const FObjectInitializer& Init)
 	Camera->SetRelativeLocation(FVector(0, 0, 64));
 	CarryCameraArm = CreateDefaultSubobject<USpringArmComponent>(TEXT("CarryCameraArm"));
 	CarryCameraArm->SetupAttachment(GetRootComponent());
-	CarryCameraArm->TargetArmLength = 450.f;
-	CarryCameraArm->TargetOffset = FVector(0, 0, 80);
 	// 位置は人間に追従し、回転は所有者であるおもちゃの視点を使う。
 	CarryCameraArm->SetUsingAbsoluteRotation(true);
 	CarryCameraArm->SetUsingAbsoluteScale(true);
@@ -85,7 +85,6 @@ ATBCharacter::ATBCharacter(const FObjectInitializer& Init)
 	CarryAnchor->SetRelativeLocation(FVector(95, 0, 10));
 	Voice = CreateDefaultSubobject<UTBVoiceComponent>(TEXT("Voice"));
 	CreateDefaultSubobject<UTBCharacterAudioComponent>(TEXT("GameplayAudio"));
-	GetCharacterMovement()->MaxWalkSpeed = HumanSpeed;
 }
 
 void ATBCharacter::BeginPlay()
@@ -95,9 +94,15 @@ void ATBCharacter::BeginPlay()
 	ChildAnimation.LoadSynchronous();
 	GetMesh()->SetOwnerNoSee(true);
 	GetMesh()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	// 視界判定と同じ視野角で映す。
+	// 視界判定と同じ視野角で映す。運ばれている間も同じにして、切り替えのたびに視野角が伸び縮みしないようにする。
 	Camera->FieldOfView = TB::Rules().Vision.FieldOfView;
+	CarryCamera->FieldOfView = Camera->FieldOfView;
+	const auto& CarryView = TB::CharacterData().CarryCamera;
+	CarryCameraArm->TargetArmLength = CarryView.ArmLength;
+	CarryCameraArm->TargetOffset = FVector(0, 0, CarryView.LookHeight);
 	bAppearanceInitialized = false;
+	// PlayerState が届くまで ApplyState は何もしないので、その間もエンジンの初期値ではなく人間の速さで動かす。
+	ApplyComfortMovement(false);
 	ApplyState();
 	if (auto* GameMode = GetWorld()->GetAuthGameMode<ATBGameMode>())
 	{
@@ -224,8 +229,9 @@ void ATBCharacter::ApplyState()
 	const bool PhysicsLocked = IsPhysicsLocked();
 	auto* Movement = GetCharacterMovement();
 
-	Movement->MaxStepHeight = Toy ? 8.f : 45.f;
-	Movement->JumpZVelocity = Toy ? ToyJumpVelocity : 420.f;
+	const auto& Feel = TB::CharacterData();
+	Movement->MaxStepHeight = Toy ? Feel.Toy.MaxStepHeight : Feel.Human.MaxStepHeight;
+	Movement->JumpZVelocity = Toy ? Feel.Toy.JumpVelocity : Feel.Human.JumpVelocity;
 	if (PhysicsLocked)
 	{
 		Movement->StopMovementImmediately();
@@ -335,7 +341,8 @@ void ATBCharacter::UpdateCarryCamera()
 		return;
 	}
 	// 掴まれた・降ろされた・運ぶ人が替わった、のいずれも直前の視点からつなぐ。
-	CarryBlendDuration = bCarried ? CarryBlendTime : CarryReleaseBlendTime;
+	const auto& CarryView = TB::CharacterData().CarryCamera;
+	CarryBlendDuration = bCarried ? CarryView.BlendTime : CarryView.ReleaseBlendTime;
 	CarryBlendFrom = LastView;
 	CarryBlendStarted = bHasLastView && CarryBlendDuration > 0 ? GetWorld()->GetTimeSeconds() : -1;
 	AController* PlayerController = GetController();
@@ -348,7 +355,7 @@ void ATBCharacter::UpdateCarryCamera()
 		if (!bCarryView && PlayerController)
 		{
 			PlayerController->SetControlRotation(
-			    FRotator(CarryViewPitch, PlayerController->GetControlRotation().Yaw, 0));
+			    FRotator(CarryView.ViewPitch, PlayerController->GetControlRotation().Yaw, 0));
 		}
 	}
 	else
@@ -393,9 +400,10 @@ void ATBCharacter::CalcCamera(float DeltaTime, FMinimalViewInfo& OutResult)
 	const float StepZ = bCompareStep && bIsCrouched == bLastViewCrouched
 	                        ? ActorLocation.Z - LastActorLocation.Z - GetVelocity().Z * DeltaTime
 	                        : 0.f;
-	StepOffset = bCompareStep
-	                 ? TBRuleMath::SmoothStepOffset(StepOffset, StepZ, DeltaTime, StepSmoothSpeed, StepSmoothMax)
-	                 : 0.f;
+	const auto& Feel = TB::CharacterData();
+	StepOffset = bCompareStep ? TBRuleMath::SmoothStepOffset(StepOffset, StepZ, DeltaTime, Feel.View.StepSmoothSpeed,
+	                                                         Feel.View.StepSmoothMax)
+	                          : 0.f;
 	OutResult.Location.Z += StepOffset;
 	LastActorLocation = ActorLocation;
 	bLastViewCarried = Carrier != nullptr;
@@ -403,8 +411,8 @@ void ATBCharacter::CalcCamera(float DeltaTime, FMinimalViewInfo& OutResult)
 	const double Elapsed = GetWorld()->GetTimeSeconds() - CarryBlendStarted;
 	if (CarryBlendStarted >= 0 && Elapsed < CarryBlendDuration)
 	{
-		const float Alpha =
-		    UKismetMathLibrary::Ease(0.f, 1.f, Elapsed / CarryBlendDuration, CarryBlendEase, CarryBlendExp);
+		const float Alpha = UKismetMathLibrary::Ease(0.f, 1.f, Elapsed / CarryBlendDuration, Feel.CarryCamera.BlendEase,
+		                                             Feel.CarryCamera.BlendExp);
 		OutResult.Location = FMath::Lerp(CarryBlendFrom.Location, OutResult.Location, Alpha);
 		OutResult.Rotation =
 		    FQuat::Slerp(CarryBlendFrom.Rotation.Quaternion(), OutResult.Rotation.Quaternion(), Alpha).Rotator();
