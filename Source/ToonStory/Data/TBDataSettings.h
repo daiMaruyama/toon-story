@@ -43,4 +43,7 @@ private:
 	TObjectPtr<UTBCharacterData> LoadedCharacterData;
 	UPROPERTY(Transient)
 	TObjectPtr<UTBPresentationData> LoadedPresentationData;
+	bool bTriedRuleData = false;
+	bool bTriedCharacterData = false;
+	bool bTriedPresentationData = false;
 };

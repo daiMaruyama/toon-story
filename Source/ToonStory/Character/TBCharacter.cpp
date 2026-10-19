@@ -94,12 +94,15 @@ void ATBCharacter::BeginPlay()
 	ChildAnimation.LoadSynchronous();
 	GetMesh()->SetOwnerNoSee(true);
 	GetMesh()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	// 視界判定と同じ視野角で映す。
+	// 視界判定と同じ視野角で映す。運ばれている間も同じにして、切り替えのたびに視野角が伸び縮みしないようにする。
 	Camera->FieldOfView = TB::Rules().Vision.FieldOfView;
+	CarryCamera->FieldOfView = Camera->FieldOfView;
 	const auto& CarryView = TB::CharacterData().CarryCamera;
 	CarryCameraArm->TargetArmLength = CarryView.ArmLength;
 	CarryCameraArm->TargetOffset = FVector(0, 0, CarryView.LookHeight);
 	bAppearanceInitialized = false;
+	// PlayerState が届くまで ApplyState は何もしないので、その間もエンジンの初期値ではなく人間の速さで動かす。
+	ApplyComfortMovement(false);
 	ApplyState();
 	if (auto* GameMode = GetWorld()->GetAuthGameMode<ATBGameMode>())
 	{

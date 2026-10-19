@@ -17,7 +17,8 @@ int32 TBToyPresentation::SelectionWeight(const UClass* VisualClass)
 	if (!VisualClass) return 0;
 	const auto& Toys = TB::Rules().Toys;
 	const int32* Weight = Toys.ToyWeights.Find(TSoftClassPtr<AActor>(VisualClass));
-	return FMath::Max(0, Weight ? *Weight : Toys.DefaultToyWeight);
+	// 上限を付けて、カタログ全体の合計があふれないようにする。
+	return FMath::Clamp(Weight ? *Weight : Toys.DefaultToyWeight, 0, 1000);
 }
 
 int32 TBToyPresentation::SelectToy(const TArray<TSubclassOf<AActor>>& Catalogue)
