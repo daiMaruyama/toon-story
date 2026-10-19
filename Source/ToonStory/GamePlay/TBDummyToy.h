@@ -28,7 +28,7 @@ public:
 	TSubclassOf<AActor> VisualClass;
 	UPROPERTY(ReplicatedUsing = OnRep_Holder)
 	TObjectPtr<ATBCharacter> Holder;
-	UPROPERTY(Replicated)
+	UPROPERTY(ReplicatedUsing = OnRep_Holder)
 	TObjectPtr<ATBBox> StoredBox;
 	UPROPERTY(ReplicatedUsing = OnRep_Placement)
 	bool bFalling = false;
@@ -42,9 +42,10 @@ public:
 	static bool TryPickUpNearest(ATBCharacter* Human, float ClosestDistance);
 	bool PickUp(ATBCharacter* Human);
 	void PutDown();
-	void ResetPlacement();
+	void ResetPlacement(bool bRandomizeAppearance = false);
 
 private:
+	void ChooseRandomToy();
 	void Fall(float DeltaSeconds);
 	float FallSpeed = 0;
 	FTBGripCache GripCache;

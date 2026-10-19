@@ -6,7 +6,7 @@
 class ATBController;
 class ATBGameMode;
 
-// Server-only handoff: rules survive a lobby map change without changing the session.
+// Server-only handoff between the dedicated lobby and a selected match map.
 UCLASS()
 class TOONSTORY_API UTBLobbySettings : public UGameInstanceSubsystem
 {
@@ -16,9 +16,15 @@ public:
 	virtual void Deinitialize() override;
 	FTBSettings PendingRules;
 	FString PendingMap;
+	int32 SelectedStage = 1;
+	int32 ExpectedPlayers = 0;
+	bool bDedicatedLobby = false;
+	bool bStartOnArrival = false;
+	bool bArrivalCancelled = false;
+	bool bStageSelected = false;
+	double ArrivalDeadline = 0;
 
 private:
-	FDelegateHandle TravelFailureHandle;
 	FDelegateHandle MapLoadedHandle;
 };
 namespace TBLobbySettings
@@ -28,5 +34,10 @@ namespace TBLobbySettings
 	int32 AvailableItems(UWorld* World);
 	void SelectStage(ATBController* Host, int32 Index);
 	void Restore(ATBGameMode* Mode);
+	bool IsLobby(const UWorld* World);
+	bool Travel(ATBGameMode* Mode, bool StartMatch);
+	void TickArrival(ATBGameMode* Mode);
+	void CancelTravel(UWorld* World);
+	bool ShouldTravelToStage(const UWorld* World);
 	bool HandleClick(ATBController* Controller, FName Name);
 } // namespace TBLobbySettings

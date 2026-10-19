@@ -93,21 +93,25 @@ void ATBHUD::DrawLobby()
 		}
 	};
 	auto Button =
-	    [&](FName Id, const FString& Label, float PX, float PY, float W, bool Enabled = true, bool Selected = false)
+	    [&](FName Id, const FString& Label, float PX, float PY, float W, bool Enabled = true, bool Selected = false, float Height = 42)
 	{
 		float MX = 0, MY = 0;
 		const bool Hovered = PC->GetMousePosition(MX, MY) && MX >= X + PX * S && MX < X + (PX + W) * S &&
-		                     MY >= Y + PY * S && MY < Y + (PY + 42) * S;
+		                     MY >= Y + PY * S && MY < Y + (PY + Height) * S;
 		const FLinearColor Fill = Selected ? TBPaper::Cream : Enabled && Hovered ? TBPaper::Cream : FLinearColor::White;
-		Panel(PX, PY, W, 42, Fill);
-		Panel(PX, PY + 40, W, 2, Selected ? Accent : FLinearColor(.20f, .31f, .32f, .8f));
+		const float Age = GetWorld()->GetTimeSeconds() - LastButtonClickTime;
+		const float Lift = Enabled ? (Id == LastClickedButton && Age >= 0 && Age < .25f
+		    ? 7.f * (1.f - Age / .25f) : Hovered ? 3.f : 0.f) : 0.f;
+		Panel(PX + 2, PY + 4, W, Height, FLinearColor(0, 0, 0, .18f));
+		Panel(PX, PY - Lift, W, Height, Fill);
+		Panel(PX, PY + Height - 2 - Lift, W, 2, Selected ? Accent : FLinearColor(.20f, .31f, .32f, .8f));
 		float TextWidth = 0, TextHeight = 0;
 		GetTextSize(Label, TextWidth, TextHeight, PaperFont, 1.05f);
-		Text(Label, PX + 14, PY + 5, FMath::Min(1.05f, 1.05f * (W - 28) / FMath::Max(TextWidth, 1.f)),
+		Text(Label, PX + 14, PY + 5 - Lift, FMath::Min(1.05f, 1.05f * (W - 28) / FMath::Max(TextWidth, 1.f)),
 		     Enabled ? Ink : Muted);
 		if (Enabled)
 		{
-			AddHitBox(FVector2D(X + PX * S, Y + PY * S), FVector2D(W * S, 42 * S), Id, true);
+			AddHitBox(FVector2D(X + PX * S, Y + PY * S), FVector2D(W * S, Height * S), Id, true);
 		}
 	};
 	const auto* Local = PC->GetPlayerState<ATBPlayerState>();
@@ -135,8 +139,8 @@ void ATBHUD::DrawLobby()
 	{
 		Panel(280, 150, 640, 470, FLinearColor::White);
 		Text(TEXT("ステージを選ぶ"), 312, 194, 1.6f, Accent);
-		Text(TEXT("選んだステージへ、みんなで移動します。"), 312, 241, .95f, Muted);
-		const int32 Current = TBLobbySettings::StageIndex(GetWorld());
+		Text(TEXT("試合開始時に、選んだステージへ移動します。"), 312, 241, .95f, Muted);
+		const int32 Current = State->SelectedStage;
 		Button(TEXT("StageExpanded"), TEXT("Demo ＋ こども部屋"), 312, 284, 576, PC->HasAuthority(), Current == 1);
 		Text(TEXT("リビングと、ドアでつながる子ども部屋"), 328, 330, .85f, Muted);
 		Button(TEXT("StageKidsRoom"), TEXT("Kids' Rooms"), 312, 369, 576, PC->HasAuthority(), Current == 0);
@@ -167,9 +171,14 @@ void ATBHUD::DrawLobby()
 		const float PY = 186 + Row++ * 34;
 		Panel(40, PY - 4, 666, 30, FLinearColor(.10f, .15f, .18f, Row % 2 ? .42f : .18f));
 		Panel(48, PY + 4, 4, 12, P->bReady ? Accent : Muted);
-		Text(P->GetPlayerName().Left(28), 62, PY - 5, 1.1f, Ink);
-		Text(PreferredRole, 365, PY - 5, 1.1f, Muted);
-		Text(P->bReady ? TEXT("準備OK") : TEXT("準備中"), 535, PY - 5, 1.1f, P->bReady ? Accent : Muted);
+		Text(P->GetPlayerName().Left(18), 62, PY - 5, 1.f, Ink);
+		Text(PreferredRole, 320, PY - 5, 1.1f, Muted);
+		Text(P->bReady ? TEXT("準備OK") : TEXT("準備中"), 455, PY - 5, 1.1f, P->bReady ? Accent : Muted);
+		if (PC->HasAuthority() && P != Local)
+		{
+			Button(FName(*FString::Printf(TEXT("Kick_%d"), P->GetPlayerId())), TEXT("キック"),
+			       610, PY - 4, 88, !State->bTravelPending, false, 28);
+		}
 	}
 	Panel(738, 130, 434, 360, FLinearColor::White);
 	Text(TEXT("今回のあそび"), 758, 146, 1.25f, Accent);
@@ -320,6 +329,10 @@ void ATBHUD::DrawMatch(const ATBGameState& MatchState, ATBController& Controller
 		DrawRect(FLinearColor(.1f, .14f, .16f, 1), W * .5f - 220 * S, H * .76f + 37 * S, 440 * S, 7 * S);
 		DrawRect(Accent, W * .5f - 220 * S, H * .76f + 37 * S, 440 * S * Elapsed / Duration, 7 * S);
 		DrawText(TEXT("Eを離すと中止 ／ Qでおろす"), Ink, W * .5f - 220 * S, H * .76f + 49 * S, PaperFont, .75f * S);
+	}
+	if (Controller.bStuckHint)
+	{
+		DrawText(TEXT("動けない場合：Esc → スタック解除"), TBPaper::Accent, 24 * S, H * .65f, PaperFont, S);
 	}
 	if (!Controller.Notice.IsEmpty())
 	{
