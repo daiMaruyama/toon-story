@@ -101,12 +101,14 @@ bool ATBBox::HasPrisoners() const
 {
 	for (TActorIterator<ATBCharacter> It(GetWorld()); It; ++It)
 	{
-		if (It->TBPS() && It->TBPS()->ToyState == ETBToyState::Boxed)
+		if (IsValid(It->GetController()) && It->TBPS() && It->TBPS()->Team == ETBTeam::Toy &&
+		    It->TBPS()->ToyState == ETBToyState::Boxed)
 		{
 			return true;
 		}
 	}
-	return HasDummyPrisoners();
+	// Decoys can be released alongside players, but cannot start a rescue.
+	return false;
 }
 
 bool ATBBox::CanStoreFrom(const ATBCharacter* Character) const
@@ -251,6 +253,7 @@ void ATBBox::Tick(float DeltaSeconds)
 		Rescuers = 0;
 		return;
 	}
+	const bool bHasPlayers = HasPrisoners();
 	int32 RescueCount = 0;
 	for (TActorIterator<ATBCharacter> It(GetWorld()); It; ++It)
 	{
@@ -259,7 +262,7 @@ void ATBBox::Tick(float DeltaSeconds)
 		{
 			continue;
 		}
-		if (!ToyCharacter->bHoldingInteract || !ToyCharacter->CanAct() || ToyCharacter->IsHuman() ||
+		if (!bHasPlayers || !ToyCharacter->bHoldingInteract || !ToyCharacter->CanAct() || ToyCharacter->IsHuman() ||
 		    !InRange(ToyCharacter))
 		{
 			ToyCharacter->bRescuing = false;
@@ -292,7 +295,7 @@ void ATBBox::Tick(float DeltaSeconds)
 // 空いている箱外の位置へ救助する。塞がっている場合は次のTickで再試行する。
 void ATBBox::ReleasePrisoners()
 {
-	if (!HasAuthority() || !TB::Playing(GetWorld()))
+	if (!HasAuthority() || !TB::Playing(GetWorld()) || !HasPrisoners())
 	{
 		return;
 	}
@@ -315,7 +318,10 @@ void ATBBox::ReleasePrisoners()
 			++Released;
 		}
 	}
-	Released += ReleaseDummyPrisoners(Slot);
+	if (HasDummyPrisoners())
+	{
+		Released += ReleaseDummyPrisoners(Slot);
+	}
 	if (Released > 0)
 	{
 		UTBAudioEvents::Emit(this, ETBSoundEvent::RescueComplete, nullptr, InteractionPoint->GetComponentLocation());

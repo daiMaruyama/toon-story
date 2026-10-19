@@ -16,6 +16,8 @@ struct FTBGripCache
 namespace TBToyPresentation
 {
 	inline constexpr float SizeScale = .75f;
+	int32 SelectionWeight(const UClass* VisualClass);
+	int32 SelectToy(const TArray<TSubclassOf<AActor>>& Catalogue);
 	void Initialize(AActor* Visual);
 	void Animate(AActor* Visual, float Speed, bool Frozen);
 	void Ground(UChildActorComponent* Visual, float FloorZ);

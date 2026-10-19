@@ -1,6 +1,8 @@
 // Copyright (c) 2026 Mamodou. All Rights Reserved.
 
 #include "TBGameMode.h"
+#include "Camera/CameraActor.h"
+#include "Camera/CameraComponent.h"
 #include "TBLobbySettings.h"
 #include "Core/TBPlayerState.h"
 #include "Core/TBGameState.h"
@@ -30,7 +32,7 @@ void ATBGameMode::InitGame(const FString& MapName, const FString& Options, FStri
 	{
 		SpawnPoints.Add(*It);
 	}
-	bBuildTestArena = bBuildTestArena && !TActorIterator<ATBBox>(GetWorld());
+	bBuildTestArena = !TBLobbySettings::IsLobby(GetWorld()) && bBuildTestArena && !TActorIterator<ATBBox>(GetWorld());
 }
 
 ATBGameMode::ATBGameMode()
@@ -72,9 +74,78 @@ void ATBGameMode::BeginPlay()
 	SyncLobbyCounts();
 }
 
+void ATBGameMode::RestartPlayer(AController* NewPlayer)
+{
+	Super::RestartPlayer(NewPlayer);
+	PlaceInLobby(NewPlayer);
+}
+
+bool ATBGameMode::PlaceInLobby(AController* Player)
+{
+	const auto* State = TB::GS(GetWorld());
+	auto* Pawn = Player ? Cast<ATBCharacter>(Player->GetPawn()) : nullptr;
+	if (!State || State->Phase != ETBPhase::Lobby || !Pawn) return false;
+	Pawn->ApplyState();
+	for (TActorIterator<ACameraActor> It(GetWorld()); It; ++It)
+	{
+		if (!It->ActorHasTag(TEXT("TBLobbyCamera"))) continue;
+		const auto* Camera = It->GetCameraComponent();
+		const FVector Eye = Camera->GetComponentLocation();
+		const FVector Forward = Camera->GetForwardVector();
+		const FVector Right = Camera->GetRightVector();
+		const float HalfHeight = Pawn->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+		const float Radius = Pawn->GetCapsuleComponent()->GetScaledCapsuleRadius();
+		FCollisionQueryParams Query(SCENE_QUERY_STAT(LobbySpawn), false, Pawn);
+		// Search visible, walkable ground in front of the actual authored lobby camera.
+		for (float Distance : {350.f, 500.f, 750.f, 1000.f, 1400.f, 1900.f})
+		{
+			// Keep the dedicated lobby group above the bottom ready panel.
+			if (TBLobbySettings::IsLobby(GetWorld()) && Distance < 700.f) continue;
+			for (float Side : {0.f, -80.f, 80.f, -160.f, 160.f, -280.f, 280.f, -420.f, 420.f})
+			{
+				const FVector Target = Eye + Forward * Distance + Right * Side;
+				FHitResult Floor;
+				if (!GetWorld()->SweepSingleByChannel(Floor, FVector(Target.X, Target.Y, Eye.Z),
+				    FVector(Target.X, Target.Y, Eye.Z - 2000), FQuat::Identity, ECC_Pawn,
+				    FCollisionShape::MakeCapsule(Radius + 4, HalfHeight), Query) ||
+				    Floor.bStartPenetrating || Floor.ImpactNormal.Z < .7f) continue;
+				const FVector Center = Floor.Location + FVector(0, 0, 3);
+				const FVector View = Camera->GetComponentTransform().InverseTransformPosition(Center);
+				const float TanHalfFOV = FMath::Tan(FMath::DegreesToRadians(Camera->FieldOfView * .5f));
+				if (View.X < 100 || FMath::Abs(View.Y) + Radius > View.X * TanHalfFOV * .8f ||
+				    FMath::Abs(View.Z) + HalfHeight > View.X * TanHalfFOV / 1.7778f * .8f) continue;
+				FCollisionQueryParams VisibilityQuery = Query;
+				VisibilityQuery.bTraceComplex = true;
+				FHitResult Obstacle;
+				if (GetWorld()->LineTraceSingleByChannel(Obstacle, Eye, Center, ECC_Visibility, VisibilityQuery))
+				{
+					continue;
+				}
+				if (GetWorld()->OverlapBlockingTestByChannel(Center, FQuat::Identity, ECC_Pawn,
+				        FCollisionShape::MakeCapsule(Radius + 4, HalfHeight), Query))
+				{
+					continue;
+				}
+				if (Pawn->TeleportTo(Center, FRotator(0, (Eye - Center).Rotation().Yaw, 0)))
+				{
+					Player->SetControlRotation(Pawn->GetActorRotation());
+					if (auto* PC = Cast<APlayerController>(Player))
+					{
+						PC->ClientSetRotation(Pawn->GetActorRotation(), true);
+					}
+					Pawn->ForceNetUpdate();
+					return true;
+				}
+			}
+		}
+	}
+	return false; // Keep the map's PlayerStart if no safe camera-visible ground exists.
+}
+
 void ATBGameMode::PostSeamlessTravel()
 {
 	Super::PostSeamlessTravel();
+	for (auto It = GetWorld()->GetPlayerControllerIterator(); It; ++It) PlaceInLobby(It->Get());
 	TBLobbySettings::Restore(this);
 	SyncLobbyCounts();
 }
@@ -146,7 +217,7 @@ void ATBGameMode::PreLogin(const FString& Options, const FString& Address, const
 		return;
 	}
 	auto* MatchInfo = TB::GS(GetWorld());
-	if (MatchInfo && MatchInfo->Phase != ETBPhase::Lobby)
+	if (MatchInfo && (MatchInfo->Phase != ETBPhase::Lobby || MatchInfo->bTravelPending))
 	{
 		Error = TEXT("Match already started. Join the next lobby.");
 	}
@@ -187,7 +258,7 @@ int32 ATBGameMode::LobbyPlayerCount() const
 void ATBGameMode::SyncLobbyCounts()
 {
 	auto* State = TB::GS(GetWorld());
-	if (!State || State->Phase != ETBPhase::Lobby) return;
+	if (!State || State->Phase != ETBPhase::Lobby || State->bTravelPending) return;
 	const int32 Count = LobbyPlayerCount();
 	// Preserve children where possible, leaving one toy when there are at least two players.
 	const int32 Humans = Count < 2 ? Count : FMath::Clamp(State->Settings.Humans, 1, Count - 1);
@@ -201,7 +272,7 @@ void ATBGameMode::SyncLobbyCounts()
 void ATBGameMode::SetRules(APlayerController* PlayerController, const FTBSettings& Rules)
 {
 	auto* MatchInfo = TB::GS(GetWorld());
-	if (!IsHost(PlayerController) || !MatchInfo || MatchInfo->Phase != ETBPhase::Lobby)
+	if (!IsHost(PlayerController) || !MatchInfo || (MatchInfo->Phase != ETBPhase::Lobby || MatchInfo->bTravelPending))
 	{
 		return;
 	}
@@ -224,15 +295,7 @@ void ATBGameMode::SetRules(APlayerController* PlayerController, const FTBSetting
 	{
 		return;
 	}
-	int32 Items = 0;
-	for (TActorIterator<ATBPickup> It(GetWorld()); It; ++It)
-	{
-		if (!It->bTaken)
-		{
-			++Items;
-		}
-	}
-	if (Rules.RequiredItems > Items)
+	if (Rules.RequiredItems > TBLobbySettings::AvailableItems(GetWorld()))
 	{
 		return;
 	}
@@ -246,7 +309,7 @@ void ATBGameMode::StartRound(APlayerController* PlayerController)
 {
 	auto* MatchInfo = TB::GS(GetWorld());
 	auto* HostController = Cast<ATBController>(PlayerController);
-	if (!IsHost(PlayerController) || !MatchInfo || MatchInfo->Phase != ETBPhase::Lobby)
+	if (!IsHost(PlayerController) || !MatchInfo || (MatchInfo->Phase != ETBPhase::Lobby || MatchInfo->bTravelPending))
 	{
 		return;
 	}
@@ -277,6 +340,11 @@ void ATBGameMode::StartRound(APlayerController* PlayerController)
 			}
 			return;
 		}
+	}
+	if (TBLobbySettings::ShouldTravelToStage(GetWorld()))
+	{
+		if (!TBLobbySettings::Travel(this, true) && HostController) HostController->ClientNotice(TEXT("試合ステージへ移動できませんでした。"));
+		return;
 	}
 	int32 Items = 0, Boxes = 0;
 	for (TActorIterator<ATBPickup> It(GetWorld()); It; ++It)
@@ -359,6 +427,15 @@ void ATBGameMode::ReturnToLobby(APlayerController* PlayerController)
 	{
 		return;
 	}
+	if (GetGameInstance()->GetSubsystem<UTBLobbySettings>()->bDedicatedLobby)
+	{
+		if (!TBLobbySettings::Travel(this, false)) return;
+		for (APlayerState* Player : State->PlayerArray)
+		{
+			if (auto* Info = Cast<ATBPlayerState>(Player)) { Info->Team = ETBTeam::None; Info->bReady = false; }
+		}
+		return;
+	}
 	DestroyRoundCharacters();
 	for (APlayerState* Player : State->PlayerArray)
 	{
@@ -400,7 +477,7 @@ void ATBGameMode::DestroyRoundCharacters()
 {
 	for (TActorIterator<ATBDummyToy> It(GetWorld()); It; ++It)
 	{
-		It->ResetPlacement();
+		It->ResetPlacement(true);
 	}
 	// 運搬の親子関係を解除してから全Pawnを再生成する。
 	// 移動補間、入力、取得途中・収納途中のタイマーも新しいPawnで初期状態になる。
@@ -512,6 +589,7 @@ void ATBGameMode::EvaluateGaze()
 void ATBGameMode::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+	TBLobbySettings::TickArrival(this);
 	if (!TB::Playing(GetWorld()))
 	{
 		return;
@@ -582,12 +660,20 @@ void ATBGameMode::Finish(ETBWinner Winner, const FString& Why, bool Abort)
 // 退出者の状態を整理し、両陣営が残っていれば試合を続ける。
 void ATBGameMode::Logout(AController* Exiting)
 {
+	if (!Exiting) return;
+	if (GetWorld()->bIsTearingDown)
+	{
+		Super::Logout(Exiting);
+		return;
+	}
 	auto* MatchInfo = TB::GS(GetWorld());
 	const bool WasPlaying = MatchInfo && MatchInfo->Phase == ETBPhase::Playing;
+	auto* Pending = GetGameInstance()->GetSubsystem<UTBLobbySettings>();
+	if (Pending->bStartOnArrival && Exiting->PlayerState) Pending->bArrivalCancelled = true;
 	if (auto* ToyCharacter = Cast<ATBCharacter>(Exiting->GetPawn()))
 	{
 		ToyCharacter->ClearHeldInteraction();
-		if (ToyCharacter->Carrier)
+		if (IsValid(ToyCharacter->Carrier))
 		{
 			ToyCharacter->Carrier->DropToy();
 		}

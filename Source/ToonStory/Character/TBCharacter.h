@@ -54,6 +54,12 @@ public:
 	// Easeの効きの強さ。
 	UPROPERTY(EditDefaultsOnly, Category = "Carry Camera", meta = (ClampMin = "1.0"))
 	float CarryBlendExp = 2.f;
+	// 段差を上り下りしたとき、目線の高さがこの速さで追いつく。大きいほど速い。
+	UPROPERTY(EditDefaultsOnly, Category = "Camera Comfort", meta = (ClampMin = "1.0"))
+	float StepSmoothSpeed = 12.f;
+	// 目線を遅らせる最大高さ。これを超える分は遅らせずに追従する。
+	UPROPERTY(EditDefaultsOnly, Category = "Camera Comfort", meta = (ClampMin = "0.0"))
+	float StepSmoothMax = 60.f;
 	virtual void CalcCamera(float DeltaTime, FMinimalViewInfo& OutResult) override;
 	UPROPERTY(VisibleAnywhere)
 	TObjectPtr<UStaticMeshComponent> Body;
@@ -73,7 +79,7 @@ public:
 	UPROPERTY(Replicated, BlueprintReadOnly)
 	TObjectPtr<ATBDummyToy> CarriedDummy;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
-	float HumanSpeed = 382.5f;
+	float HumanSpeed = 270.f;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	float ToySpeed = 180.f;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement")
@@ -83,7 +89,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Movement")
 	void SetSprintRequested(bool bRequested);
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
-	float CarrySpeed = 255.f;
+	float CarrySpeed = 180.f;
 	UFUNCTION()
 	void OnRep_Carrier();
 	ATBPlayerState* TBPS() const;
@@ -158,6 +164,11 @@ private:
 	FMinimalViewInfo CarryBlendFrom;
 	double CarryBlendStarted = -1;
 	float CarryBlendDuration = 0;
+	// 段差で遅らせている目線の高さ。0 に向かって戻っていく。
+	float StepOffset = 0;
+	// 前フレームの視点を出した時点で運ばれていたか・しゃがんでいたか。切り替わった分の移動は段差に数えない。
+	bool bLastViewCarried = false;
+	bool bLastViewCrouched = false;
 
 protected:
 	// 親子で表示の切り替え状態を共有する。

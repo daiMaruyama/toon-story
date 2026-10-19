@@ -19,6 +19,12 @@ public:
 	virtual void NotifyHitBoxBeginCursorOver(FName BoxName) override;
 
 private:
+ bool bPlayersOpen = false;
+ TWeakObjectPtr<class APlayerState> KickSelection;
+ void DrawPlayers();
+ bool HandleSafetyClick(FName Name);
+ FName LastClickedButton;
+	double LastButtonClickTime = -1;
 	bool bLobbySettingsOpen = false;
 	bool bStagePickerOpen = false;
 	bool HandleLobbyPanelClick(FName Name);

@@ -120,7 +120,10 @@ void ATBCharacter::UpdateAppearance(bool bToy)
 		Visual->SetRelativeScale3D(FVector(Scale));
 		// 速度の切り替えはABPに任せ、待機も含めた一律の早回しを避ける。
 		Visual->GlobalAnimRateScale = 1.f;
-		Visual->SetRelativeLocation(FVector(0, 0, -65) - FVector(0, 0, Bounds.Origin.Z - Bounds.BoxExtent.Z) * Scale);
+		const float FloorClearance =
+		    (UCharacterMovementComponent::MIN_FLOOR_DIST + UCharacterMovementComponent::MAX_FLOOR_DIST) * .5f;
+		const float MeshBottom = (Bounds.Origin.Z - Bounds.BoxExtent.Z) * Scale;
+		Visual->SetRelativeLocation(FVector(0, 0, -65 - FloorClearance - MeshBottom));
 		// リターゲット後の子どもの姿勢はメッシュの+Yが正面。Pawnの+X（視点のYaw）へ合わせる。
 		Visual->SetRelativeRotation(FRotator(0, -90, 0));
 		// 他プレイヤー側の移動補間は記録済みのメッシュ位置へ毎フレーム戻すため、記録も更新しないと足が浮く。
@@ -372,11 +375,26 @@ void ATBCharacter::CalcCamera(float DeltaTime, FMinimalViewInfo& OutResult)
 	Super::CalcCamera(DeltaTime, OutResult);
 	// 箱への収納など瞬間移動を伴う切替はつながず、壁越しに視点が流れるのを防ぐ。降ろす位置は1m程度。
 	const FVector ActorLocation = GetActorLocation();
-	if (bHasLastView && FVector::DistSquared(ActorLocation, LastActorLocation) > FMath::Square(300.f))
+	const bool bTeleported =
+	    bHasLastView && FVector::DistSquared(ActorLocation, LastActorLocation) > FMath::Square(300.f);
+	if (bTeleported)
 	{
 		CarryBlendStarted = -1;
 	}
+	// 段差の上り下りで目線が一気に跳ねて酔わないよう、速度では説明できない高さの変化（段差でのワープ）だけ少し遅らせる。
+	// 高い段差は一瞬空中扱いを挟むので、地面にいるかでは判定しない。ジャンプや落下は速度どおりなので遅らせない。
+	// 運ばれている間と降ろされた直後（手元から落下位置へのワープ）は比べない。しゃがみの切替で体が上下した分も数えない。
+	const bool bCompareStep = bHasLastView && !bTeleported && !Carrier && !bLastViewCarried;
+	const float StepZ = bCompareStep && bIsCrouched == bLastViewCrouched
+	                        ? ActorLocation.Z - LastActorLocation.Z - GetVelocity().Z * DeltaTime
+	                        : 0.f;
+	StepOffset = bCompareStep
+	                 ? TBRuleMath::SmoothStepOffset(StepOffset, StepZ, DeltaTime, StepSmoothSpeed, StepSmoothMax)
+	                 : 0.f;
+	OutResult.Location.Z += StepOffset;
 	LastActorLocation = ActorLocation;
+	bLastViewCarried = Carrier != nullptr;
+	bLastViewCrouched = bIsCrouched;
 	const double Elapsed = GetWorld()->GetTimeSeconds() - CarryBlendStarted;
 	if (CarryBlendStarted >= 0 && Elapsed < CarryBlendDuration)
 	{

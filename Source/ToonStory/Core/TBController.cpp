@@ -17,6 +17,20 @@
 #include "UI/TBScreenTransition.h"
 #include "Kismet/KismetSystemLibrary.h"
 
+void ATBController::PreClientTravel(const FString& PendingURL, ETravelType TravelType, bool bIsSeamlessTravel)
+{
+	SetViewTarget(this);
+	LobbyCamera.Reset();
+	bLobbyCameraSearched = false;
+	bLobbyCameraActive = false;
+	Super::PreClientTravel(PendingURL, TravelType, bIsSeamlessTravel);
+}
+
+void ATBController::ClientRoomClosed_Implementation()
+{
+	if (auto* Session = GetGameInstance()->GetSubsystem<UTBSession>()) Session->RoomClosed();
+}
+
 void ATBController::PlayerTick(float DeltaTime)
 {
 	Super::PlayerTick(DeltaTime);
@@ -227,7 +241,7 @@ void ATBController::ServerReady_Implementation()
 {
 	auto* MatchInfo = TB::GS(GetWorld());
 	auto* ToyPlayerInfo = GetPlayerState<ATBPlayerState>();
-	if (MatchInfo && MatchInfo->Phase == ETBPhase::Lobby && ToyPlayerInfo)
+	if (MatchInfo && MatchInfo->Phase == ETBPhase::Lobby && !MatchInfo->bTravelPending && ToyPlayerInfo)
 	{
 		ToyPlayerInfo->bReady = !ToyPlayerInfo->bReady;
 		ToyPlayerInfo->ForceNetUpdate();
@@ -255,7 +269,7 @@ void ATBController::ServerPreference_Implementation(ETBTeam Team)
 {
 	auto* MatchInfo = TB::GS(GetWorld());
 	auto* ToyPlayerInfo = GetPlayerState<ATBPlayerState>();
-	if (MatchInfo && MatchInfo->Phase == ETBPhase::Lobby && ToyPlayerInfo &&
+	if (MatchInfo && MatchInfo->Phase == ETBPhase::Lobby && !MatchInfo->bTravelPending && ToyPlayerInfo &&
 	    (Team == ETBTeam::None || Team == ETBTeam::Human || Team == ETBTeam::Toy))
 	{
 		if (ToyPlayerInfo->Preference != Team) ClientPlaySoundEvent(ETBSoundEvent::UIChange, FVector::ZeroVector);

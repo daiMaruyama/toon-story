@@ -11,12 +11,33 @@
 #include "Engine/SkeletalMesh.h"
 #include "Misc/PackageName.h"
 
+int32 TBToyPresentation::SelectionWeight(const UClass* VisualClass)
+{
+	if (!VisualClass) return 0;
+	return VisualClass->GetName().Contains(TEXT("SpaceRanger")) ? 1 : 4;
+}
+
+int32 TBToyPresentation::SelectToy(const TArray<TSubclassOf<AActor>>& Catalogue)
+{
+	int32 Total = 0;
+	for (auto Class : Catalogue) Total += SelectionWeight(Class.Get());
+	if (Total == 0) return INDEX_NONE;
+	int32 Roll = FMath::RandHelper(Total);
+	for (int32 Index = 0; Index < Catalogue.Num(); ++Index)
+	{
+		Roll -= SelectionWeight(Catalogue[Index].Get());
+		if (Roll < 0) return Index;
+	}
+	return INDEX_NONE;
+}
+
 void TBToyPresentation::Initialize(AActor* Visual)
 {
 	if (!Visual)
 	{
 		return;
 	}
+	Visual->SetActorEnableCollision(false);
 	TInlineComponentArray<USkeletalMeshComponent*> Parts(Visual);
 	for (auto* Part : Parts)
 	{
