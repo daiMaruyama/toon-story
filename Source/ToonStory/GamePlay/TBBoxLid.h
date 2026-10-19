@@ -25,24 +25,10 @@ public:
 	// 蓋にあたる天井。開き具合に合わせてマテリアルの Glow を上げる。
 	UPROPERTY(EditInstanceOnly, Category = "Lid")
 	TObjectPtr<AActor> Ceiling;
-	// 開くときに天井を持ち上げる角度。
-	UPROPERTY(EditAnywhere, Category = "Lid", meta = (ClampMin = "0.0", ClampMax = "80.0"))
-	float OpenAngle = 30.f;
-	UPROPERTY(EditAnywhere, Category = "Lid", meta = (ClampMin = "0.0"))
-	float PeakIntensity = 20000.f;
-	UPROPERTY(EditAnywhere, Category = "Lid", meta = (ClampMin = "0.01"))
-	float OpenSeconds = .25f;
-	UPROPERTY(EditAnywhere, Category = "Lid", meta = (ClampMin = "0.0"))
-	float HoldSeconds = .9f;
-	UPROPERTY(EditAnywhere, Category = "Lid", meta = (ClampMin = "0.01"))
-	float CloseSeconds = .8f;
-	// 開いた瞬間だけ部屋全体を明るくする。光が引いてから開いた蓋が見えるよう、蓋より早く戻す。
+	// 開いた瞬間だけ部屋全体を明るくする。
 	UPROPERTY(EditInstanceOnly, Category = "Lid")
 	TObjectPtr<APostProcessVolume> RoomVolume;
-	UPROPERTY(EditAnywhere, Category = "Lid", meta = (ClampMin = "0.0"))
-	float FlashExposure = 2.5f;
-	UPROPERTY(EditAnywhere, Category = "Lid", meta = (ClampMin = "0.01"))
-	float FlashSeconds = .35f;
+	// 開く角度・光の強さ・時間はマスターデータ（TB::PresentationData().Lid）にある。
 
 private:
 	bool bBoundToBox = false;
