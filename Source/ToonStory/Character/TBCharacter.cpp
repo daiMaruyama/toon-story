@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Mamodou. All Rights Reserved.
 
 #include "TBCharacter.h"
+#include "GamePlay/TBRoomLighting.h"
 #include "Audio/TBAudioEvents.h"
 #include "Core/TBPlayerState.h"
 #include "Core/TBGameState.h"
@@ -259,6 +260,11 @@ void ATBCharacter::PossessedBy(AController* PlayerController)
 {
 	Super::PossessedBy(PlayerController);
 	ApplyState();
+}
+
+bool ATBCharacter::CanBeFrozenBy(const ATBCharacter* Observer) const
+{
+	return Observer && !ATBRoomLighting::ProtectsFromGaze(GetWorld(), GetActorLocation(), Observer->GetActorLocation());
 }
 
 void ATBCharacter::SetFrozen(bool bFrozen)

@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Mamodou. All Rights Reserved.
 
 #include "TBGameMode.h"
+#include "GamePlay/TBRoomLighting.h"
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
 #include "TBLobbySettings.h"
@@ -502,6 +503,10 @@ void ATBGameMode::DestroyRoundCharacters()
 
 void ATBGameMode::ResetStageInteractions()
 {
+	for (TActorIterator<ATBRoomLighting> It(GetWorld()); It; ++It)
+	{
+		It->ResetLighting();
+	}
 	for (TActorIterator<ATBPickup> It(GetWorld()); It; ++It)
 	{
 		It->bTaken = false;
@@ -576,7 +581,7 @@ void ATBGameMode::EvaluateGaze()
 		bool Seen = false;
 		for (auto* Human : Humans)
 		{
-			if (Watched(Toy, Human))
+			if (Toy->CanBeFrozenBy(Human) && Watched(Toy, Human))
 			{
 				Seen = true;
 				break;

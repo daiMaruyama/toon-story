@@ -5,6 +5,11 @@
 int main()
 {
 	using namespace TBRuleMath;
+	assert(!DarknessProtects(true, 1000000, 3));
+	assert(!DarknessProtects(false, 299.0 * 299.0, 3));
+	assert(DarknessProtects(false, 300.0 * 300.0, 3));
+	assert(DarknessProtects(false, 301.0 * 301.0, 3));
+	assert(DarknessProtects(false, 0, 0));
 	auto Near = [](float A, float B) { return std::fabs(A - B) < 0.0001f; };
 	assert(FrozenVerticalSpeed(400) == 0);     // 上昇は即停止
 	assert(FrozenVerticalSpeed(-400) == -400); // 落下速度は維持
