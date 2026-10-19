@@ -8,6 +8,7 @@
 #include "Core/TBGameMode.h"
 #include "Character/TBCharacter.h"
 #include "Core/TBGameHelpers.h"
+#include "GamePlay/TBDummyToy.h"
 #include "GamePlay/TBRuleMath.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/BoxComponent.h"
@@ -139,6 +140,59 @@ FVector ATBBox::StorageSlot(int32 Slot)
 	return FVector(FirstX + (Slot % Columns) * StepX, FirstY + (Slot / Columns) * StepY, DropHeight);
 }
 
+const FName ATBBox::DropAreaTag(TEXT("TBBoxDropArea"));
+
+const UBoxComponent* ATBBox::FindDropArea(const UWorld* World)
+{
+	for (TActorIterator<AActor> It(World); It; ++It)
+	{
+		if (const auto* Area = It->ActorHasTag(DropAreaTag) ? It->FindComponentByClass<UBoxComponent>() : nullptr)
+		{
+			return Area;
+		}
+	}
+	return nullptr;
+}
+
+// 落下エリアの上面から落とす位置を探す。収納済みの人数に応じて左右交互にずらし、
+// 真下に誰かいる・上面が物に埋まっている位置は飛ばして次を試す。どこも使えなければ false。
+bool ATBBox::FindDropSpot(const ATBCharacter* Toy, FVector& OutSpot) const
+{
+	const UBoxComponent* Area = FindDropArea(GetWorld());
+	if (!Area)
+	{
+		return false;
+	}
+	const auto* State = TB::GS(GetWorld());
+	const int32 First = State ? State->BoxedCount : 0;
+	const FVector Extent = Area->GetScaledBoxExtent();
+	const auto* Capsule = Toy->GetCapsuleComponent();
+	const FCollisionShape Shape =
+	    FCollisionShape::MakeCapsule(Capsule->GetScaledCapsuleRadius(), Capsule->GetScaledCapsuleHalfHeight());
+	const FCollisionQueryParams Params(SCENE_QUERY_STAT(TBStorageDrop), false, Toy);
+	for (int32 Index = First; Index < First + StorageSlotCount; ++Index)
+	{
+		// 0人目は真ん中、以降は右・左・右…と間隔ずつ外へ。はみ出したら、その先も全部はみ出す。
+		const float Side = (Index % 2 ? 1.f : -1.f) * ((Index + 1) / 2) * DropSpacing;
+		if (FMath::Abs(Side) > Extent.Y)
+		{
+			break;
+		}
+		const FVector Top = Area->GetComponentLocation() + Area->GetRightVector() * Side + Area->GetUpVector() * Extent.Z;
+		// 上面から真下へたどり、最初に当たるのが床（おもちゃ以外）なら空き。リモコンは傾いているので床の高さは決め打ちしない。
+		FHitResult Hit;
+		const bool bHit = GetWorld()->SweepSingleByChannel(Hit, Top, Top - Area->GetUpVector() * Extent.Z * 4.f,
+		                                                   FQuat::Identity, ECC_GameTraceChannel1, Shape, Params);
+		const AActor* Below = bHit ? Hit.GetActor() : nullptr;
+		if (!bHit || (!Hit.bStartPenetrating && !Cast<ATBCharacter>(Below) && !Cast<ATBDummyToy>(Below)))
+		{
+			OutSpot = Top;
+			return true;
+		}
+	}
+	return false;
+}
+
 // 収納の最終確認を行い、箱内へ移してから勝敗を確認する。
 bool ATBBox::Store(ATBCharacter* Toy)
 {
@@ -146,11 +200,11 @@ bool ATBBox::Store(ATBCharacter* Toy)
 	{
 		return false;
 	}
-	// 収納済みのおもちゃと重ならない空き位置を選ぶ。
+	// 収納済みのおもちゃと重ならない空き位置を選ぶ。落下エリアに空きがあればそこを優先し、なければ別室の壁際へ。
 	FVector StoragePosition;
-	bool bFoundPosition = false;
+	bool bFoundPosition = FindDropSpot(Toy, StoragePosition);
 	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(TBStorage), false, Toy);
-	for (int32 Slot = 0; Slot < StorageSlotCount; ++Slot)
+	for (int32 Slot = 0; !bFoundPosition && Slot < StorageSlotCount; ++Slot)
 	{
 		const FVector Candidate = StorageRoom->GetComponentTransform().TransformPosition(StorageSlot(Slot));
 		if (!GetWorld()->OverlapBlockingTestByChannel(

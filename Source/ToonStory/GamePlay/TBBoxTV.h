@@ -62,6 +62,9 @@ public:
 	float CaptureRate = 15.f;
 	UPROPERTY(EditDefaultsOnly, Category = "Television", meta = (ClampMin = "0.0", ClampMax = "2.0"))
 	float NoiseSeconds = .4f;
+	// 箱に入れられた瞬間に見る位置の、画面中心からの高さ。
+	UPROPERTY(EditAnywhere, Category = "Television")
+	float ArrivalLookAbove = 100.f;
 
 	static constexpr int32 CameraChannels = 3;
 	static constexpr int32 MaxChannel = 9;
@@ -102,6 +105,8 @@ private:
 	bool bWasStatic = false;
 	double NoiseUntil = 0;
 	bool bOSDBound = false;
+	// 箱に入った本人の画面を、テレビへ向け終えたか。箱から出ると戻る。
+	bool bFacedArrival = false;
 
 	UFUNCTION()
 	void OnRep_Channel();
@@ -115,7 +120,9 @@ private:
 	void BindChannelOSD();
 	bool HasPicture(int32 Number, const TArray<ATBPlayerState*>& Players) const;
 	void SetChannel(int32 Number);
+	void ResetChannel();
 	bool HasLocalViewer() const;
+	bool FaceArrival() const;
 	bool IsAvailableTarget(const ATBPlayerState* Player) const;
 	void SetViewing(bool bEnable);
 	void CaptureFrame();

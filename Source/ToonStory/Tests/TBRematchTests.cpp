@@ -9,7 +9,9 @@
 #include "Core/TBGameState.h"
 #include "Core/TBPlayerState.h"
 #include "GamePlay/TBBox.h"
+#include "GamePlay/TBBoxTV.h"
 #include "GamePlay/TBPickup.h"
+#include "Components/BoxComponent.h"
 #include "Components/SphereComponent.h"
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
@@ -243,20 +245,44 @@ bool FTBStorageHoldTest::RunTest(const FString& Parameters)
 	Human->Tick(0);
 	TestEqual(TEXT("Stored after continuous three-second hold"), ToyInfo->ToyState, ETBToyState::Boxed);
 	TestFalse(TEXT("Successful storage clears carry links"), Human->CarriedToy || Toy->Carrier);
-	const FVector RoomPosition =
-	    Box->StorageRoom->GetComponentTransform().InverseTransformPosition(Toy->GetActorLocation());
-	bool bInStorageSlot = false;
-	for (int32 Slot = 0; Slot < ATBBox::StorageSlotCount; ++Slot)
+	const UBoxComponent* DropArea = ATBBox::FindDropArea(World);
+	if (DropArea)
 	{
-		// 回転した部屋の座標変換による丸め誤差を許容する。
-		bInStorageSlot |= RoomPosition.Equals(ATBBox::StorageSlot(Slot), .1);
+		// 落下エリアがある部屋では、必ずその中へ落ちる。
+		const FVector Local = DropArea->GetComponentTransform().InverseTransformPosition(Toy->GetActorLocation());
+		const FVector Extent = DropArea->GetUnscaledBoxExtent();
+		TestTrue(TEXT("Storage drops into the drop area"), FBox(-Extent, Extent).ExpandBy(1.f).IsInside(Local));
 	}
-	TestTrue(TEXT("Storage teleports to the separate room"), bInStorageSlot);
+	else
+	{
+		const FVector RoomPosition =
+		    Box->StorageRoom->GetComponentTransform().InverseTransformPosition(Toy->GetActorLocation());
+		bool bInStorageSlot = false;
+		for (int32 Slot = 0; Slot < ATBBox::StorageSlotCount; ++Slot)
+		{
+			// 回転した部屋の座標変換による丸め誤差を許容する。
+			bInStorageSlot |= RoomPosition.Equals(ATBBox::StorageSlot(Slot), .1);
+		}
+		TestTrue(TEXT("Storage teleports to the separate room"), bInStorageSlot);
+	}
 	TestTrue(TEXT("Storage destination is separate from the visible chest"),
 	         FVector::Dist(Toy->GetActorLocation(), Box->GetActorLocation()) > 800.f);
 	TestFalse(TEXT("Stored toy cannot rescue itself through the chest wall"), Box->InRange(Toy));
 	// この2人テストでは収納で試合終了する。救助は進行中の試合でのみ許可される。
 	State->Phase = ETBPhase::Playing;
+	// 落下エリアとテレビがある部屋では、入った瞬間に本人の画面がテレビの方を向く。
+	// 運搬カメラの解除（視点を水平に戻す）より先にテレビがTickしても、解除の後に見上げる向きになる。
+	if (TActorIterator<ATBBoxTV> TV(World); DropArea && TV)
+	{
+		TestTrue(TEXT("Carry view is still active right after storage"), Toy->IsCarryViewActive());
+		TV->Tick(0);
+		Toy->Tick(0);
+		TV->Tick(0);
+		const FVector ToScreen = (TV->Screen->Bounds.Origin - Toy->GetActorLocation()).GetSafeNormal2D();
+		const FVector Facing = Second->GetControlRotation().Vector();
+		TestTrue(TEXT("Arrival faces the television"), FVector::DotProduct(ToScreen, Facing.GetSafeNormal2D()) > .9f);
+		TestTrue(TEXT("Arrival looks up at the television after the carry view is released"), Facing.Z > .1f);
+	}
 	Box->ReleasePrisoners();
 	TestEqual(TEXT("Rescue moves stored toy outside the chest"), ToyInfo->ToyState, ETBToyState::Free);
 	TestTrue(TEXT("Rescue destination is in front of the chest"),

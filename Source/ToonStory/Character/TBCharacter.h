@@ -99,6 +99,8 @@ public:
 	bool IsMovementLocked() const;
 	bool IsPhysicsLocked() const;
 	bool IsGazeFrozen() const;
+	// 本人のPCで、運搬カメラに切り替わっているか。降ろされた後は、視点を水平に戻してから false になる。
+	bool IsCarryViewActive() const { return bCarryView; }
 	void UpdateItemContact(float DeltaSeconds);
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly)
 	void ApplyInterruption();

@@ -8,6 +8,7 @@
 
 class ATBCharacter;
 class ATBDummyToy;
+class UBoxComponent;
 class ATBBox;
 class UStaticMesh;
 class UStaticMeshComponent;
@@ -56,6 +57,12 @@ public:
 	// 収納先の候補位置（StorageRoom のローカル座標）。
 	static constexpr int32 StorageSlotCount = 9;
 	static FVector StorageSlot(int32 Slot);
+	// 落下エリアで、収納済みの人数ごとにずらす幅。
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Storage", meta = (ClampMin = "0.0"))
+	float DropSpacing = 30.f;
+	// 箱の部屋に置いた落下エリア。このタグを付けたアクタのBoxを使う。
+	static const FName DropAreaTag;
+	static const UBoxComponent* FindDropArea(const UWorld* World);
 	// 収納・救助でフタが開く時に各PCで呼ばれる。
 	FTBBoxOpened OnOpened;
 
@@ -64,5 +71,6 @@ private:
 	void MulticastOpened();
 	void RefreshAppearance();
 	bool HasDummyPrisoners() const;
+	bool FindDropSpot(const ATBCharacter* Toy, FVector& OutSpot) const;
 	int32 ReleaseDummyPrisoners(int32 FirstSlot);
 };
