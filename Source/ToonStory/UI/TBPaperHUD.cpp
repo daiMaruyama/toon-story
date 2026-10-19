@@ -185,8 +185,11 @@ void ATBHUD::DrawLobby()
 	Text(TEXT("今回のあそび"), 758, 146, 1.25f, Accent);
 	const bool Host = PC->HasAuthority();
 	Button(TEXT("ChangeStage"), State->StageName + TEXT("  ／ 選択"), 758, 180, 392, Host);
-	Text(FString::Printf(TEXT("制限時間  %d分"), FMath::RoundToInt(State->Settings.Duration / 60)), 758, 245, 1.1f,
-	     Ink);
+	// 刻みはマスターデータで変えられるので、分で割り切れないときは秒も出す。
+	const int32 Seconds = FMath::RoundToInt(State->Settings.Duration);
+	const FString Limit = Seconds % 60 == 0 ? FString::Printf(TEXT("制限時間  %d分"), Seconds / 60)
+	                                        : FString::Printf(TEXT("制限時間  %d分%d秒"), Seconds / 60, Seconds % 60);
+	Text(Limit, 758, 245, 1.1f, Ink);
 	const auto& Match = TB::Rules().Match;
 	Button(TEXT("LessTime"), TEXT("-"), 1032, 235, 52, Host && State->Settings.Duration > Match.MinDuration);
 	Button(TEXT("MoreTime"), TEXT("+"), 1098, 235, 52, Host && State->Settings.Duration < Match.MaxDuration);

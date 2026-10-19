@@ -174,7 +174,7 @@ struct FTBToyRules
 	GENERATED_BODY()
 	/** 下の一覧にない見た目の、選ばれやすさ */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "人形の見た目",
-	          meta = (DisplayName = "ふつうの重み", ClampMin = "0"))
+	          meta = (DisplayName = "ふつうの重み", ClampMin = "0", ClampMax = "1000"))
 	int32 DefaultToyWeight = 4;
 	/** 見た目ごとの選ばれやすさ。重み 1 なら、ふつう（4）の 1/4 の確率で出る */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "人形の見た目", meta = (DisplayName = "見た目ごとの重み"))

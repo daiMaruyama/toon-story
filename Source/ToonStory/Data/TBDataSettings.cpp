@@ -7,13 +7,19 @@
 
 namespace
 {
-	// 選ばれたアセットを一度だけ読み込む。未設定なら C++ の初期値を使う。
+	// 選ばれたアセットの読み込みは一度だけ試す。見つからなくても毎フレーム読み直さず、C++ の初期値を使い続ける。
 	template <typename T>
-	const T& LoadOrDefault(const TSoftObjectPtr<T>& Selected, TObjectPtr<T>& Loaded)
+	const T& LoadOrDefault(const TSoftObjectPtr<T>& Selected, TObjectPtr<T>& Loaded, bool& bTried)
 	{
-		if (!Loaded)
+		if (!bTried)
 		{
+			bTried = true;
 			Loaded = Selected.LoadSynchronous();
+			if (!Loaded && !Selected.IsNull())
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[ToonStoryData] %s not found; using the C++ defaults."),
+				       *Selected.ToString());
+			}
 		}
 		return Loaded ? *Loaded : *GetDefault<T>();
 	}
@@ -22,19 +28,20 @@ namespace
 const UTBRuleData& UTBDataSettings::GetRuleData()
 {
 	auto* Settings = GetMutableDefault<UTBDataSettings>();
-	return LoadOrDefault(Settings->RuleData, Settings->LoadedRuleData);
+	return LoadOrDefault(Settings->RuleData, Settings->LoadedRuleData, Settings->bTriedRuleData);
 }
 
 const UTBCharacterData& UTBDataSettings::GetCharacterData()
 {
 	auto* Settings = GetMutableDefault<UTBDataSettings>();
-	return LoadOrDefault(Settings->CharacterData, Settings->LoadedCharacterData);
+	return LoadOrDefault(Settings->CharacterData, Settings->LoadedCharacterData, Settings->bTriedCharacterData);
 }
 
 const UTBPresentationData& UTBDataSettings::GetPresentationData()
 {
 	auto* Settings = GetMutableDefault<UTBDataSettings>();
-	return LoadOrDefault(Settings->PresentationData, Settings->LoadedPresentationData);
+	return LoadOrDefault(Settings->PresentationData, Settings->LoadedPresentationData,
+	                     Settings->bTriedPresentationData);
 }
 
 const UTBRuleData& TB::Rules()
@@ -60,5 +67,6 @@ void UTBDataSettings::PostEditChangeProperty(FPropertyChangedEvent& Event)
 	LoadedRuleData = nullptr;
 	LoadedCharacterData = nullptr;
 	LoadedPresentationData = nullptr;
+	bTriedRuleData = bTriedCharacterData = bTriedPresentationData = false;
 }
 #endif

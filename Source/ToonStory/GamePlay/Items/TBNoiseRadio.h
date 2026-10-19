@@ -16,6 +16,7 @@ class TOONSTORY_API ATBNoiseRadio : public ATBItemBase
 public:
 	ATBNoiseRadio();
 	virtual void OnConstruction(const FTransform& Transform) override;
+	virtual void PostInitializeComponents() override;
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaSeconds) override;
 	virtual void EndPlay(const EEndPlayReason::Type Reason) override;
@@ -40,7 +41,7 @@ protected:
 private:
 	UPROPERTY(ReplicatedUsing = OnRep_RadioOn)
 	bool bRadioOn = false;
-	// Loaded in BeginPlay; until then the class defaults are used.
+	// Loaded in PostInitializeComponents, before a client's first OnRep can start playback.
 	UPROPERTY(Transient)
 	TObjectPtr<UTBNoiseRadioData> LoadedData;
 	const UTBNoiseRadioData& Data() const;

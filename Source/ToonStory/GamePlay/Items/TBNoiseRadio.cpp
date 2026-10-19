@@ -96,10 +96,16 @@ void ATBNoiseRadio::OnConstruction(const FTransform& Transform)
 	}
 }
 
+void ATBNoiseRadio::PostInitializeComponents()
+{
+	Super::PostInitializeComponents();
+	// Clients may receive bRadioOn=true (late join) and run OnRep_RadioOn before BeginPlay.
+	LoadedData = RadioData.LoadSynchronous();
+}
+
 void ATBNoiseRadio::BeginPlay()
 {
 	Super::BeginPlay();
-	LoadedData = RadioData.LoadSynchronous();
 	OnRep_RadioOn();
 }
 

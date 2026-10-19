@@ -43,8 +43,10 @@ void ATBGameMode::InitGameState()
 	if (auto* MatchInfo = GetGameState<ATBGameState>())
 	{
 		const auto& Match = TB::Rules().Match;
-		MatchInfo->Settings.Duration = Match.DefaultDuration;
-		MatchInfo->Settings.RequiredItems = Match.DefaultRequiredItems;
+		// 範囲の外の初期値だと、ロビーでルールを変えようとしても SetRules がすべて断ってしまう。
+		MatchInfo->Settings.Duration = FMath::Clamp(Match.DefaultDuration, Match.MinDuration, Match.MaxDuration);
+		MatchInfo->Settings.RequiredItems =
+		    FMath::Clamp(Match.DefaultRequiredItems, 1, FMath::Max(1, TBLobbySettings::AvailableItems(GetWorld())));
 	}
 }
 
