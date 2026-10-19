@@ -2,6 +2,7 @@
 
 #include "Data/TBDataSettings.h"
 #include "Data/TBCharacterData.h"
+#include "Data/TBPresentationData.h"
 #include "Data/TBRuleData.h"
 
 namespace
@@ -30,6 +31,12 @@ const UTBCharacterData& UTBDataSettings::GetCharacterData()
 	return LoadOrDefault(Settings->CharacterData, Settings->LoadedCharacterData);
 }
 
+const UTBPresentationData& UTBDataSettings::GetPresentationData()
+{
+	auto* Settings = GetMutableDefault<UTBDataSettings>();
+	return LoadOrDefault(Settings->PresentationData, Settings->LoadedPresentationData);
+}
+
 const UTBRuleData& TB::Rules()
 {
 	return UTBDataSettings::GetRuleData();
@@ -40,6 +47,11 @@ const UTBCharacterData& TB::CharacterData()
 	return UTBDataSettings::GetCharacterData();
 }
 
+const UTBPresentationData& TB::PresentationData()
+{
+	return UTBDataSettings::GetPresentationData();
+}
+
 #if WITH_EDITOR
 void UTBDataSettings::PostEditChangeProperty(FPropertyChangedEvent& Event)
 {
@@ -47,5 +59,6 @@ void UTBDataSettings::PostEditChangeProperty(FPropertyChangedEvent& Event)
 	// 参照先を差し替えたら読み直す
 	LoadedRuleData = nullptr;
 	LoadedCharacterData = nullptr;
+	LoadedPresentationData = nullptr;
 }
 #endif

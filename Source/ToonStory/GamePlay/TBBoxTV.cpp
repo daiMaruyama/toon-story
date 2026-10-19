@@ -8,6 +8,7 @@
 #include "TBBox.h"
 #include "Character/TBCharacter.h"
 #include "Components/BoxComponent.h"
+#include "Data/TBPresentationData.h"
 #include "Core/TBGameHelpers.h"
 #include "Core/TBGameState.h"
 #include "Core/TBPlayerState.h"
@@ -123,10 +124,12 @@ bool ATBBoxTV::FaceArrival() const
 		}
 	}
 	const FVector Floor = Area->GetComponentLocation() - Area->GetUpVector() * Area->GetScaledBoxExtent().Z;
+	const FVector LookAt =
+	    Screen->Bounds.Origin + FVector(0.f, 0.f, TB::PresentationData().Television.ArrivalLookAbove);
 	for (APlayerController* PC : Arrivals)
 	{
 		const FVector Eye = Floor + FVector(0.f, 0.f, PC->GetPawn()->BaseEyeHeight);
-		PC->SetControlRotation((Screen->Bounds.Origin + FVector(0.f, 0.f, ArrivalLookAbove) - Eye).Rotation());
+		PC->SetControlRotation((LookAt - Eye).Rotation());
 	}
 	return true;
 }
@@ -281,7 +284,7 @@ void ATBBoxTV::OnRep_PowerOn()
 
 void ATBBoxTV::OnRep_Channel()
 {
-	NoiseUntil = GetWorld()->GetTimeSeconds() + FMath::Clamp(NoiseSeconds, 0.f, 2.f);
+	NoiseUntil = GetWorld()->GetTimeSeconds() + FMath::Clamp(TB::PresentationData().Television.NoiseSeconds, 0.f, 2.f);
 	if (bViewing)
 	{
 		ScreenInstance->SetScalarParameterValue(TEXT("Noise"), 1.f);
@@ -332,24 +335,25 @@ void ATBBoxTV::SetViewing(bool bEnable)
 		ChannelOSD->SetComponentTickEnabled(false);
 		return;
 	}
+	const auto& Television = TB::PresentationData().Television;
 	if (!RenderTarget)
 	{
 		RenderTarget = NewObject<UTextureRenderTarget2D>(this);
 		RenderTarget->RenderTargetFormat = RTF_RGBA8;
 		RenderTarget->ClearColor = FLinearColor::Black;
-		RenderTarget->InitAutoFormat(FMath::Clamp(CaptureResolution.X, 64, 2048),
-		                             FMath::Clamp(CaptureResolution.Y, 64, 2048));
+		RenderTarget->InitAutoFormat(FMath::Clamp(Television.CaptureResolution.X, 64, 2048),
+		                             FMath::Clamp(Television.CaptureResolution.Y, 64, 2048));
 		Capture->TextureTarget = RenderTarget;
 		ScreenInstance->SetTextureParameterValue(TEXT("Feed"), RenderTarget);
 	}
-	NoiseUntil = GetWorld()->GetTimeSeconds() + FMath::Clamp(NoiseSeconds, 0.f, 2.f);
+	NoiseUntil = GetWorld()->GetTimeSeconds() + FMath::Clamp(Television.NoiseSeconds, 0.f, 2.f);
 	ScreenInstance->SetScalarParameterValue(TEXT("Noise"), 1.f);
 	FTimerManagerTimerParameters TimerParameters;
 	TimerParameters.bLoop = true;
 	// フレーム落ち時に、遅れた回数分を同一フレームでまとめ撮りしない。
 	TimerParameters.bMaxOncePerFrame = true;
 	GetWorldTimerManager().SetTimer(CaptureTimer, this, &ATBBoxTV::CaptureFrame,
-	                                1.f / FMath::Clamp(CaptureRate, 1.f, 30.f), TimerParameters);
+	                                1.f / FMath::Clamp(Television.CaptureRate, 1.f, 30.f), TimerParameters);
 	ChannelOSD->SetComponentTickEnabled(true);
 	UpdateChannelOSD();
 }
