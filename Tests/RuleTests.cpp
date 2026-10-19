@@ -27,6 +27,15 @@ int main()
 	assert(Near(RescueRate(3, 10, 0.f), .1f));
 	assert(Near(RescueRate(3, 10, 1.f), .3f));
 	assert(Near(RescueRate(3, 10, -.5f), .1f));
+	constexpr float Deg = 3.14159265f / 180;
+	const FVisionAngles Vision = JudgeHalfAngles(90, 16, 9, 5);
+	assert(Near(Vision.Horizontal, 40)); // 移行前の GazeHalfAngle と同じ
+	assert(Near(Vision.Vertical, std::atan(std::tan(45 * Deg) / (16.f / 9)) / Deg - 5)); // 移行前の Watched の式と同じ
+	const FVisionAngles Wide = JudgeHalfAngles(90, 21, 9, 5);
+	assert(Near(Wide.Horizontal, 40) && Wide.Vertical < Vision.Vertical); // 横長の画面では縦だけ狭くなる
+	assert(JudgeHalfAngles(90, 16, 9, 60).Horizontal == 0); // 余白が大きくてもマイナスにならない
+	assert(JudgeHalfAngles(90, 16, 9, 60).Vertical == 0);
+	assert(std::isfinite(JudgeHalfAngles(90, 0, 0, 5).Vertical)); // 比率が 0 でも壊れない
 	assert(!HumansWin(0, 0));
 	assert(!HumansWin(2, 1));
 	assert(HumansWin(2, 2));
