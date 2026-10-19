@@ -1,6 +1,7 @@
 #include "TBDummyToy.h"
 #include "Audio/TBAudioEvents.h"
 #include "Core/TBPlayerState.h"
+#include "Data/TBRuleData.h"
 #include "TimerManager.h"
 #include "Character/TBCharacter.h"
 #include "Character/TBToyPresentation.h"
@@ -133,7 +134,8 @@ bool ATBDummyToy::PickUp(ATBCharacter* Human)
 	Holder = Human;
 	StoredBox = nullptr;
 	bFalling = false;
-	Human->GrabEnds = GetWorld()->GetTimeSeconds() + .25;
+	const float GrabSeconds = TB::Rules().Aim.GrabSeconds;
+	Human->GrabEnds = GetWorld()->GetTimeSeconds() + GrabSeconds;
 	Human->CarriedDummy = this;
 	FTimerHandle LiftTimer;
 	const double LiftAt = Human->GrabEnds;
@@ -143,7 +145,7 @@ bool ATBDummyToy::PickUp(ATBCharacter* Human)
 		{
 			UTBAudioEvents::Emit(this, ETBSoundEvent::CarryLift, Holder->TBPS(), FVector::ZeroVector);
 		}
-	}), .25f, false);
+	}), FMath::Max(GrabSeconds, KINDA_SMALL_NUMBER), false);
 	OnRep_Holder();
 	Human->ApplyState();
 	UTBAudioEvents::Emit(this, ETBSoundEvent::Capture, nullptr, GetActorLocation());

@@ -9,6 +9,7 @@
 #include "Core/TBSession.h"
 #include "Core/TBGameHelpers.h"
 #include "Character/TBCharacter.h"
+#include "Data/TBRuleData.h"
 #include "GamePlay/TBBox.h"
 #include "Components/SceneComponent.h"
 #include "Engine/Canvas.h"
@@ -186,8 +187,9 @@ void ATBHUD::DrawLobby()
 	Button(TEXT("ChangeStage"), State->StageName + TEXT("  ／ 選択"), 758, 180, 392, Host);
 	Text(FString::Printf(TEXT("制限時間  %d分"), FMath::RoundToInt(State->Settings.Duration / 60)), 758, 245, 1.1f,
 	     Ink);
-	Button(TEXT("LessTime"), TEXT("-"), 1032, 235, 52, Host && State->Settings.Duration > 60);
-	Button(TEXT("MoreTime"), TEXT("+"), 1098, 235, 52, Host && State->Settings.Duration < 3600);
+	const auto& Match = TB::Rules().Match;
+	Button(TEXT("LessTime"), TEXT("-"), 1032, 235, 52, Host && State->Settings.Duration > Match.MinDuration);
+	Button(TEXT("MoreTime"), TEXT("+"), 1098, 235, 52, Host && State->Settings.Duration < Match.MaxDuration);
 	Text(FString::Printf(TEXT("集める電池  %d個"), State->Settings.RequiredItems), 758, 301, 1.1f, Ink);
 	Button(TEXT("FewerBatteries"), TEXT("-"), 1032, 291, 52, Host && State->Settings.RequiredItems > 1);
 	Button(TEXT("MoreBatteries"), TEXT("+"), 1098, 291, 52,
@@ -315,7 +317,7 @@ void ATBHUD::DrawMatch(const ATBGameState& MatchState, ATBController& Controller
 			         Accent, BoxScreen.X - 60 * S, BoxScreen.Y, PaperFont, 1.f * S);
 		}
 		const bool Storing = Character->StoreStarted >= 0;
-		const float Duration = FMath::Max(MatchState.Box->StoreSeconds, .01f);
+		const float Duration = FMath::Max(TB::Rules().Box.StoreSeconds, .01f);
 		const float Elapsed =
 		    Storing
 		        ? FMath::Clamp(float(MatchState.GetServerWorldTimeSeconds() - Character->StoreStarted), 0.f, Duration)

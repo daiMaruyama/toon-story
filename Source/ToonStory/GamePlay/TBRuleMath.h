@@ -73,4 +73,21 @@ namespace TBRuleMath
 		}
 		return HumansWin(Toys, Boxed) ? EWinReason::AllToysBoxed : EWinReason::None;
 	}
+
+	struct FVisionAngles
+	{
+		float Horizontal;
+		float Vertical;
+	};
+
+	// 視界判定に使う片側の角度（度）。画面の上下左右の端から、余白の分だけ内側にする。
+	inline FVisionAngles JudgeHalfAngles(float FieldOfView, int AspectWidth, int AspectHeight, float EdgeMargin)
+	{
+		constexpr float DegToRad = 3.14159265f / 180.f;
+		const float HalfH = FieldOfView * .5f;
+		const float Aspect = float(AspectWidth > 0 ? AspectWidth : 1) / float(AspectHeight > 0 ? AspectHeight : 1);
+		const float HalfV = std::atan(std::tan(HalfH * DegToRad) / Aspect) / DegToRad;
+		const float Margin = EdgeMargin > 0.f ? EdgeMargin : 0.f;
+		return {HalfH > Margin ? HalfH - Margin : 0.f, HalfV > Margin ? HalfV - Margin : 0.f};
+	}
 }

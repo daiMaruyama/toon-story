@@ -10,6 +10,7 @@
 #include "Core/TBGameHelpers.h"
 #include "GamePlay/TBDummyToy.h"
 #include "GamePlay/TBRuleMath.h"
+#include "Data/TBRuleData.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/BoxComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -87,7 +88,8 @@ void ATBBox::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimePr
 bool ATBBox::InRange(const ATBCharacter* ToyCharacter) const
 {
 	if (!ToyCharacter ||
-	    FVector::Dist(ToyCharacter->GetActorLocation(), InteractionPoint->GetComponentLocation()) > 180.f)
+	    FVector::Dist(ToyCharacter->GetActorLocation(), InteractionPoint->GetComponentLocation()) >
+	        TB::Rules().Box.RescueDistance)
 	{
 		return false;
 	}
@@ -119,7 +121,8 @@ bool ATBBox::CanStoreFrom(const ATBCharacter* Character) const
 	}
 	// 収納は小さな救助マーカーではなく、箱の正面全体で受け付ける。
 	const FVector Local = GetActorTransform().InverseTransformPosition(Character->GetActorLocation());
-	if (Local.X >= 0.f || Local.X < -180.f || FMath::Abs(Local.Y) > 140.f || Local.Z < 0.f || Local.Z > 220.f)
+	const FVector Reach = TB::Rules().Box.StoreReach;
+	if (Local.X >= 0.f || Local.X < -Reach.X || FMath::Abs(Local.Y) > Reach.Y || Local.Z < 0.f || Local.Z > Reach.Z)
 	{
 		return false;
 	}
@@ -170,6 +173,7 @@ bool ATBBox::FindDropSpot(const ATBCharacter* Toy, FVector& OutSpot) const
 	const FCollisionShape Shape =
 	    FCollisionShape::MakeCapsule(Capsule->GetScaledCapsuleRadius(), Capsule->GetScaledCapsuleHalfHeight());
 	const FCollisionQueryParams Params(SCENE_QUERY_STAT(TBStorageDrop), false, Toy);
+	const float DropSpacing = TB::Rules().Box.DropSpacing;
 	for (int32 Index = First; Index < First + StorageSlotCount; ++Index)
 	{
 		// 0人目は真ん中、以降は右・左・右…と間隔ずつ外へ。はみ出したら、その先も全部はみ出す。
@@ -283,13 +287,22 @@ void ATBBox::Tick(float DeltaSeconds)
 		return;
 	}
 	Rescuers = RescueCount;
-	RescueProgress =
-	    FMath::Min(1.f, RescueProgress + DeltaSeconds * TBRuleMath::RescueRate(RescueCount, BaseRescueSeconds,
-	                                                                           AdditionalRescuerBonus));
+	const auto& Rules = TB::Rules().Box;
+	RescueProgress = FMath::Min(
+	    1.f, RescueProgress + DeltaSeconds * TBRuleMath::RescueRate(RescueCount, Rules.RescueSeconds, Rules.AdditionalRescuerBonus));
 	if (RescueProgress >= 1.f)
 	{
 		ReleasePrisoners();
 	}
+}
+
+// 救助で出す位置。箱の手前に1列3人ずつ、列を手前へ重ねて並べる（人形とデコイで共通）。
+FVector ATBBox::ReleasePosition(int32 Slot) const
+{
+	const auto& Rules = TB::Rules().Box;
+	const FVector Local = Rules.ReleaseOrigin + FVector(-(Slot / 3) * Rules.ReleaseSpacing.X,
+	                                                    (Slot % 3 - 1) * Rules.ReleaseSpacing.Y, 0.f);
+	return GetActorTransform().TransformPosition(Local);
 }
 
 // 空いている箱外の位置へ救助する。塞がっている場合は次のTickで再試行する。
@@ -308,8 +321,7 @@ void ATBBox::ReleasePrisoners()
 		{
 			continue;
 		}
-		const FVector Exit =
-		    GetActorTransform().TransformPosition(FVector(-65 - (Slot / 3) * 35, -50 + (Slot % 3) * 50, 60));
+		const FVector Exit = ReleasePosition(Slot);
 		++Slot;
 		if (Toy->TeleportTo(Exit, GetActorRotation()))
 		{

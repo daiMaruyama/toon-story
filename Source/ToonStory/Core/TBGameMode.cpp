@@ -16,6 +16,7 @@
 #include "GamePlay/TBPickup.h"
 #include "GamePlay/TBBlock.h"
 #include "GamePlay/TBRuleMath.h"
+#include "Data/TBRuleData.h"
 #include "UI/TBHUD.h"
 #include "Components/CapsuleComponent.h"
 #include "Engine/GameInstance.h"
@@ -33,6 +34,18 @@ void ATBGameMode::InitGame(const FString& MapName, const FString& Options, FStri
 		SpawnPoints.Add(*It);
 	}
 	bBuildTestArena = !TBLobbySettings::IsLobby(GetWorld()) && bBuildTestArena && !TActorIterator<ATBBox>(GetWorld());
+}
+
+// 部屋を作った直後のルールはマスターデータから決める。移動後は TBLobbySettings::Restore が引き継いだ値で上書きする。
+void ATBGameMode::InitGameState()
+{
+	Super::InitGameState();
+	if (auto* MatchInfo = GetGameState<ATBGameState>())
+	{
+		const auto& Match = TB::Rules().Match;
+		MatchInfo->Settings.Duration = Match.DefaultDuration;
+		MatchInfo->Settings.RequiredItems = Match.DefaultRequiredItems;
+	}
 }
 
 ATBGameMode::ATBGameMode()
@@ -289,9 +302,10 @@ void ATBGameMode::SetRules(APlayerController* PlayerController, const FTBSetting
 		if (Rules.Toys < 0 || Rules.Toys > Count) return;
 		Adjusted.Humans = Count - Rules.Toys;
 	}
+	// 下限はロビーの最短より緩め、テスト用コマンドの短い試合も通す。
 	if (!GameSession || Adjusted.Humans < (Count > 0 ? 1 : 0) || Adjusted.Toys < (Count > 1 ? 1 : 0) ||
 	    int64(Adjusted.Humans) + Adjusted.Toys != Count || Count > GameSession->MaxPlayers || !FMath::IsFinite(Rules.Duration) ||
-	    Rules.Duration < 10 || Rules.Duration > 3600 || Rules.RequiredItems < 1)
+	    Rules.Duration < 10 || Rules.Duration > TB::Rules().Match.MaxDuration || Rules.RequiredItems < 1)
 	{
 		return;
 	}
@@ -528,12 +542,13 @@ bool ATBGameMode::Watched(ATBCharacter* Toy, ATBCharacter* Human) const
 	const FVector View = Basis.GetUnitAxis(EAxis::X);
 	const FVector Right = Basis.GetUnitAxis(EAxis::Y);
 	const FVector Up = Basis.GetUnitAxis(EAxis::Z);
-	const float TanH = FMath::Tan(FMath::DegreesToRadians(GazeHalfAngle));
-	// 水平視野角90度・画面比率16:9を前提に、判定範囲を画面端より狭くする。
-	const float HalfV =
-	    FMath::RadiansToDegrees(FMath::Atan(FMath::Tan(FMath::DegreesToRadians(45.f)) / (16.f / 9.f))) - 5.f;
-	const float TanV = FMath::Tan(FMath::DegreesToRadians(HalfV));
-	const float SampleHeight = Toy->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() * .85f;
+	// 視野角と画面比率から、画面の端より少し内側を判定範囲にする。
+	const auto& Vision = TB::Rules().Vision;
+	const auto Half =
+	    TBRuleMath::JudgeHalfAngles(Vision.FieldOfView, Vision.AspectWidth, Vision.AspectHeight, Vision.EdgeMargin);
+	const float TanH = FMath::Tan(FMath::DegreesToRadians(Half.Horizontal));
+	const float TanV = FMath::Tan(FMath::DegreesToRadians(Half.Vertical));
+	const float SampleHeight = Toy->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() * Vision.BodySampleRatio;
 	for (float HeightOffset : {SampleHeight, 0.f, -SampleHeight})
 	{
 		const FVector SamplePosition = Toy->GetActorLocation() + FVector(0, 0, HeightOffset);

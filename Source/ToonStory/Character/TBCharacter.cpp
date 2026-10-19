@@ -14,6 +14,7 @@
 #include "GamePlay/Items/TBInteractable.h"
 #include "GamePlay/Items/TBInteractionTarget.h"
 #include "GamePlay/TBRuleMath.h"
+#include "Data/TBRuleData.h"
 #include "Core/TBGameHelpers.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -94,6 +95,8 @@ void ATBCharacter::BeginPlay()
 	ChildAnimation.LoadSynchronous();
 	GetMesh()->SetOwnerNoSee(true);
 	GetMesh()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	// 視界判定と同じ視野角で映す。
+	Camera->FieldOfView = TB::Rules().Vision.FieldOfView;
 	bAppearanceInitialized = false;
 	ApplyState();
 	if (auto* GameMode = GetWorld()->GetAuthGameMode<ATBGameMode>())
@@ -475,7 +478,7 @@ void ATBCharacter::Tick(float DeltaSeconds)
 			ClearHeldInteraction();
 			return;
 		}
-		if (Now - StoreStarted >= Box->StoreSeconds && Box->Store(CarriedToy))
+		if (Now - StoreStarted >= TB::Rules().Box.StoreSeconds && Box->Store(CarriedToy))
 		{
 			CarriedToy = nullptr;
 			ClearHeldInteraction();
@@ -522,7 +525,8 @@ void ATBCharacter::DropToy()
 	FVector DropPosition = GetActorLocation();
 	if (UWorld* World = GetWorld())
 	{
-		const FVector DesiredPosition = DropPosition + FRotator(0, GetControlRotation().Yaw, 0).Vector() * 100;
+		const FVector DesiredPosition =
+		    DropPosition + FRotator(0, GetControlRotation().Yaw, 0).Vector() * TB::Rules().Aim.DropDistance;
 		FHitResult Hit;
 		FCollisionQueryParams Params(SCENE_QUERY_STAT(TBDrop), false, this);
 		Params.AddIgnoredActor(Toy);
@@ -600,7 +604,7 @@ void ATBCharacter::ServerInteract_Implementation()
 			ClosestToy->SetToyState(ETBToyState::Grabbed);
 			ClosestToy->OnRep_Carrier();
 			ClosestToy->ForceNetUpdate();
-			GrabEnds = Now + .25;
+			GrabEnds = Now + TB::Rules().Aim.GrabSeconds;
 			ApplyState();
 			UTBAudioEvents::Emit(this, ETBSoundEvent::Capture, ClosestToy->TBPS(), ClosestToy->GetActorLocation());
 			UTBAudioEvents::Emit(this, ETBSoundEvent::TeamNotice, ClosestToy->TBPS(), FVector::ZeroVector);
@@ -788,7 +792,7 @@ void ATBCharacter::UpdateItemContact(float DeltaSeconds)
 	{
 		return;
 	}
-	ItemProgress = TBRuleMath::AdvanceContact(ItemProgress, DeltaSeconds, ContactItem->CollectSeconds, true,
+	ItemProgress = TBRuleMath::AdvanceContact(ItemProgress, DeltaSeconds, TB::Rules().Pickup.CollectSeconds, true,
 	                                          ToyPlayerInfo->bFrozen, true);
 	if (ItemProgress >= 1.f && ContactItem->Take(this))
 	{

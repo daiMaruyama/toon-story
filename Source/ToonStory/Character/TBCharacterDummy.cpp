@@ -1,6 +1,7 @@
 #include "TBCharacter.h"
 #include "Core/TBGameHelpers.h"
 #include "Core/TBGameState.h"
+#include "Data/TBRuleData.h"
 #include "GamePlay/TBBox.h"
 #include "GamePlay/TBDummyToy.h"
 #include "Engine/World.h"
@@ -28,7 +29,7 @@ bool ATBCharacter::UpdateCarriedDummy()
 		ClearHeldInteraction();
 		return true;
 	}
-	if (GetWorld()->GetTimeSeconds() - StoreStarted >= Box->StoreSeconds && Box->StoreDummy(CarriedDummy))
+	if (GetWorld()->GetTimeSeconds() - StoreStarted >= TB::Rules().Box.StoreSeconds && Box->StoreDummy(CarriedDummy))
 	{
 		ClearHeldInteraction();
 		ApplyState();

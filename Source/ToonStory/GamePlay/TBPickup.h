@@ -25,8 +25,7 @@ public:
 	TSoftObjectPtr<UStaticMesh> PickupMesh;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	TObjectPtr<USphereComponent> Contact;
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (ClampMin = "0.1"))
-	float CollectSeconds = 3.f;
+	// 回収にかかる秒数はマスターデータ（TB::Rules().Pickup）にある。
 	bool Touches(const ATBCharacter* C) const;
 	UPROPERTY(VisibleAnywhere)
 	TObjectPtr<UStaticMeshComponent> Mesh;
