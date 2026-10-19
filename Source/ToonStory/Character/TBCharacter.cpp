@@ -11,6 +11,8 @@
 #include "GamePlay/TBBox.h"
 #include "GamePlay/TBDummyToy.h"
 #include "GamePlay/TBPickup.h"
+#include "GamePlay/Items/TBInteractable.h"
+#include "GamePlay/Items/TBInteractionTarget.h"
 #include "GamePlay/TBRuleMath.h"
 #include "Core/TBGameHelpers.h"
 #include "Camera/CameraComponent.h"
@@ -554,6 +556,15 @@ void ATBCharacter::ServerInteract_Implementation()
 		return;
 	}
 	LastRequest = Now;
+	const FTBInteractionTarget Target = TB::FindInteractionTarget(this);
+	if (auto* Item = Cast<ITBInteractable>(Target.Actor))
+	{
+		FTBInteractionContext Context;
+		Context.InstigatorCharacter = this;
+		Context.ActionId = Target.ActionId;
+		Item->TryInteract(Context);
+		return;
+	}
 	bHoldingInteract = true;
 	auto* MatchInfo = TB::GS(GetWorld());
 	ATBBox* Box = MatchInfo ? MatchInfo->Box.Get() : nullptr;
@@ -574,35 +585,12 @@ void ATBCharacter::ServerInteract_Implementation()
 			}
 			return;
 		}
-		ATBCharacter* ClosestToy = nullptr;
-		float ClosestDistance = 180.f;
-		for (TActorIterator<ATBCharacter> It(GetWorld()); It; ++It)
+		if (auto* Dummy = Cast<ATBDummyToy>(Target.Actor))
 		{
-			auto* Toy = *It;
-			auto* TargetState = Toy->TBPS();
-			if (!TargetState || TargetState->Team != ETBTeam::Toy || Toy->Carrier)
-			{
-				continue;
-			}
-			if (TargetState->ToyState != ETBToyState::Free)
-			{
-				continue;
-			}
-			const FVector Delta = Toy->GetActorLocation() - GetActorLocation();
-			const float Distance = Delta.Size();
-			if (Distance > ClosestDistance ||
-			    FVector::DotProduct(GetControlRotation().Vector(), Delta.GetSafeNormal()) < .35f)
-			{
-				continue;
-			}
-			if (!TB::ClearPath(this, Toy, GetPawnViewLocation(), Toy->GetActorLocation()))
-			{
-				continue;
-			}
-			ClosestToy = Toy;
-			ClosestDistance = Distance;
+			Dummy->PickUp(this);
+			return;
 		}
-		if (ATBDummyToy::TryPickUpNearest(this, ClosestDistance)) return;
+		auto* ClosestToy = Cast<ATBCharacter>(Target.Actor);
 		if (ClosestToy)
 		{
 			ClosestToy->ClearHeldInteraction();
