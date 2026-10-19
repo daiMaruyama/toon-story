@@ -53,9 +53,7 @@ int32 ATBBox::ReleaseDummyPrisoners(int32 FirstSlot)
 		{
 			continue;
 		}
-		const int Slot = FirstSlot++;
-		const FVector Exit =
-		    GetActorTransform().TransformPosition(FVector(-65 - (Slot / 3) * 35, -50 + (Slot % 3) * 50, 60));
+		const FVector Exit = ReleasePosition(FirstSlot++);
 		FCollisionQueryParams Params(SCENE_QUERY_STAT(ReleaseDecoy), false, *It);
 		if (GetWorld()->OverlapBlockingTestByChannel(
 		        Exit, FQuat::Identity, ECC_GameTraceChannel1,

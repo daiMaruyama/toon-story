@@ -6,6 +6,7 @@
 #include "Character/TBCharacter.h"
 #include "Character/TBToyCharacter.h"
 #include "Character/TBToyPresentation.h"
+#include "Data/TBRuleData.h"
 #include "GamePlay/TBBox.h"
 #include "GamePlay/TBDummyToy.h"
 #include "Components/CapsuleComponent.h"
@@ -70,7 +71,7 @@ bool FTBRescueEligibilityTest::RunTest(const FString& Parameters)
 	Info->ToyState = ETBToyState::Free;
 	Toy->ApplyState();
 	State->Phase = ETBPhase::Playing;
-	TestEqual(TEXT("Default solo rescue is five seconds"), Box->BaseRescueSeconds, 5.f);
+	TestEqual(TEXT("Default solo rescue is five seconds"), TB::Rules().Box.RescueSeconds, 5.f);
 	TestFalse(TEXT("Empty box cannot start rescue"), Box->HasPrisoners());
 	TestEqual(TEXT("Free decoys do not block toy movement"),
 	          Dummy->Collision->GetCollisionResponseToChannel(ECC_GameTraceChannel1), ECR_Ignore);

@@ -13,6 +13,11 @@ const UTBRuleData& UTBDataSettings::GetRuleData()
 	return Settings->LoadedRuleData ? *Settings->LoadedRuleData : *GetDefault<UTBRuleData>();
 }
 
+const UTBRuleData& TB::Rules()
+{
+	return UTBDataSettings::GetRuleData();
+}
+
 #if WITH_EDITOR
 void UTBDataSettings::PostEditChangeProperty(FPropertyChangedEvent& Event)
 {

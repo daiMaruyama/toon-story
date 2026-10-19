@@ -17,6 +17,7 @@ class TOONSTORY_API ATBGameMode : public AGameModeBase
 public:
 	ATBGameMode();
 	virtual void InitGame(const FString& MapName, const FString& Options, FString& ErrorMessage) override;
+	virtual void InitGameState() override;
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaSeconds) override;
 	virtual void PreLogin(const FString& Options, const FString& Address, const FUniqueNetIdRepl& UniqueId,
@@ -32,8 +33,6 @@ public:
 	bool bBuildTestArena = true;
 	UPROPERTY(EditDefaultsOnly)
 	TSubclassOf<ATBBox> BoxClass;
-	UPROPERTY(EditDefaultsOnly)
-	float GazeHalfAngle = 40.f;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	bool bAllowInterference = false;
 	bool IsHost(const APlayerController* PlayerController) const;

@@ -4,6 +4,7 @@
 #include "Character/TBCharacter.h"
 #include "Core/TBGameHelpers.h"
 #include "Core/TBPlayerState.h"
+#include "Data/TBRuleData.h"
 #include "Components/CapsuleComponent.h"
 #include "EngineUtils.h"
 
@@ -13,7 +14,8 @@ FTBInteractionTarget TB::FindInteractionTarget(ATBCharacter* Character)
 	if (!IsValid(Character) || !Character->CanAct() || Character->HasCarriedToy()) return Result;
 	const FVector Eye = Character->GetPawnViewLocation();
 	const FVector Aim = Character->GetControlRotation().Vector();
-	float BestAlignment = .70710678f; // 45-degree aim cone, shared by items and toys.
+	const auto& AimRules = TB::Rules().Aim;
+	float BestAlignment = FMath::Cos(FMath::DegreesToRadians(AimRules.AimAngle)); // Aim cone shared by items and toys.
 	double BestDistanceSquared = TNumericLimits<double>::Max();
 	auto Consider = [&](AActor* Actor, const FVector& Location, FName ActionId)
 	{
@@ -57,7 +59,7 @@ FTBInteractionTarget TB::FindInteractionTarget(ATBCharacter* Character)
 				Location = Dummy->Collision->GetComponentLocation();
 			}
 			else continue;
-			if (FVector::DistSquared(Character->GetActorLocation(), Location) <= FMath::Square(180.f) &&
+			if (FVector::DistSquared(Character->GetActorLocation(), Location) <= FMath::Square(AimRules.CaptureDistance) &&
 			    TB::ClearPath(Character, Actor, Eye, Location)) Consider(Actor, Location, NAME_None);
 		}
 	}

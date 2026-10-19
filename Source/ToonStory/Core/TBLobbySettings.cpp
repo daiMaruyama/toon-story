@@ -4,6 +4,7 @@
 #include "TBGameMode.h"
 #include "TBGameState.h"
 #include "TBPlayerState.h"
+#include "Data/TBRuleData.h"
 #include "GamePlay/TBPickup.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
@@ -292,13 +293,14 @@ bool TBLobbySettings::HandleClick(ATBController* Controller, FName Name)
 		return false;
 	}
 	auto Rules = State->Settings;
+	const auto& Match = TB::Rules().Match;
 	if (Name == TEXT("LessTime"))
 	{
-		Rules.Duration = FMath::Max(60.f, Rules.Duration - 60.f);
+		Rules.Duration = FMath::Max(Match.MinDuration, Rules.Duration - Match.DurationStep);
 	}
 	else if (Name == TEXT("MoreTime"))
 	{
-		Rules.Duration = FMath::Min(3600.f, Rules.Duration + 60.f);
+		Rules.Duration = FMath::Min(Match.MaxDuration, Rules.Duration + Match.DurationStep);
 	}
 	else if (Name == TEXT("FewerBatteries"))
 	{
