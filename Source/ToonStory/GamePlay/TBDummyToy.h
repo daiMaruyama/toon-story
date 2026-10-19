@@ -42,7 +42,7 @@ public:
 	static bool TryPickUpNearest(ATBCharacter* Human, float ClosestDistance);
 	bool PickUp(ATBCharacter* Human);
 	void PutDown();
-	void ResetPlacement();
+	void ResetPlacement(bool bRandomizeAppearance = false);
 
 private:
 	void ChooseRandomToy();

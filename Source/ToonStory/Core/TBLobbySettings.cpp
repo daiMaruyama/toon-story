@@ -33,23 +33,6 @@ namespace
 void UTBLobbySettings::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
-	if (GEngine)
-	{
-		TravelFailureHandle =
-		    GEngine->OnTravelFailure().AddWeakLambda(this,
-		                                             [this](UWorld* World, ETravelFailure::Type, const FString&)
-		                                             {
-			                                             if (World && World->GetGameInstance() == GetGameInstance())
-			                                             {
-				                                             PendingMap.Reset();
-				                                             bStartOnArrival = false;
-				                                             if (auto* State = World->GetGameState<ATBGameState>())
-				                                             {
-					                                             State->bTravelPending = false;
-				                                             }
-			                                             }
-		                                             });
-	}
 	MapLoadedHandle = FCoreUObjectDelegates::PostLoadMapWithWorld.AddWeakLambda(
 	    this,
 	    [this](UWorld* World)
@@ -58,6 +41,9 @@ void UTBLobbySettings::Initialize(FSubsystemCollectionBase& Collection)
 		    {
 			    PendingMap.Reset();
 			    bStartOnArrival = false;
+			    bArrivalCancelled = false;
+			    bStageSelected = false;
+			    ArrivalDeadline = 0;
 			    bDedicatedLobby = false;
 			    SelectedStage = 1;
 		    }
@@ -65,10 +51,6 @@ void UTBLobbySettings::Initialize(FSubsystemCollectionBase& Collection)
 }
 void UTBLobbySettings::Deinitialize()
 {
-	if (GEngine)
-	{
-		GEngine->OnTravelFailure().Remove(TravelFailureHandle);
-	}
 	FCoreUObjectDelegates::PostLoadMapWithWorld.Remove(MapLoadedHandle);
 	Super::Deinitialize();
 }
@@ -93,7 +75,7 @@ int32 TBLobbySettings::AvailableItems(UWorld* World)
 {
 	// Authored pickup counts for KidsRoom, Expanded and ArchViz. Revalidated on arrival
 	// so a later map edit cannot produce an impossible collection target.
-	if (IsLobby(World))
+	if (ShouldTravelToStage(World))
 	{
 		const auto* State = World->GetGameState<ATBGameState>();
 		const auto* Stage = State ? FindStage(State->SelectedStage) : nullptr;
@@ -129,6 +111,7 @@ void TBLobbySettings::SelectStage(ATBController* Host, int32 Index)
 	{
 		return;
 	}
+	Pending->bStageSelected = true;
 	Pending->SelectedStage = Index;
 	State->SelectedStage = Index;
 	State->Settings.RequiredItems = FMath::Min(State->Settings.RequiredItems, AvailableItems(World));
@@ -139,6 +122,35 @@ bool TBLobbySettings::IsLobby(const UWorld* World)
 {
 	return World && World->GetMapName().EndsWith(TEXT("TB_Lobby"));
 }
+bool TBLobbySettings::ShouldTravelToStage(const UWorld* World)
+{
+	if (!World || !World->GetGameInstance()) return false;
+	const auto* Pending = World->GetGameInstance()->GetSubsystem<UTBLobbySettings>();
+	const auto* State = World->GetGameState<ATBGameState>();
+	return IsLobby(World) || (State && Pending->bStageSelected && StageIndex(World) != State->SelectedStage);
+}
+
+void TBLobbySettings::CancelTravel(UWorld* World)
+{
+	if (!World || !World->GetGameInstance()) return;
+	auto* Pending = World->GetGameInstance()->GetSubsystem<UTBLobbySettings>();
+	Pending->PendingMap.Reset();
+	Pending->bStartOnArrival = false;
+	Pending->bArrivalCancelled = false;
+	Pending->ArrivalDeadline = 0;
+	if (auto* State = World->GetGameState<ATBGameState>())
+	{
+		State->bTravelPending = false;
+		for (APlayerState* Player : State->PlayerArray)
+		{
+			if (auto* Info = Cast<ATBPlayerState>(Player)) Info->bReady = false;
+		}
+		State->ForceNetUpdate();
+	}
+	if (auto* Mode = World->GetAuthGameMode<ATBGameMode>()) Mode->SyncLobbyCounts();
+	if (auto* Session = World->GetGameInstance()->GetSubsystem<UTBSession>()) Session->RefreshLobbyAvailability();
+}
+
 bool TBLobbySettings::Travel(ATBGameMode* Mode, bool StartMatch)
 {
 	auto* World = Mode->GetWorld();
@@ -163,7 +175,8 @@ bool TBLobbySettings::Travel(ATBGameMode* Mode, bool StartMatch)
 	Pending->ExpectedPlayers = State->PlayerArray.Num();
 	Pending->PendingMap = Path;
 	Pending->bStartOnArrival = StartMatch;
-	Pending->ArrivalDeadline = FPlatformTime::Seconds() + 60;
+	Pending->ArrivalDeadline = 0;
+	Pending->bArrivalCancelled = false;
 	State->bTravelPending = true;
 	Mode->bUseSeamlessTravel = true;
 	if (!World->ServerTravel(Path))
@@ -199,7 +212,12 @@ void TBLobbySettings::TickArrival(ATBGameMode* Mode)
 		auto* Controller = Info ? Cast<APlayerController>(Info->GetOwner()) : nullptr;
 		Ready &= Info && Info->bReady && Info->GetPawn() && Controller && Controller->HasClientLoadedCurrentWorld();
 	}
-	if (!Ready && FPlatformTime::Seconds() < Pending->ArrivalDeadline)
+	if (Pending->ArrivalDeadline == 0)
+	{
+		Pending->ArrivalDeadline = FPlatformTime::Seconds() + 60;
+	}
+	Ready &= !Pending->bArrivalCancelled;
+	if (!Ready && !Pending->bArrivalCancelled && FPlatformTime::Seconds() < Pending->ArrivalDeadline)
 	{
 		return;
 	}
@@ -218,7 +236,10 @@ void TBLobbySettings::TickArrival(ATBGameMode* Mode)
 	}
 	if (State->Phase != ETBPhase::Playing)
 	{
-		Travel(Mode, false);
+		if (!Travel(Mode, false))
+		{
+			CancelTravel(World);
+		}
 	}
 }
 
@@ -236,7 +257,7 @@ void TBLobbySettings::Restore(ATBGameMode* Mode)
 		Pending->bDedicatedLobby = true;
 	}
 	const int32 CurrentStage = StageIndex(World);
-	if (!Pending->bDedicatedLobby && CurrentStage != INDEX_NONE)
+	if (!Pending->bDedicatedLobby && !Pending->bStageSelected && Pending->PendingMap.IsEmpty() && CurrentStage != INDEX_NONE)
 	{
 		Pending->SelectedStage = CurrentStage;
 	}

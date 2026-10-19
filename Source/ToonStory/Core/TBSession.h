@@ -67,6 +67,10 @@ private:
 	bool bReturningOffline = false;
 	bool bRoomClosed = false;
 	bool bKicked = false;
+	FString DisconnectReason;
+	TWeakObjectPtr<UWorld> TravelRecoveryWorld;
+	FDelegateHandle EndFrameHandle;
+	void FinishTravelRecovery();
 	FTimerHandle LobbyUpdateTimer;
 	bool bLobbyUpdateInFlight = false;
 	bool bUpdatingLobbyOpen = false;

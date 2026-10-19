@@ -129,6 +129,10 @@ bool ATBGameMode::PlaceInLobby(AController* Player)
 				if (Pawn->TeleportTo(Center, FRotator(0, (Eye - Center).Rotation().Yaw, 0)))
 				{
 					Player->SetControlRotation(Pawn->GetActorRotation());
+					if (auto* PC = Cast<APlayerController>(Player))
+					{
+						PC->ClientSetRotation(Pawn->GetActorRotation(), true);
+					}
 					Pawn->ForceNetUpdate();
 					return true;
 				}
@@ -337,7 +341,7 @@ void ATBGameMode::StartRound(APlayerController* PlayerController)
 			return;
 		}
 	}
-	if (TBLobbySettings::IsLobby(GetWorld()))
+	if (TBLobbySettings::ShouldTravelToStage(GetWorld()))
 	{
 		if (!TBLobbySettings::Travel(this, true) && HostController) HostController->ClientNotice(TEXT("試合ステージへ移動できませんでした。"));
 		return;
@@ -473,7 +477,7 @@ void ATBGameMode::DestroyRoundCharacters()
 {
 	for (TActorIterator<ATBDummyToy> It(GetWorld()); It; ++It)
 	{
-		It->ResetPlacement();
+		It->ResetPlacement(true);
 	}
 	// 運搬の親子関係を解除してから全Pawnを再生成する。
 	// 移動補間、入力、取得途中・収納途中のタイマーも新しいPawnで初期状態になる。
@@ -664,6 +668,8 @@ void ATBGameMode::Logout(AController* Exiting)
 	}
 	auto* MatchInfo = TB::GS(GetWorld());
 	const bool WasPlaying = MatchInfo && MatchInfo->Phase == ETBPhase::Playing;
+	auto* Pending = GetGameInstance()->GetSubsystem<UTBLobbySettings>();
+	if (Pending->bStartOnArrival && Exiting->PlayerState) Pending->bArrivalCancelled = true;
 	if (auto* ToyCharacter = Cast<ATBCharacter>(Exiting->GetPawn()))
 	{
 		ToyCharacter->ClearHeldInteraction();

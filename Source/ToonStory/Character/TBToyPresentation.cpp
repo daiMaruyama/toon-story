@@ -10,8 +10,6 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/SkeletalMesh.h"
 #include "Misc/PackageName.h"
-#include "Materials/MaterialInstanceDynamic.h"
-#include "Materials/Material.h"
 
 int32 TBToyPresentation::SelectionWeight(const UClass* VisualClass)
 {
@@ -44,22 +42,6 @@ void TBToyPresentation::Initialize(AActor* Visual)
 	for (auto* Part : Parts)
 	{
 		Part->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-		if (Visual->GetClass()->GetName().Contains(TEXT("SpaceRanger")))
-		{
-			// Only recolor the plain armor; retain face, sticker and detail materials.
-			for (int32 Slot = 0; Slot < Part->GetNumMaterials(); ++Slot)
-			{
-				const auto* Original = Part->GetMaterial(Slot);
-				if (!Original || Original->GetName() != TEXT("M_plastic_base")) continue;
-				auto* Base = LoadObject<UMaterial>(nullptr, TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
-				if (Base)
-				{
-					auto* Tint = UMaterialInstanceDynamic::Create(Base, Part);
-					Tint->SetVectorParameterValue(TEXT("Color"), FLinearColor(.30f, .42f, .37f));
-					Part->SetMaterial(Slot, Tint);
-				}
-			}
-		}
 		Part->SetComponentTickEnabled(true);
 		Part->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
 		if (Part->LeaderPoseComponent.IsValid() || !Part->GetSkeletalMeshAsset())

@@ -20,10 +20,11 @@ public:
 	int32 ExpectedPlayers = 0;
 	bool bDedicatedLobby = false;
 	bool bStartOnArrival = false;
+	bool bArrivalCancelled = false;
+	bool bStageSelected = false;
 	double ArrivalDeadline = 0;
 
 private:
-	FDelegateHandle TravelFailureHandle;
 	FDelegateHandle MapLoadedHandle;
 };
 namespace TBLobbySettings
@@ -36,5 +37,7 @@ namespace TBLobbySettings
 	bool IsLobby(const UWorld* World);
 	bool Travel(ATBGameMode* Mode, bool StartMatch);
 	void TickArrival(ATBGameMode* Mode);
+	void CancelTravel(UWorld* World);
+	bool ShouldTravelToStage(const UWorld* World);
 	bool HandleClick(ATBController* Controller, FName Name);
 } // namespace TBLobbySettings

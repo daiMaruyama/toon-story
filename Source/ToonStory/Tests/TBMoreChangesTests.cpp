@@ -21,7 +21,7 @@
 #include "Core/TBLobbySettings.h"
 #include "Engine/GameInstance.h"
 #include "Components/SkeletalMeshComponent.h"
-#include "Materials/MaterialInstanceDynamic.h"
+#include "Materials/Material.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBRescueEligibilityTest, "ToonStory.MoreChanges.RescueEligibility",
                                  EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
@@ -53,6 +53,9 @@ bool FTBRescueEligibilityTest::RunTest(const FString& Parameters)
 		State->Phase = Phase;
 		if (Dummy)
 		{
+			const auto OriginalVisual = Dummy->VisualClass;
+			for (int32 I = 0; I < 32; ++I) Dummy->ResetPlacement();
+			TestTrue(TEXT("Cleanup preserves decoy identity"), Dummy->VisualClass == OriginalVisual);
 			Dummy->Destroy();
 		}
 		UGameplayStatics::RemovePlayer(Player, true);
@@ -166,6 +169,9 @@ bool FTBToyWeightsTest::RunTest(const FString& Parameters)
 		{
 			TestEqual(TEXT("Decoys cannot suspend toy capsules"),
 			          Dummy->Collision->GetCollisionResponseToChannel(ECC_GameTraceChannel1), ECR_Ignore);
+			const auto OriginalVisual = Dummy->VisualClass;
+			for (int32 I = 0; I < 32; ++I) Dummy->ResetPlacement();
+			TestTrue(TEXT("Cleanup preserves decoy identity"), Dummy->VisualClass == OriginalVisual);
 			Dummy->Destroy();
 		}
 		for (auto VisualClass : Catalogue)
@@ -182,10 +188,17 @@ bool FTBToyWeightsTest::RunTest(const FString& Parameters)
 			{
 				for (int32 Slot = 0; Slot < Part->GetNumMaterials(); ++Slot)
 				{
-					Tinted += Cast<UMaterialInstanceDynamic>(Part->GetMaterial(Slot)) ? 1 : 0;
+					auto* Material = Part->GetMaterial(Slot);
+					if (!Material || Material->GetName() != TEXT("M_plastic_base")) continue;
+					++Tinted;
+					TestTrue(TEXT("Authored armor supports skeletal meshes before runtime"), Material->GetMaterial()->GetUsageByFlag(MATUSAGE_SkeletalMesh));
+					FLinearColor Color;
+					TestTrue(TEXT("Armor tint is saved in the referenced material"),
+					         Material->GetVectorParameterValue(FMaterialParameterInfo(TEXT("ArmorTint")), Color));
+					TestTrue(TEXT("Authored armor tint matches intended color"), Color.Equals(FLinearColor(.30f, .42f, .37f)));
 				}
 			}
-			TestTrue(TEXT("Ranger armor actually receives runtime tint"), Tinted > 0);
+			TestTrue(TEXT("Ranger uses the cookable authored armor material"), Tinted > 0);
 			Visual->Destroy();
 		}
 	}

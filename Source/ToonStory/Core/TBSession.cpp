@@ -6,6 +6,8 @@
 #include "Audio/TBAudioSubsystem.h"
 #include "Core/TBGameState.h"
 #include "Core/TBGameHelpers.h"
+#include "Core/TBLobbySettings.h"
+#include "Core/TBGameMode.h"
 #include "OnlineSubsystem.h"
 #include "OnlineSubsystemUtils.h"
 #include "Online/OnlineSessionNames.h"
@@ -18,6 +20,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "TimerManager.h"
 #include "Misc/PackageName.h"
+#include "Misc/CoreDelegates.h"
 
 namespace
 {
@@ -28,6 +31,7 @@ namespace
 void UTBSession::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
+	EndFrameHandle = FCoreDelegates::OnEndFrame.AddUObject(this, &UTBSession::FinishTravelRecovery);
 	MapLoadedHandle = FCoreUObjectDelegates::PostLoadMapWithWorld.AddWeakLambda(this, [this](UWorld* World)
 	{
 		if (World && World->GetGameInstance() == GetGameInstance() && bReturningOffline &&
@@ -36,10 +40,11 @@ void UTBSession::Initialize(FSubsystemCollectionBase& Collection)
 			GetGameInstance()->GetTimerManager().ClearTimer(CloseTimer);
 			bReturningOffline = false;
 			CurrentOperation = ESessionOperation::Idle;
-			Message(bKicked ? TEXT("ホストによって部屋から退出しました。") : bRoomClosed ? TEXT("ホストが退出したため、部屋が解散しました。") :
+			Message(bKicked ? TEXT("ホストによって部屋から退出しました。") : bRoomClosed ? TEXT("ホストが退出したため、部屋が解散しました。") : !DisconnectReason.IsEmpty() ? DisconnectReason :
 			    TEXT("Offline. Last match ended; TBHost / TBFind for a new lobby."));
 			bRoomClosed = false;
 			bKicked = false;
+			DisconnectReason.Reset();
 		}
 	});
 	if (GEngine)
@@ -51,6 +56,7 @@ void UTBSession::Initialize(FSubsystemCollectionBase& Collection)
 
 void UTBSession::Deinitialize()
 {
+	FCoreDelegates::OnEndFrame.Remove(EndFrameHandle);
 	FCoreUObjectDelegates::PostLoadMapWithWorld.Remove(MapLoadedHandle);
 	GetGameInstance()->GetTimerManager().ClearTimer(CloseTimer);
 	if (UWorld* World = GetWorld())
@@ -485,13 +491,46 @@ void UTBSession::NetworkFailed(UWorld* World, UNetDriver* Driver, ENetworkFailur
 	if (World->GetNetMode() != NM_Client &&
 	    (Type == ENetworkFailure::ConnectionLost || Type == ENetworkFailure::ConnectionTimeout)) return;
 	UE_LOG(LogTemp, Warning, TEXT("[ToyBoxSession] Connection ended: %s"), *Error);
-	RoomClosed();
+	if (bReturningOffline || CurrentOperation == ESessionOperation::Closing) return;
+	DisconnectReason = TEXT("接続が切れました。通信状況を確認してください。\n") + Error;
+	CurrentOperation = ESessionOperation::Idle;
+	Leave();
 }
 
 void UTBSession::TravelFailed(UWorld* World, ETravelFailure::Type Type, const FString& Error)
 {
-	if (!World || World->GetGameInstance() != GetGameInstance() || bReturningOffline) return;
+	if (!World || World->GetGameInstance() != GetGameInstance() || bReturningOffline ||
+	    CurrentOperation == ESessionOperation::Closing) return;
 	UE_LOG(LogTemp, Warning, TEXT("[ToyBoxSession] Travel failed: %s"), *Error);
+	const FString Reason = TEXT("マップの読み込みに失敗しました。\n") + Error;
 	CurrentOperation = ESessionOperation::Idle;
+	TBLobbySettings::CancelTravel(World);
+	if (World->GetAuthGameMode<ATBGameMode>() && !World->bIsTearingDown)
+	{
+		TravelRecoveryWorld = World;
+		Message(Reason, true);
+		for (auto It = World->GetPlayerControllerIterator(); It; ++It)
+		{
+			if (auto* PC = Cast<ATBController>(It->Get())) PC->ClientNotice(Reason);
+		}
+		return;
+	}
+	DisconnectReason = Reason;
 	Leave();
+}
+
+void UTBSession::FinishTravelRecovery()
+{
+	UWorld* World = TravelRecoveryWorld.Get();
+	TravelRecoveryWorld.Reset();
+	if (!World || World != GetWorld() || World->bIsTearingDown || bReturningOffline ||
+	    CurrentOperation == ESessionOperation::Closing || !World->GetAuthGameMode<ATBGameMode>()) return;
+	// Failure listeners run before or after the engine listener. Wait until end of frame,
+	// after it queues ?closed but before next frame can browse away and destroy the host.
+	if (auto* Context = GEngine->GetWorldContextFromWorld(World))
+	{
+		if (Context->TravelURL == TEXT("?closed")) Context->TravelURL.Reset();
+		if (World->GetNetMode() == NM_ListenServer) Context->LastURL.AddOption(TEXT("listen"));
+	}
+	World->NextURL.Reset();
 }

@@ -174,7 +174,7 @@ void ATBDummyToy::PutDown()
 	Place(Position);
 	SetActorRotation(FRotator(0, Human->GetActorRotation().Yaw, 0));
 }
-void ATBDummyToy::ResetPlacement()
+void ATBDummyToy::ResetPlacement(bool bRandomizeAppearance)
 {
 	if (!HasAuthority())
 	{
@@ -190,8 +190,11 @@ void ATBDummyToy::ResetPlacement()
 	FallSpeed = 0;
 	OnRep_Holder();
 	SetActorTransform(InitialTransform, false, nullptr, ETeleportType::TeleportPhysics);
-	ChooseRandomToy();
-	RefreshVisual();
+	if (bRandomizeAppearance)
+	{
+		ChooseRandomToy();
+		RefreshVisual();
+	}
 	ForceNetUpdate();
 }
 void ATBDummyToy::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const

@@ -102,7 +102,8 @@ void ATBHUD::DrawHUD()
 	{
 		return;
 	}
-	if (State->Phase == ETBPhase::Playing && !PC->IsLeaveMenuOpen())
+	if (State->Phase == ETBPhase::Results || State->Phase == ETBPhase::Aborted ||
+	    (State->Phase == ETBPhase::Playing && !PC->IsLeaveMenuOpen()))
 	{
 		bPlayersOpen = false;
 		KickSelection.Reset();
