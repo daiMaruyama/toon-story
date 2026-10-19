@@ -1,5 +1,6 @@
 #include "TBCharacter.h"
 #include "TBToyPresentation.h"
+#include "Data/TBCharacterData.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -45,7 +46,6 @@ void ATBCharacter::InitializeComfortMovement()
 {
 	GetCharacterMovement()->bOrientRotationToMovement = false;
 	GetCharacterMovement()->bUseControllerDesiredRotation = true;
-	GetCharacterMovement()->RotationRate = FRotator(0, 540.f, 0);
 	GetCharacterMovement()->bCanWalkOffLedgesWhenCrouching = true;
 	GetCharacterMovement()->GetNavAgentPropertiesRef().bCanCrouch = true;
 	GetCharacterMovement()->SetCrouchedHalfHeight(42.f);
@@ -70,12 +70,14 @@ void ATBCharacter::ApplyComfortBody(bool Toy)
 void ATBCharacter::ApplyComfortMovement(bool Toy)
 {
 	auto* Movement = GetCharacterMovement();
+	const auto& Feel = TB::CharacterData();
 	Movement->GetNavAgentPropertiesRef().bCanCrouch = !Toy;
-	Movement->MaxWalkSpeedCrouched = HumanSpeed * .48f;
-	Movement->MaxWalkSpeed = Toy ? ToySpeed * 1.25f : ((CarriedToy || CarriedDummy) ? CarrySpeed : HumanSpeed);
+	Movement->MaxWalkSpeedCrouched = Feel.Human.WalkSpeed * Feel.Human.CrouchSpeedRatio;
+	Movement->MaxWalkSpeed =
+	    Toy ? Feel.Toy.WalkSpeed : ((CarriedToy || CarriedDummy) ? Feel.Human.CarrySpeed : Feel.Human.WalkSpeed);
 	// Follow look yaw while the directional locomotion handles strafing and backward steps.
 	bUseControllerRotationYaw = false;
 	Movement->bUseControllerDesiredRotation = !IsMovementLocked();
 	Movement->bOrientRotationToMovement = false;
-	Movement->RotationRate = FRotator(0, 540.f, 0);
+	Movement->RotationRate = FRotator(0, Feel.View.TurnRate, 0);
 }
