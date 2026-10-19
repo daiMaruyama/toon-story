@@ -98,24 +98,37 @@ bool ATBBoxTV::HasLocalViewer() const
 }
 
 // 目の位置は落下エリアの床から求める。入った直後は、本人のPCに届いている自分の位置がまだ箱の外のことがある。
-void ATBBoxTV::FaceArrival() const
+// 収納と運搬の解除は、クライアントに届く順もTickの順も決まっていない。運搬カメラの解除で視点が水平に戻されるので、
+// それが済むまでは向けずに false を返し、次のTickでやり直す。
+bool ATBBoxTV::FaceArrival() const
 {
 	const UBoxComponent* Area = ATBBox::FindDropArea(GetWorld());
 	if (!Area)
 	{
-		return;
+		return true;
 	}
-	const FVector Floor = Area->GetComponentLocation() - Area->GetUpVector() * Area->GetScaledBoxExtent().Z;
+	TArray<APlayerController*, TInlineAllocator<2>> Arrivals;
 	for (auto It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 	{
 		APlayerController* PC = It->Get();
 		const auto* Player = PC ? PC->GetPlayerState<ATBPlayerState>() : nullptr;
-		if (PC && PC->IsLocalController() && PC->GetPawn() && Player && Player->ToyState == ETBToyState::Boxed)
+		const auto* Pawn = PC ? PC->GetPawn<ATBCharacter>() : nullptr;
+		if (PC && PC->IsLocalController() && Pawn && Player && Player->ToyState == ETBToyState::Boxed)
 		{
-			const FVector Eye = Floor + FVector(0.f, 0.f, PC->GetPawn()->BaseEyeHeight);
-			PC->SetControlRotation((Screen->Bounds.Origin + FVector(0.f, 0.f, ArrivalLookAbove) - Eye).Rotation());
+			if (Pawn->IsCarryViewActive())
+			{
+				return false;
+			}
+			Arrivals.Add(PC);
 		}
 	}
+	const FVector Floor = Area->GetComponentLocation() - Area->GetUpVector() * Area->GetScaledBoxExtent().Z;
+	for (APlayerController* PC : Arrivals)
+	{
+		const FVector Eye = Floor + FVector(0.f, 0.f, PC->GetPawn()->BaseEyeHeight);
+		PC->SetControlRotation((Screen->Bounds.Origin + FVector(0.f, 0.f, ArrivalLookAbove) - Eye).Rotation());
+	}
+	return true;
 }
 
 // 人間はいつでも映せる。おもちゃは掴まれた時点で砂嵐にし、降ろされて自由になれば再び映す。
@@ -292,13 +305,9 @@ void ATBBoxTV::Tick(float DeltaSeconds)
 			ResetChannel();
 		}
 	}
-	// 箱に入れられた瞬間だけ、本人の画面をテレビの少し上へ向ける。向きは本人のPCが持っているので、ここで決める。
+	// 箱に入れられたら一度だけ、本人の画面をテレビの少し上へ向ける。向きは本人のPCが持っているので、ここで決める。
 	const bool bLocalBoxed = GetNetMode() != NM_DedicatedServer && HasLocalViewer();
-	if (bLocalBoxed && !bWasLocalBoxed)
-	{
-		FaceArrival();
-	}
-	bWasLocalBoxed = bLocalBoxed;
+	bFacedArrival = bLocalBoxed && (bFacedArrival || FaceArrival());
 	SetViewing(bPowerOn && bLocalBoxed);
 	// テクスチャは最初の描画で作られるので、できるまでTickで試す。
 	if (bViewing && !bOSDBound)

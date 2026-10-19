@@ -271,12 +271,17 @@ bool FTBStorageHoldTest::RunTest(const FString& Parameters)
 	// この2人テストでは収納で試合終了する。救助は進行中の試合でのみ許可される。
 	State->Phase = ETBPhase::Playing;
 	// 落下エリアとテレビがある部屋では、入った瞬間に本人の画面がテレビの方を向く。
+	// 運搬カメラの解除（視点を水平に戻す）より先にテレビがTickしても、解除の後に見上げる向きになる。
 	if (TActorIterator<ATBBoxTV> TV(World); DropArea && TV)
 	{
+		TestTrue(TEXT("Carry view is still active right after storage"), Toy->IsCarryViewActive());
+		TV->Tick(0);
+		Toy->Tick(0);
 		TV->Tick(0);
 		const FVector ToScreen = (TV->Screen->Bounds.Origin - Toy->GetActorLocation()).GetSafeNormal2D();
-		const FVector Facing = Second->GetControlRotation().Vector().GetSafeNormal2D();
-		TestTrue(TEXT("Arrival faces the television"), FVector::DotProduct(ToScreen, Facing) > .9f);
+		const FVector Facing = Second->GetControlRotation().Vector();
+		TestTrue(TEXT("Arrival faces the television"), FVector::DotProduct(ToScreen, Facing.GetSafeNormal2D()) > .9f);
+		TestTrue(TEXT("Arrival looks up at the television after the carry view is released"), Facing.Z > .1f);
 	}
 	Box->ReleasePrisoners();
 	TestEqual(TEXT("Rescue moves stored toy outside the chest"), ToyInfo->ToyState, ETBToyState::Free);

@@ -105,7 +105,8 @@ private:
 	bool bWasStatic = false;
 	double NoiseUntil = 0;
 	bool bOSDBound = false;
-	bool bWasLocalBoxed = false;
+	// 箱に入った本人の画面を、テレビへ向け終えたか。箱から出ると戻る。
+	bool bFacedArrival = false;
 
 	UFUNCTION()
 	void OnRep_Channel();
@@ -121,7 +122,7 @@ private:
 	void SetChannel(int32 Number);
 	void ResetChannel();
 	bool HasLocalViewer() const;
-	void FaceArrival() const;
+	bool FaceArrival() const;
 	bool IsAvailableTarget(const ATBPlayerState* Player) const;
 	void SetViewing(bool bEnable);
 	void CaptureFrame();
