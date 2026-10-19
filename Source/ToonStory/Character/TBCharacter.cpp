@@ -11,6 +11,7 @@
 #include "GamePlay/TBBox.h"
 #include "GamePlay/TBDummyToy.h"
 #include "GamePlay/TBPickup.h"
+#include "GamePlay/Items/TBInteractable.h"
 #include "GamePlay/TBRuleMath.h"
 #include "Core/TBGameHelpers.h"
 #include "Camera/CameraComponent.h"
@@ -536,6 +537,25 @@ void ATBCharacter::ServerInteract_Implementation()
 		return;
 	}
 	LastRequest = Now;
+	// Trace on the authority: clients cannot supply an arbitrary item or bypass reach/LOS checks.
+	FHitResult ItemHit;
+	const FVector ItemTraceStart = GetPawnViewLocation();
+	FCollisionQueryParams ItemQuery(SCENE_QUERY_STAT(TBItemUse), false, this);
+	if (!HasCarriedToy() && !CarriedDummy && GetWorld()->LineTraceSingleByChannel(ItemHit,
+	    ItemTraceStart, ItemTraceStart + GetControlRotation().Vector() * 350.f, ECC_Visibility, ItemQuery))
+	{
+		if (auto* Item = Cast<ITBInteractable>(ItemHit.GetActor()))
+		{
+			FTBInteractionContext Context;
+			Context.InstigatorCharacter = this;
+			for (const auto& Action : Item->GetInteractionActions())
+			{
+				Context.ActionId = Action.Id;
+				if (Item->CanInteract(Context) && Item->TryInteract(Context)) return;
+			}
+			return;
+		}
+	}
 	bHoldingInteract = true;
 	auto* MatchInfo = TB::GS(GetWorld());
 	ATBBox* Box = MatchInfo ? MatchInfo->Box.Get() : nullptr;

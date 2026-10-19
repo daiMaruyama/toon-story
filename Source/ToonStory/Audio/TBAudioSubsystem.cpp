@@ -67,6 +67,7 @@ void UTBAudioSubsystem::OnWorldCleanup(UWorld* World, bool bSessionEnded, bool b
 	StopOwnedAudio();
 	ReleaseVoiceTracking(); // Voice components are owned/stopped by their talkers.
 	PlaybackWorld.Reset();
+	ToyActionMasks.Reset();
 	MusicState = ETBMusicState::None;
 	bSawPlaying = bResultCuePlayed = false;
 }
@@ -104,6 +105,7 @@ void UTBAudioSubsystem::EnsurePlaybackWorld(UWorld* World)
 		StopOwnedAudio();
 		ReleaseVoiceTracking();
 		PlaybackWorld = World;
+		ToyActionMasks.Reset();
 		MusicState = ETBMusicState::None;
 		bSawPlaying = bResultCuePlayed = false;
 		LastLobbyCount = LastRemainingSecond = -1;
@@ -222,7 +224,8 @@ UAudioComponent* UTBAudioSubsystem::CreateAudio(const FTBAudioClip& Clip, ETBAud
 		}
 	}
 	Audio->SetPitchMultiplier(Pitch);
-	Audio->SetVolumeMultiplier(BaseVolume * GetCategoryVolume(Category));
+	Audio->SetVolumeMultiplier(BaseVolume * GetCategoryVolume(Category) *
+	    (Category == ETBAudioCategory::Effects && Clip.bToyActionSound ? GetToyActionMask() : 1.f));
 	if (auto* Concurrency = Clip.Concurrency.Get()) Audio->ConcurrencySet.Add(Concurrency);
 	if (Audio->bAllowSpatialization)
 	{
@@ -249,7 +252,7 @@ UAudioComponent* UTBAudioSubsystem::CreateAudio(const FTBAudioClip& Clip, ETBAud
 	else Audio->SetWorldLocation(Location);
 	Audio->RegisterComponentWithWorld(World);
 	OwnedComponents.Add(Audio);
-	PlayingSounds.Add({Audio, Category, Event, BaseVolume, bLoop});
+	PlayingSounds.Add({Audio, Category, Event, BaseVolume, bLoop, Category == ETBAudioCategory::Effects && Clip.bToyActionSound});
 	return Audio;
 }
 
@@ -324,8 +327,36 @@ void UTBAudioSubsystem::ApplyVolumes()
 {
 	for (const auto& Playing : PlayingSounds)
 	{
-		if (auto* Audio = Playing.Component.Get()) Audio->SetVolumeMultiplier(Playing.BaseVolume * GetCategoryVolume(Playing.Category));
+		if (auto* Audio = Playing.Component.Get()) Audio->SetVolumeMultiplier(Playing.BaseVolume * GetCategoryVolume(Playing.Category) *
+		    (Playing.bToyActionSound ? GetToyActionMask() : 1.f));
 	}
+}
+
+void UTBAudioSubsystem::SetToyActionMask(AActor* Source, float Multiplier)
+{
+	if (!IsValid(Source) || Source->GetWorld() != GetWorld()) return;
+	EnsurePlaybackWorld(GetWorld());
+	const float Value = SafeVolume(Multiplier);
+	const float* Previous = ToyActionMasks.Find(Source);
+	if (Previous && FMath::IsNearlyEqual(*Previous, Value)) return;
+	ToyActionMasks.Add(Source, Value);
+	ApplyVolumes();
+}
+
+void UTBAudioSubsystem::RemoveToyActionMask(AActor* Source)
+{
+	ToyActionMasks.Remove(Source);
+	ApplyVolumes();
+}
+
+float UTBAudioSubsystem::GetToyActionMask() const
+{
+	float Result = 1.f;
+	for (const auto& Pair : ToyActionMasks)
+	{
+		if (Pair.Key.IsValid()) Result = FMath::Min(Result, Pair.Value);
+	}
+	return Result;
 }
 
 void UTBAudioSubsystem::SetMasterVolume(float Value) { MasterVolume = SafeVolume(Value); ApplyVolumes(); }

@@ -21,6 +21,9 @@ struct TOONSTORY_API FTBAudioClip
 	float Pitch = 1.f;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Audio")
 	bool bSpatial = true;
+	// Opt in for toy movement/actions, including future events. UI/team notifications stay unmasked.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Audio")
+	bool bToyActionSound = false;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Audio")
 	TSoftObjectPtr<USoundAttenuation> Attenuation;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Audio")

@@ -33,6 +33,10 @@ public:
 	uint32 GetSettingsRevision() const { return SettingsRevision; }
 	void TrackVoice(UAudioComponent* Audio);
 	void UntrackVoice(UAudioComponent* Audio);
+	// Local listener modifiers, keyed by source so stopping one device leaves the others active.
+	void SetToyActionMask(AActor* Source, float Multiplier);
+	void RemoveToyActionMask(AActor* Source);
+	float GetToyActionMask() const;
 	UFUNCTION(BlueprintPure, Category = "Toon Story|Audio")
 	ETBMusicState GetMusicState() const { return MusicState; }
 	UFUNCTION(BlueprintPure, Category = "Toon Story|Audio")
@@ -62,8 +66,10 @@ private:
 		ETBSoundEvent Event = ETBSoundEvent::UIClick;
 		float BaseVolume = 1.f;
 		bool bLoop = false;
+		bool bToyActionSound = false;
 	};
 	TArray<FPlayingSound> PlayingSounds;
+	TMap<TWeakObjectPtr<AActor>, float> ToyActionMasks;
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UAudioComponent>> OwnedComponents;
 	UPROPERTY(Transient)
