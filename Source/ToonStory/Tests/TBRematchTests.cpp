@@ -8,6 +8,7 @@
 #include "Core/TBGameMode.h"
 #include "Core/TBGameState.h"
 #include "Core/TBPlayerState.h"
+#include "Data/TBRuleData.h"
 #include "GamePlay/TBBox.h"
 #include "GamePlay/TBBoxTV.h"
 #include "GamePlay/TBPickup.h"
@@ -219,7 +220,7 @@ bool FTBStorageHoldTest::RunTest(const FString& Parameters)
 	Toy->Carrier = Human;
 	Toy->SetToyState(ETBToyState::Carried);
 	Toy->OnRep_Carrier();
-	TestEqual(TEXT("Storage takes three seconds"), Box->StoreSeconds, 3.f);
+	TestEqual(TEXT("Storage takes three seconds"), TB::Rules().Box.StoreSeconds, 3.f);
 	TestTrue(TEXT("Box front accepts storage"), Box->CanStoreFrom(Human));
 	Human->RequestInteract();
 	TestEqual(TEXT("Holding E starts storage"), ToyInfo->ToyState, ETBToyState::Storing);

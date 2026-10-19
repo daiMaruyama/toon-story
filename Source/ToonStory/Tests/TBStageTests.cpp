@@ -13,6 +13,7 @@
 #include "Components/ChildActorComponent.h"
 #include "Character/TBMovement.h"
 #include "Character/TBToyPresentation.h"
+#include "Data/TBCharacterData.h"
 #include "GamePlay/TBBox.h"
 #include "GamePlay/TBPickup.h"
 #include "Components/StaticMeshComponent.h"
@@ -186,7 +187,7 @@ bool FTBResidentialStageTest::RunTest(const FString& Parameters)
 			Player->bFrozen = false;
 			Movement->SetMovementMode(MOVE_Walking);
 			It->SetSprintRequested(true);
-			TestEqual(TEXT("Toy sprint speed"), Movement->GetMaxSpeed(), It->ToySprintSpeed);
+			TestEqual(TEXT("Toy sprint speed"), Movement->GetMaxSpeed(), TB::CharacterData().Toy.SprintSpeed);
 			auto* ToyMovement = CastChecked<UTBMovement>(Movement);
 			auto* Prediction = ToyMovement->GetPredictionData_Client_Character();
 			auto SavedSprint = Prediction->AllocateNewMove();
@@ -194,10 +195,10 @@ bool FTBResidentialStageTest::RunTest(const FString& Parameters)
 			TestTrue(TEXT("Sprint travels with movement packets"),
 			         (SavedSprint->GetCompressedFlags() & FSavedMove_Character::FLAG_Custom_0) != 0);
 			ToyMovement->UpdateFromCompressedFlags(0);
-			TestEqual(TEXT("Released flag restores walking"), Movement->GetMaxSpeed(), It->ToySpeed * 1.25f);
+			TestEqual(TEXT("Released flag restores walking"), Movement->GetMaxSpeed(), TB::CharacterData().Toy.WalkSpeed);
 			SavedSprint->PrepMoveFor(*It);
-			TestEqual(TEXT("Prediction replay restores sprint"), Movement->GetMaxSpeed(), It->ToySprintSpeed);
-			TestEqual(TEXT("Higher toy jump applied"), Movement->JumpZVelocity, It->ToyJumpVelocity);
+			TestEqual(TEXT("Prediction replay restores sprint"), Movement->GetMaxSpeed(), TB::CharacterData().Toy.SprintSpeed);
+			TestEqual(TEXT("Higher toy jump applied"), Movement->JumpZVelocity, TB::CharacterData().Toy.JumpVelocity);
 			Movement->Velocity = FVector(100, 0, 0);
 			It->Tick(0.f);
 			Player->bFrozen = true;

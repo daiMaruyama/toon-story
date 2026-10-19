@@ -7,6 +7,7 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Core/TBGameHelpers.h"
 #include "Core/TBGameState.h"
+#include "Data/TBPresentationData.h"
 #include "GamePlay/TBBox.h"
 
 ATBBoxLid::ATBBoxLid()
@@ -69,9 +70,12 @@ void ATBBoxLid::Tick(float DeltaSeconds)
 		return;
 	}
 	Elapsed += DeltaSeconds;
-	const float Closing = Elapsed - OpenSeconds - HoldSeconds;
-	float Alpha = Elapsed < OpenSeconds ? Elapsed / OpenSeconds : Closing < 0.f ? 1.f : 1.f - Closing / CloseSeconds;
-	const float Flash = Elapsed < OpenSeconds ? Elapsed / OpenSeconds : 1.f - (Elapsed - OpenSeconds) / FlashSeconds;
+	const auto& Lid = TB::PresentationData().Lid;
+	const float Closing = Elapsed - Lid.OpenSeconds - Lid.HoldSeconds;
+	float Alpha =
+	    Elapsed < Lid.OpenSeconds ? Elapsed / Lid.OpenSeconds : Closing < 0.f ? 1.f : 1.f - Closing / Lid.CloseSeconds;
+	const float Flash =
+	    Elapsed < Lid.OpenSeconds ? Elapsed / Lid.OpenSeconds : 1.f - (Elapsed - Lid.OpenSeconds) / Lid.FlashSeconds;
 	SetFlash(FMath::Clamp(Flash, 0.f, 1.f));
 	if (Alpha <= 0.f)
 	{
@@ -89,21 +93,24 @@ void ATBBoxLid::Open()
 		return;
 	}
 	// 開いている途中で次の合図が来たら、閉じずに今の開き具合から開き直す。
-	const float Closing = Elapsed - OpenSeconds - HoldSeconds;
-	Elapsed = Closing > 0.f ? OpenSeconds * FMath::Max(0.f, 1.f - Closing / CloseSeconds) : FMath::Min(Elapsed, OpenSeconds);
+	const auto& Lid = TB::PresentationData().Lid;
+	const float Closing = Elapsed - Lid.OpenSeconds - Lid.HoldSeconds;
+	Elapsed = Closing > 0.f ? Lid.OpenSeconds * FMath::Max(0.f, 1.f - Closing / Lid.CloseSeconds)
+	                        : FMath::Min(Elapsed, Lid.OpenSeconds);
 }
 
 void ATBBoxLid::SetOpen(float Alpha)
 {
+	const auto& Lid = TB::PresentationData().Lid;
 	const float Eased = FMath::SmoothStep(0.f, 1.f, Alpha);
-	Light->SetIntensity(PeakIntensity * Eased);
+	Light->SetIntensity(Lid.PeakIntensity * Eased);
 	if (CeilingMaterial)
 	{
 		CeilingMaterial->SetScalarParameterValue(TEXT("Glow"), Eased);
 	}
 	if (Ceiling)
 	{
-		const FQuat Tilt(FVector::ForwardVector, FMath::DegreesToRadians(OpenAngle * Eased) * OpenSign);
+		const FQuat Tilt(FVector::ForwardVector, FMath::DegreesToRadians(Lid.OpenAngle * Eased) * OpenSign);
 		Ceiling->SetActorLocationAndRotation(Hinge + Tilt.RotateVector(CeilingRest.GetLocation() - Hinge),
 		                                     Tilt * CeilingRest.GetRotation());
 	}
@@ -115,6 +122,6 @@ void ATBBoxLid::SetFlash(float Alpha)
 	{
 		// 光っている間だけ上書きし、終わったら元の設定に戻す。
 		RoomVolume->Settings.bOverride_AutoExposureBias = Alpha > 0.f || bRestExposureOverride;
-		RoomVolume->Settings.AutoExposureBias = RestExposure + FlashExposure * Alpha;
+		RoomVolume->Settings.AutoExposureBias = RestExposure + TB::PresentationData().Lid.FlashExposure * Alpha;
 	}
 }

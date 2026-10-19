@@ -24,9 +24,7 @@ public:
 	TObjectPtr<UStaticMeshComponent> Mesh;
 	UPROPERTY(EditInstanceOnly, Category = "Remote")
 	TObjectPtr<ATBBoxTV> TV;
-	// 立ち位置の揺れや乗り直しで同じ操作が続けて起きないようにする。
-	UPROPERTY(EditAnywhere, Category = "Remote", meta = (ClampMin = "0.0"))
-	float PressCooldown = .5f;
+	// 続けて押せるまでの時間はマスターデータ（TB::PresentationData().Remote）にある。
 
 private:
 	double LastPressTime = -1;

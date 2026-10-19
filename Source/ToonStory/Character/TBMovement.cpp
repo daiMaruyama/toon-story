@@ -2,6 +2,7 @@
 
 #include "TBMovement.h"
 #include "Character/TBCharacter.h"
+#include "Data/TBCharacterData.h"
 #include "GamePlay/TBRuleMath.h"
 #include "GameFramework/PhysicsVolume.h"
 #include "Core/TBPlayerState.h"
@@ -66,7 +67,7 @@ float UTBMovement::GetMaxSpeed() const
 	if (bWantsToSprint && Character && Character->TBPS() && Character->TBPS()->Team == ETBTeam::Toy &&
 	    (IsMovingOnGround() || IsFalling()))
 	{
-		return Character->ToySprintSpeed;
+		return TB::CharacterData().Toy.SprintSpeed;
 	}
 	return Super::GetMaxSpeed();
 }

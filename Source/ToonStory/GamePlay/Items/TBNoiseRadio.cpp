@@ -3,6 +3,7 @@
 #include "Character/TBCharacter.h"
 #include "Core/TBGameHelpers.h"
 #include "Core/TBPlayerState.h"
+#include "Data/TBNoiseRadioData.h"
 #include "Components/AudioComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/TextRenderComponent.h"
@@ -71,6 +72,12 @@ ATBNoiseRadio::ATBNoiseRadio()
 	RadioAudio->bAutoActivate = false;
 	RadioAudio->bAutoDestroy = false;
 	RadioAudio->bStopWhenOwnerDestroyed = true;
+	RadioData = TSoftObjectPtr<UTBNoiseRadioData>(FSoftObjectPath(TEXT("/Game/Data/DA_NoiseRadio.DA_NoiseRadio")));
+}
+
+const UTBNoiseRadioData& ATBNoiseRadio::Data() const
+{
+	return LoadedData ? *LoadedData : *GetDefault<UTBNoiseRadioData>();
 }
 
 void ATBNoiseRadio::OnConstruction(const FTransform& Transform)
@@ -87,6 +94,13 @@ void ATBNoiseRadio::OnConstruction(const FTransform& Transform)
 			Material->SetVectorParameterValue(TEXT("Color"), Color);
 		}
 	}
+}
+
+void ATBNoiseRadio::PostInitializeComponents()
+{
+	Super::PostInitializeComponents();
+	// Clients may receive bRadioOn=true (late join) and run OnRep_RadioOn before BeginPlay.
+	LoadedData = RadioData.LoadSynchronous();
 }
 
 void ATBNoiseRadio::BeginPlay()
@@ -113,9 +127,11 @@ bool ATBNoiseRadio::PerformAction_Implementation(const FTBInteractionContext& Co
 
 float ATBNoiseRadio::GetMaskAtLocation(const FVector& ListenerLocation) const
 {
+	const float MaskRadius = Data().MaskRadius;
 	if (!bRadioOn || !TB::Playing(GetWorld()) || !FMath::IsFinite(MaskRadius) || MaskRadius <= 0.f) return 1.f;
 	const float DistanceAlpha = FMath::Clamp(FVector::Dist(ListenerLocation, GetActorLocation()) / MaskRadius, 0.f, 1.f);
-	const float Minimum = FMath::IsFinite(ToyFootstepMultiplier) ? FMath::Clamp(ToyFootstepMultiplier, 0.f, 1.f) : 1.f;
+	const float ToyActionVolume = Data().ToyActionVolume;
+	const float Minimum = FMath::IsFinite(ToyActionVolume) ? FMath::Clamp(ToyActionVolume, 0.f, 1.f) : 1.f;
 	return FMath::Lerp(Minimum, 1.f, DistanceAlpha);
 }
 
@@ -165,16 +181,19 @@ void ATBNoiseRadio::UpdateLocalPlayback()
 		bLocalPlaying = false;
 		return;
 	}
+	const auto& Settings = Data();
+	USoundBase* LoopSound = Settings.LoopSound;
 	if (!bLocalPlaying)
 	{
 		if (!LoopSound && !PlaceholderSound) BuildPlaceholderSound();
-		RadioAudio->SetSound(LoopSound ? LoopSound.Get() : PlaceholderSound.Get());
+		RadioAudio->SetSound(LoopSound ? LoopSound : PlaceholderSound.Get());
 		FSoundAttenuationSettings Attenuation;
 		Attenuation.bAttenuate = true;
 		Attenuation.bSpatialize = true;
 		Attenuation.DistanceAlgorithm = EAttenuationDistanceModel::Linear;
 		Attenuation.AttenuationShapeExtents = FVector::ZeroVector;
-		Attenuation.FalloffDistance = FMath::IsFinite(AudibleDistance) ? FMath::Max(1.f, AudibleDistance) : 1800.f;
+		Attenuation.FalloffDistance =
+		    FMath::IsFinite(Settings.AudibleDistance) ? FMath::Max(1.f, Settings.AudibleDistance) : 1800.f;
 		RadioAudio->AdjustAttenuation(Attenuation);
 		bLocalPlaying = true;
 	}
@@ -182,7 +201,8 @@ void ATBNoiseRadio::UpdateLocalPlayback()
 	{
 		PlaceholderSound->QueueAudio(PlaceholderPCM.GetData(), PlaceholderPCM.Num());
 	}
-	RadioAudio->SetVolumeMultiplier((FMath::IsFinite(RadioVolume) ? FMath::Clamp(RadioVolume, 0.f, 4.f) : 0.f) *
+	RadioAudio->SetVolumeMultiplier(
+	    (FMath::IsFinite(Settings.RadioVolume) ? FMath::Clamp(Settings.RadioVolume, 0.f, 4.f) : 0.f) *
 	    (Audio ? Audio->GetCategoryVolume(ETBAudioCategory::Effects) : 1.f));
 	if (!RadioAudio->IsPlaying()) RadioAudio->Play();
 	const auto* PC = GI ? GI->GetFirstLocalPlayerController(GetWorld()) : nullptr;

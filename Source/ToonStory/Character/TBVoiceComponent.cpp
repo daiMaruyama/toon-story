@@ -6,6 +6,7 @@
 #include "Core/TBGameHelpers.h"
 #include "Core/TBGameState.h"
 #include "Core/TBPlayerState.h"
+#include "Data/TBRuleData.h"
 #include "GamePlay/TBBox.h"
 #include "Components/AudioComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -153,16 +154,17 @@ void UTBVoiceComponent::UpdateVoice()
 	const auto* Listener = Controller ? Controller->GetPlayerState<ATBPlayerState>() : nullptr;
 	const ETBTeam ListenerTeam = Listener ? Listener->Team : ETBTeam::None;
 	const auto* Match = TB::GS(GetWorld());
-	const bool bEveryone = !bProximityInLobby && Match && Match->Phase == ETBPhase::Lobby;
+	const auto& Voice = TB::Rules().Voice;
+	const bool bEveryone = !Voice.bProximityInLobby && Match && Match->Phase == ETBPhase::Lobby;
 	const float ForcedPitch = CVarForcePitch.GetValueOnGameThread();
 	const float Semitones = ForcedPitch != 0.f ? ForcedPitch : PitchFor(Speaker->Team, ListenerTeam);
-	if (Semitones != AppliedSemitones || PitchDelayLength != AppliedDelayLength)
+	if (Semitones != AppliedSemitones || Voice.PitchDelayLength != AppliedDelayLength)
 	{
 		AppliedSemitones = Semitones;
-		AppliedDelayLength = PitchDelayLength;
+		AppliedDelayLength = Voice.PitchDelayLength;
 		FTBPitchShiftSettings PitchSettings;
 		PitchSettings.Semitones = Semitones;
-		PitchSettings.DelayLength = PitchDelayLength;
+		PitchSettings.DelayLength = Voice.PitchDelayLength;
 		Pitch->SetSettings(PitchSettings);
 	}
 	// 収納部屋は箱から離れた別室なので、中と外の間の声は箱越しに聞かせる。
@@ -183,14 +185,14 @@ void UTBVoiceComponent::UpdateVoice()
 	auto& Shape = Attenuation->Attenuation;
 	Shape.bAttenuate = !bEveryone;
 	Shape.bSpatialize = !bEveryone;
-	Shape.FalloffDistance = WallBox ? BoxedDistance : DistanceFor(Speaker->Team, ListenerTeam);
-	Shape.DistanceAlgorithm = FalloffModel;
-	Shape.CustomAttenuationCurve = FalloffCurve;
+	Shape.FalloffDistance = WallBox ? Voice.BoxedDistance : DistanceFor(Speaker->Team, ListenerTeam);
+	Shape.DistanceAlgorithm = Voice.FalloffModel;
+	Shape.CustomAttenuationCurve = Voice.FalloffCurve;
 	Shape.bAttenuateWithLPF = WallBox != nullptr;
 	Shape.LPFRadiusMin = 0.f;
-	Shape.LPFRadiusMax = BoxedDistance;
-	Shape.LPFFrequencyAtMin = BoxedMuffleFrequency;
-	Shape.LPFFrequencyAtMax = BoxedMuffleFrequency;
+	Shape.LPFRadiusMax = Voice.BoxedDistance;
+	Shape.LPFFrequencyAtMin = Voice.BoxedMuffleFrequency;
+	Shape.LPFFrequencyAtMax = Voice.BoxedMuffleFrequency;
 	ApplyToTalkingAudio();
 }
 
@@ -225,21 +227,27 @@ void UTBVoiceComponent::UpdateMirror()
 
 float UTBVoiceComponent::DistanceFor(ETBTeam SpeakerTeam, ETBTeam ListenerTeam) const
 {
+	const auto& Voice = TB::Rules().Voice;
 	const bool bSpeakerToy = SpeakerTeam == ETBTeam::Toy;
 	if (ListenerTeam == ETBTeam::Toy)
 	{
-		return bSpeakerToy ? ToyToToyDistance : SpeakerTeam == ETBTeam::Human ? HumanToToyDistance : HumanToHumanDistance;
+		if (bSpeakerToy)
+		{
+			return Voice.ToyToToyDistance;
+		}
+		return SpeakerTeam == ETBTeam::Human ? Voice.HumanToToyDistance : Voice.HumanToHumanDistance;
 	}
-	return bSpeakerToy && ListenerTeam == ETBTeam::Human ? ToyToHumanDistance : HumanToHumanDistance;
+	return bSpeakerToy && ListenerTeam == ETBTeam::Human ? Voice.ToyToHumanDistance : Voice.HumanToHumanDistance;
 }
 
 float UTBVoiceComponent::PitchFor(ETBTeam SpeakerTeam, ETBTeam ListenerTeam) const
 {
+	const auto& Voice = TB::Rules().Voice;
 	if (SpeakerTeam == ETBTeam::Human && ListenerTeam == ETBTeam::Toy)
 	{
-		return HumanPitchForToys;
+		return Voice.HumanPitchForToys;
 	}
-	return SpeakerTeam == ETBTeam::Toy && ListenerTeam == ETBTeam::Human ? ToyPitchForHumans : 0.f;
+	return SpeakerTeam == ETBTeam::Toy && ListenerTeam == ETBTeam::Human ? Voice.ToyPitchForHumans : 0.f;
 }
 
 ATBBox* UTBVoiceComponent::FindBox()
