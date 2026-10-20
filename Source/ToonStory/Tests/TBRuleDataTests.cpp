@@ -6,6 +6,9 @@
 #include "Data/TBRuleData.h"
 #include "GameFramework/Actor.h"
 #include "Misc/ScopeExit.h"
+#if WITH_EDITOR
+#include "Misc/DataValidation.h"
+#endif
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBRuleDataTest, "ToonStory.Data.Rules",
 	EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
@@ -30,7 +33,7 @@ bool FTBRuleDataTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Lobby duration range"), FVector(Defaults->Match.MinDuration, Defaults->Match.MaxDuration,
 	                                                 Defaults->Match.DurationStep), FVector(60, 3600, 60));
 	TestEqual(TEXT("Toy voice reaches humans only nearby"), Defaults->Voice.ToyToHumanDistance, 400.f);
-	TestEqual(TEXT("View widens up to 21:9 monitors"), Defaults->Vision.MaxViewAspect, 2.4f);
+	TestEqual(TEXT("Base screen aspect is 16:9"), Defaults->Vision.AspectRatio(), 16.f / 9.f);
 
 	// プロジェクト設定でアセットを選んでいれば、初期値ではなくそのアセットを使う。
 	const auto& Selected = GetDefault<UTBDataSettings>()->RuleData;
@@ -54,4 +57,33 @@ bool FTBRuleDataTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Negative weight is never selected"), TBToyPresentation::SelectionWeight(AActor::StaticClass()), 0);
 	return true;
 }
+
+#if WITH_EDITOR
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBRuleDataValidationTest, "ToonStory.Data.RulesValidation",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FTBRuleDataValidationTest::RunTest(const FString& Parameters)
+{
+	auto Passes = [](const UTBRuleData& Rules)
+	{
+		FDataValidationContext Context;
+		return Rules.IsDataValid(Context) == EDataValidationResult::Valid;
+	};
+	TestTrue(TEXT("Defaults are valid"), Passes(*GetDefault<UTBRuleData>()));
+	TestTrue(TEXT("Selected rule asset is valid"), Passes(TB::Rules()));
+
+	auto* Rules = NewObject<UTBRuleData>();
+	Rules->Vision.FieldOfView = 80.f;
+	TestFalse(TEXT("Aim wider than the screen edge is rejected"), Passes(*Rules));
+	Rules->Aim.AimAngle = 40.f;
+	TestTrue(TEXT("Aim at the screen edge is accepted"), Passes(*Rules));
+
+	Rules->Match.DefaultDuration = Rules->Match.MaxDuration + 60.f;
+	TestFalse(TEXT("Default duration outside the lobby range is rejected"), Passes(*Rules));
+	Rules->Match.DefaultDuration = 600.f;
+	Rules->Match.MinDuration = Rules->Match.MaxDuration + 60.f;
+	TestFalse(TEXT("Reversed duration range is rejected"), Passes(*Rules));
+	return true;
+}
+#endif
 #endif

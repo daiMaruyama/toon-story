@@ -53,8 +53,8 @@ void ATBController::PlayerTick(float DeltaTime)
 	}
 }
 
-// 画面比を測る。上限より横長なら黒帯を出し（ATBCharacter::CalcCamera）、視界の判定もその人に映っている範囲で
-// 行えるよう、変わったときだけサーバーへ伝える。
+// 画面比を測る。基準より横長なら黒帯を出し（ATBCharacter::CalcCamera）、画面が狭い人の視界の判定を映っている
+// 範囲に合わせられるよう、変わったときだけサーバーへ伝える。
 void ATBController::UpdateViewAspect()
 {
 	int32 SizeX = 0;
@@ -78,7 +78,7 @@ void ATBController::UpdateViewAspect()
 
 void ATBController::ServerSetViewAspect_Implementation(float Aspect)
 {
-	// 判定に使う範囲は TB::Rules().Vision の上限で止めるので、ここでは壊れた値だけ弾く。
+	// 判定では基準の画面比より広げる方向には使わないので、ここでは壊れた値だけ弾く。
 	if (FMath::IsFinite(Aspect))
 	{
 		ViewAspect = FMath::Clamp(Aspect, .25f, 8.f);

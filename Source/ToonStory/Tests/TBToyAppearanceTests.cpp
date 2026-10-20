@@ -207,7 +207,14 @@ public:
 			{
 				return true;
 			}
-			Owner = World->SpawnActor<ACharacter>();
+			// 原点に床や壁があるマップでも、当たり判定で出し損ねないようにする。
+			FActorSpawnParameters OwnerSpawn;
+			OwnerSpawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+			Owner = World->SpawnActor<ACharacter>(ACharacter::StaticClass(), FTransform::Identity, OwnerSpawn);
+			if (!Test->TestNotNull(TEXT("Locomotion owner"), Owner.Get()))
+			{
+				return true;
+			}
 			// テスト用の速度が移動処理で上書きされるのを防ぐ。アニメーションは通常更新する。
 			Owner->GetCharacterMovement()->SetComponentTickEnabled(false);
 			FActorSpawnParameters Spawn;
