@@ -30,6 +30,10 @@ struct FTBVisionRules
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "視界",
 	          meta = (DisplayName = "頭と足の判定点", ClampMin = "0", ClampMax = "1"))
 	float BodySampleRatio = .85f;
+	/** 消灯中、この距離以上の人間から見られても凍結しない。0なら距離による制限なし */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "視界",
+	          meta = (DisplayName = "暗い部屋で視線を防ぐ距離", Units = "m", ClampMin = "0"))
+	float DarkProtectionDistanceMeters = 3.f;
 };
 
 USTRUCT(BlueprintType)
