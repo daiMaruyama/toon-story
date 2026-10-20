@@ -680,6 +680,28 @@ void ATBCharacter::RequestDrop()
 	ServerDrop();
 }
 
+void ATBCharacter::RequestTaunt()
+{
+	if (IsLocallyControlled() && CanAct() && TBPS()->Team == ETBTeam::Toy)
+		ServerTaunt();
+}
+
+void ATBCharacter::ServerTaunt_Implementation()
+{
+	TryTaunt();
+}
+
+bool ATBCharacter::TryTaunt()
+{
+	if (!HasAuthority() || !CanAct() || TBPS()->Team != ETBTeam::Toy) return false;
+	const double Now = GetWorld()->GetTimeSeconds();
+	const float Cooldown = FMath::Max(.1f, TB::Rules().Toys.TauntCooldownSeconds);
+	if (Now - LastTauntTime < Cooldown) return false;
+	LastTauntTime = Now;
+	UTBAudioEvents::Emit(this, ETBSoundEvent::ToyTaunt, TBPS(), GetActorLocation());
+	return true;
+}
+
 void ATBCharacter::Forward(float InputValue)
 {
 	if (!IsMovementLocked())
@@ -758,6 +780,7 @@ void ATBCharacter::SetupPlayerInputComponent(UInputComponent* Input)
 	Input->BindAction("Interact", IE_Pressed, this, &ATBCharacter::RequestInteract);
 	Input->BindAction("Interact", IE_Released, this, &ATBCharacter::ReleaseInteract);
 	Input->BindAction("Drop", IE_Pressed, this, &ATBCharacter::RequestDrop);
+	Input->BindAction("Taunt", IE_Pressed, this, &ATBCharacter::RequestTaunt);
 }
 
 void ATBCharacter::ApplyInterruption()

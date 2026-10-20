@@ -286,7 +286,7 @@ void ATBHUD::DrawMatch(const ATBGameState& MatchState, ATBController& Controller
 	         W - 270 * S, 68 * S, PaperFont, .95f * S);
 	PaperPanel(Panel, 24 * S, H - 62 * S, (Child ? 900 : 700) * S, 38 * S);
 	DrawText(Child ? TEXT("WASD 移動 ／ Ctrl しゃがむ ／ Space ジャンプ ／ E つかむ・収納 ／ Q おろす")
-	               : TEXT("WASD 移動 ／ Shift ダッシュ ／ Space ジャンプ ／ E 救助"),
+	               : TEXT("WASD 移動 ／ Shift ダッシュ ／ Space ジャンプ ／ E 救助 ／ F 音を鳴らす"),
 	         Ink, 40 * S, H - 51 * S, PaperFont, .95f * S);
 	if (Player && Player->bFrozen)
 	{

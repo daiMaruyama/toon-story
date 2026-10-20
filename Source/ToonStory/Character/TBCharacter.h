@@ -89,6 +89,11 @@ public:
 	void RequestInteract();
 	void ReleaseInteract();
 	void RequestDrop();
+	void RequestTaunt();
+	/** Validates team, state and cooldown on the server before emitting spatial audio. */
+	bool TryTaunt();
+	UFUNCTION(Server, Reliable)
+	void ServerTaunt();
 	UFUNCTION(Server, Reliable)
 	void ServerInteract();
 	UFUNCTION(Server, Reliable)
@@ -122,6 +127,7 @@ private:
 	void SprintPressed();
 	void SprintReleased();
 	double LastRequest = -1000;
+	double LastTauntTime = -1000;
 	bool bWasPhysicsLocked = false;
 	// 表示用。運ばれているかの正解はCarrier。
 	bool bCarryView = false;
