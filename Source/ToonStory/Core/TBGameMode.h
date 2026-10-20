@@ -51,5 +51,7 @@ private:
 	void ResetStageInteractions();
 	void BuildArena();
 	void EvaluateGaze();
+	bool SpawnNPCs();
+	void RemoveNPCs();
 	int32 SpawnCursor = 0;
 };

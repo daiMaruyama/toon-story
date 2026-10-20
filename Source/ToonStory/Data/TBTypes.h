@@ -55,5 +55,9 @@ struct FTBSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float Duration = 600.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	int32 NPCHumans = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	int32 NPCToys = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	int32 RequiredItems = 5;
 };

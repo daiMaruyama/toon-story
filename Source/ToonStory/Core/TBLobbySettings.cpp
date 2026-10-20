@@ -294,7 +294,15 @@ bool TBLobbySettings::HandleClick(ATBController* Controller, FName Name)
 	}
 	auto Rules = State->Settings;
 	const auto& Match = TB::Rules().Match;
-	if (Name == TEXT("LessTime"))
+	if (Name == TEXT("FewerNPCHumans") || Name == TEXT("MoreNPCHumans"))
+	{
+		Rules.NPCHumans += Name == TEXT("MoreNPCHumans") ? 1 : -1;
+	}
+	else if (Name == TEXT("FewerNPCToys") || Name == TEXT("MoreNPCToys"))
+	{
+		Rules.NPCToys += Name == TEXT("MoreNPCToys") ? 1 : -1;
+	}
+	else if (Name == TEXT("LessTime"))
 	{
 		Rules.Duration = FMath::Max(Match.MinDuration, Rules.Duration - Match.DurationStep);
 	}
