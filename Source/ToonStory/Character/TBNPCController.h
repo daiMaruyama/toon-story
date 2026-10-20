@@ -33,7 +33,8 @@ private:
 	double HumanProgressAt = 0;
 	FVector HumanProgressLocation = FVector::ZeroVector;
 	void ThinkToy(ATBCharacter* Body);
-	void WalkTo(const FVector& Destination, float Acceptance = 20.f);
+	static constexpr float DefaultAcceptanceCm = 20.f;
+	void WalkTo(const FVector& Destination, float Acceptance = DefaultAcceptanceCm);
 	void Wander();
 	bool Exposed(const FVector& Position) const;
 	bool PathExposed(const TArray<FVector>& Points) const;

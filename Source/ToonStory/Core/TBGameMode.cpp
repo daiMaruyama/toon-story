@@ -279,8 +279,9 @@ void ATBGameMode::SyncLobbyCounts()
 	if (!State || State->Phase != ETBPhase::Lobby || State->bTravelPending) return;
 	const int32 Count = LobbyPlayerCount();
 	// Real players take precedence if someone joins after NPC counts were selected.
-	State->Settings.NPCHumans = FMath::Clamp(State->Settings.NPCHumans, 0, FMath::Max(0, 8 - Count));
-	State->Settings.NPCToys = FMath::Clamp(State->Settings.NPCToys, 0, FMath::Max(0, 8 - Count - State->Settings.NPCHumans));
+	const int32 ParticipantLimit = GameSession ? GameSession->MaxPlayers : 0;
+	State->Settings.NPCHumans = FMath::Clamp(State->Settings.NPCHumans, 0, FMath::Max(0, ParticipantLimit - Count));
+	State->Settings.NPCToys = FMath::Clamp(State->Settings.NPCToys, 0, FMath::Max(0, ParticipantLimit - Count - State->Settings.NPCHumans));
 	// Reserve a real player for each team that has no NPC, when both teams can be filled.
 	const int32 MinimumHumans = Count > 0 && State->Settings.NPCHumans == 0 ? 1 : 0;
 	const int32 MaximumHumans = Count > 0 && State->Settings.NPCToys == 0 && (Count > 1 || State->Settings.NPCHumans > 0) ? Count - 1 : Count;
@@ -322,10 +323,12 @@ void ATBGameMode::SetRules(APlayerController* PlayerController, const FTBSetting
 		if (Rules.Toys < 0 || Rules.Toys > Count) return;
 		Adjusted.Humans = Count - Rules.Toys;
 	}
+	const int32 ParticipantLimit = GameSession ? GameSession->MaxPlayers : 0;
+	const int32 NPCLimit = FMath::Max(0, ParticipantLimit - 1); // Reserve a slot for the host.
 	// 下限はロビーの最短より緩め、テスト用コマンドの短い試合も通す。
 	if (!GameSession || Adjusted.Humans < 0 || Adjusted.Toys < 0 ||
-	    Rules.NPCHumans < 0 || Rules.NPCHumans > 7 || Rules.NPCToys < 0 || Rules.NPCToys > 7 ||
-	    int64(Count) + Rules.NPCHumans + Rules.NPCToys > 8 ||
+	    Rules.NPCHumans < 0 || Rules.NPCHumans > NPCLimit || Rules.NPCToys < 0 || Rules.NPCToys > NPCLimit ||
+	    int64(Count) + Rules.NPCHumans + Rules.NPCToys > ParticipantLimit ||
 	    int64(Adjusted.Humans) + Adjusted.Toys != Count || Count > GameSession->MaxPlayers || !FMath::IsFinite(Rules.Duration) ||
 	    Rules.Duration < 10 || Rules.Duration > TB::Rules().Match.MaxDuration || Rules.RequiredItems < 1)
 	{

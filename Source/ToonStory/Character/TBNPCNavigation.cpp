@@ -9,6 +9,12 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"
 
+namespace
+{
+// Padding around starts, batteries and the box for routes around nearby furniture.
+const FVector NavigationPaddingCm(1000, 1000, 300);
+}
+
 bool TBNPCNavigation::Prepare(UWorld* World)
 {
 	auto* Nav = UNavigationSystemV1::GetCurrent(World);
@@ -21,7 +27,7 @@ bool TBNPCNavigation::Prepare(UWorld* World)
 	for (TActorIterator<ATBPickup> It(World); It; ++It) Area += It->GetActorLocation();
 	for (TActorIterator<ATBBox> It(World); It; ++It) Area += It->GetActorLocation();
 	if (!Area.IsValid) return false;
-	Area = Area.ExpandBy(FVector(1000, 1000, 300));
+	Area = Area.ExpandBy(NavigationPaddingCm);
 	auto* Bounds = World->SpawnActor<ANavMeshBoundsVolume>();
 	if (!Bounds) return false;
 	// A box component supplies bounds without authoring/modifying the map's brush asset.

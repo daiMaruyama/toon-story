@@ -21,8 +21,66 @@
 #include "ProfilingDebugging/CpuProfilerTrace.h"
 #include "ProfilingDebugging/CsvProfiler.h"
 
+namespace
+{
+// Distances are centimetres; durations are seconds. Keep tuning separate from decisions.
+constexpr float ThinkIntervalMinSeconds = .25f;
+constexpr float ThinkIntervalMaxSeconds = .4f;
+constexpr float JumpProgressDistanceCm = 8.f;
+constexpr double JumpCooldownSeconds = 1.5;
+constexpr double ProgressCheckSeconds = .6;
+constexpr float MoveGoalChangeCm = 60.f;
+constexpr double MoveRequestIntervalSeconds = 1;
+
+constexpr int32 PatrolCandidates = 6;
+constexpr float PatrolRadiusCm = 1000.f;
+constexpr float PatrolMinDistanceCm = 150.f;
+constexpr int32 PatrolHistorySize = 8;
+constexpr double PatrolTimeoutSeconds = 30;
+
+constexpr float SightRangeCm = 1400.f;
+constexpr float SightHalfAngleCos = .70710678f; // cos(45 degrees): a 90-degree cone.
+constexpr float SightTargetHeightCm = 15.f;
+constexpr float ThreatRangeCm = 1800.f;
+constexpr float ThreatHalfAngleCos = .65f; // Wider cone for cautious cover selection.
+constexpr float ExposureSampleSpacingCm = 150.f;
+
+constexpr double BoxReplanSeconds = 1.5;
+constexpr int32 BoxApproachGridSize = 3;
+constexpr int32 BoxApproachCount = BoxApproachGridSize * BoxApproachGridSize;
+constexpr float BoxDepthStartRatio = .5f;
+constexpr float BoxDepthStepRatio = .15f;
+constexpr float BoxWidthRatio = .65f;
+constexpr float BoxFrontClearanceCm = 20.f;
+const FVector BoxProjectionExtentCm(40, 40, 150);
+constexpr float CloseGoalAcceptanceCm = 5.f;
+const FVector DebugBoxFrontOffsetCm(-100, 0, 0);
+const FVector DebugBoxProjectionExtentCm(100, 100, 300);
+
+constexpr float HumanProgressDistanceCm = 15.f;
+constexpr double HumanProgressCheckSeconds = 4;
+constexpr double UnreachableToyCooldownSeconds = 8;
+constexpr float OverlookMinSeconds = 4.f;
+constexpr float OverlookMaxSeconds = 7.f;
+constexpr double LostToyMemorySeconds = 3;
+constexpr float ChaseAcceptanceCm = 15.f;
+
+constexpr double BatteryMemorySeconds = 12;
+constexpr float BatteryProgressDistanceCm = 10.f;
+constexpr double BatteryProgressTimeoutSeconds = 6;
+constexpr double BlockedBatteryCooldownSeconds = 15;
+constexpr float RouteRecheckMinSeconds = 1.5f;
+constexpr float RouteRecheckMaxSeconds = 2.f;
+constexpr int32 BatteryPathBudget = 3;
+constexpr float ExposedRoutePenaltyCm = 10000.f;
+constexpr int32 CoverCandidates = 4;
+constexpr float CoverRadiusCm = 650.f;
+constexpr float CoverBatteryDistanceWeight = .25f;
+constexpr double CoverHoldSeconds = 1.5;
+}
+
 CSV_DEFINE_CATEGORY(TBNPC, true);
-static TAutoConsoleVariable<int32> CVarNPCHumanDebug(TEXT("tb.NPCHumanDebug"), 0, TEXT("Log NPC human progress every four seconds."));
+static TAutoConsoleVariable<int32> CVarNPCHumanDebug(TEXT("tb.NPCHumanDebug"), 0, TEXT("Log NPC human progress at each progress check."));
 
 ATBNPCController::ATBNPCController()
 {
@@ -46,21 +104,21 @@ void ATBNPCController::Tick(float DeltaSeconds)
 	}
 	const double Now = GetWorld()->GetTimeSeconds();
 	if (Now < NextThink) return;
-	NextThink = Now + FMath::FRandRange(.25f, .4f);
+	NextThink = Now + FMath::FRandRange(ThinkIntervalMinSeconds, ThinkIntervalMaxSeconds);
 	TRACE_CPUPROFILER_EVENT_SCOPE(TBNPC_Think);
 	CSV_SCOPED_TIMING_STAT(TBNPC, Think);
 	// Navigation includes low obstacles that fit a normal jump. Recover without teleporting.
 	if (Now >= CheckProgressAt)
 	{
 		if (GetMoveStatus() == EPathFollowingStatus::Moving &&
-		    FVector::DistSquared2D(ProgressLocation, Body->GetActorLocation()) < FMath::Square(8.f) &&
+		    FVector::DistSquared2D(ProgressLocation, Body->GetActorLocation()) < FMath::Square(JumpProgressDistanceCm) &&
 		    Body->GetCharacterMovement()->IsMovingOnGround() && Now >= NextJumpAt)
 		{
 			Body->Jump();
-			NextJumpAt = Now + 1.5;
+			NextJumpAt = Now + JumpCooldownSeconds;
 		}
 		ProgressLocation = Body->GetActorLocation();
-		CheckProgressAt = Now + .6;
+		CheckProgressAt = Now + ProgressCheckSeconds;
 	}
 	if (Body->IsHuman()) ThinkHuman(Body);
 	else ThinkToy(Body);
@@ -69,8 +127,8 @@ void ATBNPCController::Tick(float DeltaSeconds)
 void ATBNPCController::WalkTo(const FVector& Destination, float Acceptance)
 {
 	const double Now = GetWorld()->GetTimeSeconds();
-	if (Now < NextWalk && FVector::DistSquared(WalkGoal, Destination) < FMath::Square(60.f)) return;
-	NextWalk = Now + 1;
+	if (Now < NextWalk && FVector::DistSquared(WalkGoal, Destination) < FMath::Square(MoveGoalChangeCm)) return;
+	NextWalk = Now + MoveRequestIntervalSeconds;
 	WalkGoal = Destination;
 	MoveToLocation(Destination, Acceptance, false, true, true, false, nullptr, false);
 }
@@ -89,22 +147,22 @@ void ATBNPCController::Wander()
 	if (!Data) return;
 	FVector Best = Origin;
 	float BestScore = 0;
-	for (int32 Attempt = 0; Attempt < 6; ++Attempt)
+	for (int32 Attempt = 0; Attempt < PatrolCandidates; ++Attempt)
 	{
 		FNavLocation Point;
-		if (!Nav->GetRandomReachablePointInRadius(Origin, 1000.f, Point, Data)) continue;
+		if (!Nav->GetRandomReachablePointInRadius(Origin, PatrolRadiusCm, Point, Data)) continue;
 		float Score = FVector::Dist2D(Origin, Point.Location);
-		if (Score < 150.f) continue;
+		if (Score < PatrolMinDistanceCm) continue;
 		for (const FVector& Visited : VisitedPlaces) Score = FMath::Min(Score, float(FVector::Dist2D(Visited, Point.Location)));
 		if (Score > BestScore) { BestScore = Score; Best = Point.Location; }
 	}
 	if (BestScore > 0)
 	{
 		VisitedPlaces.Add(Origin);
-		if (VisitedPlaces.Num() > 8) VisitedPlaces.RemoveAt(0);
+		if (VisitedPlaces.Num() > PatrolHistorySize) VisitedPlaces.RemoveAt(0);
 		NextWalk = 0;
 		WalkTo(Best);
-		WanderUntil = Now + 30;
+		WanderUntil = Now + PatrolTimeoutSeconds;
 	}
 }
 
@@ -113,11 +171,11 @@ bool ATBNPCController::CanSee(const AActor* Actor) const
 	const APawn* Body = GetPawn();
 	if (!Body || !IsValid(Actor) || Actor == Body || Actor->IsHidden()) return false;
 	const FVector Eye = Body->GetPawnViewLocation();
-	const FVector Point = Actor->GetActorLocation() + FVector(0, 0, 15);
+	const FVector Point = Actor->GetActorLocation() + FVector(0, 0, SightTargetHeightCm);
 	const FVector Delta = Point - Eye;
 	// Both teams use the same 90-degree cone and 14-metre sight range.
-	if (Delta.SizeSquared() > FMath::Square(1400.f) ||
-	    FVector::DotProduct(GetControlRotation().Vector(), Delta.GetSafeNormal()) < .70710678f) return false;
+	if (Delta.SizeSquared() > FMath::Square(SightRangeCm) ||
+	    FVector::DotProduct(GetControlRotation().Vector(), Delta.GetSafeNormal()) < SightHalfAngleCos) return false;
 	FCollisionQueryParams Query(SCENE_QUERY_STAT(NPCSight), true, Body);
 	Query.AddIgnoredActor(Actor);
 	return !GetWorld()->LineTraceTestByChannel(Eye, Point, ECC_Visibility, Query);
@@ -149,25 +207,25 @@ void ATBNPCController::CarryToBox(ATBCharacter* Body, ATBBox* Box)
 	Body->ClearHeldInteraction();
 	const double Now = GetWorld()->GetTimeSeconds();
 	if (Now < NextBoxPlan) return;
-	NextBoxPlan = Now + 1.5;
+	NextBoxPlan = Now + BoxReplanSeconds;
 	auto* Nav = UNavigationSystemV1::GetCurrent(GetWorld());
 	const auto* Data = Nav ? Nav->GetNavDataForProps(GetNavAgentPropertiesRef(), Body->GetActorLocation()) : nullptr;
 	if (!Data) return;
 	// Try different positions across the box front instead of retrying one blocked point forever.
 	const FVector Reach = TB::Rules().Box.StoreReach;
-	for (int32 Attempt = 0; Attempt < 9; ++Attempt)
+	for (int32 Attempt = 0; Attempt < BoxApproachCount; ++Attempt)
 	{
-		const int32 Index = (BoxApproach + Attempt) % 9;
-		const FVector Local(-Reach.X * (.5f + .15f * (Index / 3)),
-		                    Reach.Y * .65f * ((Index % 3) - 1), 0);
+		const int32 Index = (BoxApproach + Attempt) % BoxApproachCount;
+		const FVector Local(-Reach.X * (BoxDepthStartRatio + BoxDepthStepRatio * (Index / BoxApproachGridSize)),
+		                    Reach.Y * BoxWidthRatio * ((Index % BoxApproachGridSize) - BoxApproachGridSize / 2), 0);
 		FNavLocation Goal;
-		if (!Nav->ProjectPointToNavigation(Box->GetActorTransform().TransformPosition(Local), Goal, FVector(40,40,150), Data)) continue;
+		if (!Nav->ProjectPointToNavigation(Box->GetActorTransform().TransformPosition(Local), Goal, BoxProjectionExtentCm, Data)) continue;
 		const FVector Projected = Box->GetActorTransform().InverseTransformPosition(Goal.Location);
-		if (Projected.X >= -20 || Projected.X < -Reach.X || FMath::Abs(Projected.Y) > Reach.Y) continue;
+		if (Projected.X >= -BoxFrontClearanceCm || Projected.X < -Reach.X || FMath::Abs(Projected.Y) > Reach.Y) continue;
 		auto* Path = UNavigationSystemV1::FindPathToLocationSynchronously(GetWorld(), Body->GetActorLocation(), Goal.Location, this);
 		if (!Path || !Path->IsValid() || Path->IsPartial()) continue;
 		BoxApproach = Index;
-		WalkTo(Goal.Location, 5.f);
+		WalkTo(Goal.Location, CloseGoalAcceptanceCm);
 		return;
 	}
 	StopMovement();
@@ -194,9 +252,9 @@ void ATBNPCController::ThinkHuman(ATBCharacter* Body)
 				auto* Nav = UNavigationSystemV1::GetCurrent(GetWorld());
 				const auto& Props = GetNavAgentPropertiesRef();
 				const auto* Data = Nav ? Nav->GetNavDataForProps(Props, Body->GetActorLocation()) : nullptr;
-				const FVector Front = Box->GetActorTransform().TransformPosition(FVector(-100, 0, 0));
+				const FVector Front = Box->GetActorTransform().TransformPosition(DebugBoxFrontOffsetCm);
 				FNavLocation Projected;
-				const bool OnNav = Data && Nav->ProjectPointToNavigation(Front, Projected, FVector(100,100,300), Data);
+				const bool OnNav = Data && Nav->ProjectPointToNavigation(Front, Projected, DebugBoxProjectionExtentCm, Data);
 				auto* Path = OnNav ? UNavigationSystemV1::FindPathToLocationSynchronously(GetWorld(), Body->GetActorLocation(), Projected.Location, this) : nullptr;
 				UE_LOG(LogTemp, Display, TEXT("[NPCCarry] data=%s agent=%.1f/%.1f box=%s projected=%d %s path=%d partial=%d points=%d"),
 				 *GetNameSafe(Data), Props.AgentRadius, Props.AgentHeight, *Front.ToCompactString(), OnNav, *Projected.Location.ToCompactString(),
@@ -206,20 +264,20 @@ void ATBNPCController::ThinkHuman(ATBCharacter* Body)
 			}
 		}
 
-		if (HumanProgressAt > 0 && FVector::DistSquared2D(HumanProgressLocation, Body->GetActorLocation()) < FMath::Square(15.f))
+		if (HumanProgressAt > 0 && FVector::DistSquared2D(HumanProgressLocation, Body->GetActorLocation()) < FMath::Square(HumanProgressDistanceCm))
 		{
 			++BoxApproach;
 			NextWalk = 0;
 			NextBoxPlan = 0;
 			if (!Body->HasCarriedToy() && Target.IsValid())
 			{
-				OverlookUntil.Add(Target, Now + 8);
+				OverlookUntil.Add(Target, Now + UnreachableToyCooldownSeconds);
 				Target.Reset();
 				StopMovement();
 			}
 		}
 		HumanProgressLocation = Body->GetActorLocation();
-		HumanProgressAt = Now + 4;
+		HumanProgressAt = Now + HumanProgressCheckSeconds;
 	}
 	if (Body->HasCarriedToy())
 	{
@@ -269,7 +327,7 @@ void ATBNPCController::ThinkHuman(ATBCharacter* Body)
 			RecognizeAt = Now + RecognitionSeconds;
 			if (FMath::FRand() < OverlookChance)
 			{
-				OverlookUntil.Add(TWeakObjectPtr<AActor>(Seen), Now + FMath::FRandRange(4.f, 7.f));
+				OverlookUntil.Add(TWeakObjectPtr<AActor>(Seen), Now + FMath::FRandRange(OverlookMinSeconds, OverlookMaxSeconds));
 				PendingTarget.Reset();
 				Seen = nullptr;
 			}
@@ -285,14 +343,14 @@ void ATBNPCController::ThinkHuman(ATBCharacter* Body)
 		PendingTarget.Reset();
 		Target = Seen;
 		LastSeen = Seen->GetActorLocation();
-		ForgetAt = Now + 3;
+		ForgetAt = Now + LostToyMemorySeconds;
 		SetFocus(Seen);
 		if (Nearest <= FMath::Square(TB::Rules().Aim.CaptureDistance) && TB::FindInteractionTarget(Body).Actor == Seen)
 		{
 			StopMovement();
 			Body->RequestInteract();
 		}
-		else WalkTo(LastSeen, 15.f);
+		else WalkTo(LastSeen, ChaseAcceptanceCm);
 	}
 	else
 	{
@@ -310,12 +368,12 @@ bool ATBNPCController::Exposed(const FVector& Position) const
 		auto* It = Human.Get();
 		if (!It || ATBRoomLighting::ProtectsFromGaze(GetWorld(), Position, It->GetActorLocation())) continue;
 		const FVector Eye = It->GetPawnViewLocation();
-		const FVector Delta = Position + FVector(0, 0, 15) - Eye;
-		if (Delta.SizeSquared() > FMath::Square(1800.f) ||
-		    FVector::DotProduct(It->GetControlRotation().Vector(), Delta.GetSafeNormal()) < .65f) continue;
+		const FVector Delta = Position + FVector(0, 0, SightTargetHeightCm) - Eye;
+		if (Delta.SizeSquared() > FMath::Square(ThreatRangeCm) ||
+		    FVector::DotProduct(It->GetControlRotation().Vector(), Delta.GetSafeNormal()) < ThreatHalfAngleCos) continue;
 		FCollisionQueryParams Query(SCENE_QUERY_STAT(NPCCover), true, It);
 		Query.AddIgnoredActor(GetPawn());
-		if (!GetWorld()->LineTraceTestByChannel(Eye, Position + FVector(0, 0, 15), ECC_Visibility, Query))
+		if (!GetWorld()->LineTraceTestByChannel(Eye, Position + FVector(0, 0, SightTargetHeightCm), ECC_Visibility, Query))
 			return true;
 	}
 	return false;
@@ -325,7 +383,7 @@ bool ATBNPCController::PathExposed(const TArray<FVector>& Points) const
 {
 	for (int32 Index = 1; Index < Points.Num(); ++Index)
 	{
-		const int32 Samples = FMath::Max(1, FMath::CeilToInt(FVector::Dist(Points[Index - 1], Points[Index]) / 150.f));
+		const int32 Samples = FMath::Max(1, FMath::CeilToInt(FVector::Dist(Points[Index - 1], Points[Index]) / ExposureSampleSpacingCm));
 		for (int32 Sample = 1; Sample <= Samples; ++Sample)
 			if (Exposed(FMath::Lerp(Points[Index - 1], Points[Index], float(Sample) / Samples))) return true;
 	}
@@ -354,11 +412,11 @@ void ATBNPCController::ThinkToy(ATBCharacter* Body)
 	const bool Danger = Exposed(Origin);
 	if (GetWorld()->GetTimeSeconds() < CoverUntil && !Exposed(CoverGoal))
 	{
-		WalkTo(CoverGoal, 5.f);
+		WalkTo(CoverGoal, CloseGoalAcceptanceCm);
 		return;
 	}
 	// Remember a discovered stationary battery briefly while turning around furniture.
-	if (BatteryTarget.IsValid() && CanSee(BatteryTarget.Get())) BatteryVisibleUntil = Now + 12;
+	if (BatteryTarget.IsValid() && CanSee(BatteryTarget.Get())) BatteryVisibleUntil = Now + BatteryMemorySeconds;
 	if (BatteryTarget.IsValid() && Now >= BatteryVisibleUntil)
 	{
 		BatteryTarget.Reset();
@@ -369,15 +427,15 @@ void ATBNPCController::ThinkToy(ATBCharacter* Body)
 	if (BatteryTarget.IsValid() && !BatteryTarget->bTaken)
 	{
 		const float Distance = FVector::Dist2D(Origin, BatteryTarget->GetActorLocation());
-		if (Distance < ClosestBatteryDistance - 10.f)
+		if (Distance < ClosestBatteryDistance - BatteryProgressDistanceCm)
 		{
 			ClosestBatteryDistance = Distance;
-			BatteryProgressAt = Now + 6;
+			BatteryProgressAt = Now + BatteryProgressTimeoutSeconds;
 		}
 		else if (Now >= BatteryProgressAt)
 		{
 			BlockedBattery = BatteryTarget;
-			RetryBatteryAt = Now + 15;
+			RetryBatteryAt = Now + BlockedBatteryCooldownSeconds;
 			BatteryTarget.Reset();
 			StopMovement();
 		}
@@ -391,11 +449,11 @@ void ATBNPCController::ThinkToy(ATBCharacter* Body)
 		{
 			auto* Path = UNavigationSystemV1::FindPathToLocationSynchronously(GetWorld(), Origin, BatteryTarget->GetActorLocation(), this);
 			Safe = Path && Path->IsValid() && !Path->IsPartial() && !PathExposed(Path->PathPoints);
-			ReplanAt = Now + FMath::FRandRange(1.5f, 2.f);
+			ReplanAt = Now + FMath::FRandRange(RouteRecheckMinSeconds, RouteRecheckMaxSeconds);
 		}
 		if (Safe)
 		{
-			WalkTo(BatteryTarget->GetActorLocation(), 5.f);
+			WalkTo(BatteryTarget->GetActorLocation(), CloseGoalAcceptanceCm);
 			return;
 		}
 	}
@@ -413,14 +471,14 @@ void ATBNPCController::ThinkToy(ATBCharacter* Body)
 	bool Found = false;
 	bool UnsafeRoute = false;
 	// Bound synchronous work per decision; rotate candidates so unreachable nearby items cannot starve others.
-	const int32 Budget = FMath::Min(3, Batteries.Num());
+	const int32 Budget = FMath::Min(BatteryPathBudget, Batteries.Num());
 	for (int32 Index = 0; Index < Budget; ++Index)
 	{
 		auto* It = Batteries[(BatteryCursor + Index) % Batteries.Num()];
 		auto* Path = UNavigationSystemV1::FindPathToLocationSynchronously(GetWorld(), Origin, It->GetActorLocation(), this);
 		if (!Path || !Path->IsValid() || Path->IsPartial()) continue;
 		const bool Unsafe = PathExposed(Path->PathPoints);
-		const float Score = Path->GetPathLength() + (Unsafe ? 10000.f : 0.f);
+		const float Score = Path->GetPathLength() + (Unsafe ? ExposedRoutePenaltyCm : 0.f);
 		if (Score < BestScore)
 		{
 			BestScore = Score;
@@ -432,12 +490,12 @@ void ATBNPCController::ThinkToy(ATBCharacter* Body)
 	}
 	if (BatteryTarget.IsValid() && BatteryTarget != PreviousBattery)
 	{
-		BatteryVisibleUntil = Now + 12;
+		BatteryVisibleUntil = Now + BatteryMemorySeconds;
 		ClosestBatteryDistance = FVector::Dist2D(Origin, BatteryTarget->GetActorLocation());
-		BatteryProgressAt = Now + 6;
+		BatteryProgressAt = Now + BatteryProgressTimeoutSeconds;
 	}
 	BatteryCursor = Batteries.Num() ? (BatteryCursor + Budget) % Batteries.Num() : 0;
-	ReplanAt = Now + FMath::FRandRange(1.5f, 2.f);
+	ReplanAt = Now + FMath::FRandRange(RouteRecheckMinSeconds, RouteRecheckMaxSeconds);
 	// When threatened, prefer nearby cover over crossing an exposed route to a battery.
 	if (Danger || UnsafeRoute)
 	{
@@ -445,13 +503,13 @@ void ATBNPCController::ThinkToy(ATBCharacter* Body)
 		const FVector BatteryGoal = Best;
 		Found = false;
 		BestScore = TNumericLimits<float>::Max();
-		for (int32 Attempt = 0; Attempt < 4; ++Attempt)
+		for (int32 Attempt = 0; Attempt < CoverCandidates; ++Attempt)
 		{
 			FNavLocation Cover;
-			if (!Nav->GetRandomReachablePointInRadius(Origin, 650.f, Cover, Data) || Exposed(Cover.Location)) continue;
+			if (!Nav->GetRandomReachablePointInRadius(Origin, CoverRadiusCm, Cover, Data) || Exposed(Cover.Location)) continue;
 			auto* Path = UNavigationSystemV1::FindPathToLocationSynchronously(GetWorld(), Origin, Cover.Location, this);
 			if (!Path || !Path->IsValid() || Path->IsPartial() || PathExposed(Path->PathPoints)) continue;
-			const float Score = Path->GetPathLength() + FVector::Dist(BatteryGoal, Cover.Location) * .25f;
+			const float Score = Path->GetPathLength() + FVector::Dist(BatteryGoal, Cover.Location) * CoverBatteryDistanceWeight;
 			if (Score < BestScore)
 			{
 				BestScore = Score;
@@ -462,10 +520,10 @@ void ATBNPCController::ThinkToy(ATBCharacter* Body)
 		if (Found)
 		{
 			CoverGoal = Best;
-			CoverUntil = GetWorld()->GetTimeSeconds() + 1.5;
+			CoverUntil = GetWorld()->GetTimeSeconds() + CoverHoldSeconds;
 		}
 	}
-	if (Found) WalkTo(Best, 5.f);
+	if (Found) WalkTo(Best, CloseGoalAcceptanceCm);
 	else if (Danger) StopMovement();
 	else Wander();
 }

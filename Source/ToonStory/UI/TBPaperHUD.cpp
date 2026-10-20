@@ -194,8 +194,8 @@ void ATBHUD::DrawLobby()
 	}
 	const bool CanEditNPC = PC->HasAuthority() && !State->bTravelPending;
 	const int32 NPCCount = State->Settings.NPCHumans + State->Settings.NPCToys;
-	const bool CanAddNPC = State->Settings.Humans + State->Settings.Toys + NPCCount < 8;
-	Text(TEXT("NPC（0人で参加なし・参加者と合わせて8人まで）"), 48, 356, .85f, Muted);
+	const bool CanAddNPC = State->Settings.Humans + State->Settings.Toys + NPCCount < State->PlayerLimit;
+	Text(FString::Printf(TEXT("NPC（0人で参加なし・参加者と合わせて%d人まで）"), State->PlayerLimit), 48, 356, .85f, Muted);
 	Text(FString::Printf(TEXT("にんげんNPC  %d人"), State->Settings.NPCHumans), 48, 390, .95f, Ink);
 	Button(TEXT("FewerNPCHumans"), TEXT("-"), 250, 382, 50, CanEditNPC && State->Settings.NPCHumans > 0, false, 36);
 	Button(TEXT("MoreNPCHumans"), TEXT("+"), 308, 382, 50, CanEditNPC && CanAddNPC, false, 36);
