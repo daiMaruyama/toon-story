@@ -8,6 +8,7 @@
 
 class ATBCharacter;
 class ATBBox;
+class UTBEventDirector;
 
 /** サーバー専用の試合管理。開始条件・視線凍結・勝敗を判断する。 */
 UCLASS()
@@ -46,6 +47,8 @@ public:
 	TArray<TObjectPtr<AActor>> SpawnPoints;
 
 private:
+	UPROPERTY(VisibleAnywhere, Category = "Events")
+	TObjectPtr<UTBEventDirector> EventDirector;
 	int32 LobbyPlayerCount() const;
 	void DestroyRoundCharacters();
 	void ResetStageInteractions();
