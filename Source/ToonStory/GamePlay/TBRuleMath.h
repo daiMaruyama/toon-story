@@ -5,6 +5,13 @@
 // UEに依存しないルール計算。ゲーム本体と単体テストで同じ式を使う。
 namespace TBRuleMath
 {
+	// UE distances are centimeters. At exactly N meters the toy is protected.
+	inline bool DarknessProtects(bool LightsOn, double DistanceSquaredCm, float DistanceMeters)
+	{
+		const double DistanceCm = (DistanceMeters > 0.f ? DistanceMeters : 0.f) * 100.0;
+		return !LightsOn && DistanceSquaredCm >= DistanceCm * DistanceCm;
+	}
+
 	// 上昇は止めるが、すでに落下している速度は残す。
 	inline float FrozenVerticalSpeed(float Speed)
 	{

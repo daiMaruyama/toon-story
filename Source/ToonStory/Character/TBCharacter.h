@@ -82,6 +82,7 @@ public:
 	void ApplyState();
 	bool HasCarriedToy() const { return CarriedToy || CarriedDummy; }
 	void SetFrozen(bool Value);
+	bool CanBeFrozenBy(const ATBCharacter* Observer) const;
 	void SetToyState(ETBToyState Value);
 	void ClearHeldInteraction();
 	void DropToy();
