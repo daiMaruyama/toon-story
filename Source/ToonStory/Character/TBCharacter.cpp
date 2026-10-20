@@ -6,6 +6,7 @@
 #include "Core/TBPlayerState.h"
 #include "Core/TBGameState.h"
 #include "Core/TBGameMode.h"
+#include "Core/TBController.h"
 #include "Character/TBMovement.h"
 #include "Character/TBVoiceComponent.h"
 #include "Audio/TBCharacterAudioComponent.h"
@@ -51,9 +52,6 @@ ATBCharacter::ATBCharacter(const FObjectInitializer& Init)
 	Camera = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
 	Camera->SetupAttachment(GetRootComponent());
 	Camera->bUsePawnControlRotation = true;
-	Camera->FieldOfView = 90.f;
-	Camera->AspectRatio = 16.f / 9.f;
-	Camera->bConstrainAspectRatio = false;
 	Camera->SetRelativeLocation(FVector(0, 0, 64));
 	CarryCameraArm = CreateDefaultSubobject<USpringArmComponent>(TEXT("CarryCameraArm"));
 	CarryCameraArm->SetupAttachment(GetRootComponent());
@@ -65,7 +63,6 @@ ATBCharacter::ATBCharacter(const FObjectInitializer& Init)
 	CarryCameraArm->bEnableCameraLag = false;
 	CarryCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("CarryCamera"));
 	CarryCamera->SetupAttachment(CarryCameraArm, USpringArmComponent::SocketName);
-	CarryCamera->FieldOfView = 90.f;
 	CarryCamera->SetAutoActivate(false);
 	Body = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Body"));
 	// 表示する身体も運搬カメラと同じ補間に追従させる。
@@ -95,9 +92,13 @@ void ATBCharacter::BeginPlay()
 	ChildAnimation.LoadSynchronous();
 	GetMesh()->SetOwnerNoSee(true);
 	GetMesh()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	// 視界判定と同じ視野角で映す。運ばれている間も同じにして、切り替えのたびに視野角が伸び縮みしないようにする。
-	Camera->FieldOfView = TB::Rules().Vision.FieldOfView;
+	// 視界判定と同じ視野角・基準の画面比で映す。運ばれている間も同じにして、切り替えのたびに視野角が伸び縮みしないようにする。
+	// 縦の視野は基準の画面比で決まり、狭い画面では横だけ狭く映る（判定も同じ範囲）。
+	const auto& Vision = TB::Rules().Vision;
+	Camera->FieldOfView = Vision.FieldOfView;
+	Camera->AspectRatio = Vision.AspectRatio();
 	CarryCamera->FieldOfView = Camera->FieldOfView;
+	CarryCamera->AspectRatio = Camera->AspectRatio;
 	const auto& CarryView = TB::CharacterData().CarryCamera;
 	CarryCameraArm->TargetArmLength = CarryView.ArmLength;
 	CarryCameraArm->TargetOffset = FVector(0, 0, CarryView.LookHeight);
@@ -391,6 +392,13 @@ void ATBCharacter::UpdateCarryCamera()
 void ATBCharacter::CalcCamera(float DeltaTime, FMinimalViewInfo& OutResult)
 {
 	Super::CalcCamera(DeltaTime, OutResult);
+	// カメラの画面比（BeginPlay で基準の画面比にしてある）より横長の画面は、左右に黒帯を出して見えすぎを防ぐ。
+	// 1366×768 など、ほぼ同じ比率の画面に細い黒帯が出ないよう、1% までの差は許す。
+	const auto* Player = Cast<ATBController>(GetController());
+	if (Player && Player->ViewAspect > OutResult.AspectRatio * 1.01f)
+	{
+		OutResult.bConstrainAspectRatio = true;
+	}
 	// 箱への収納など瞬間移動を伴う切替はつながず、壁越しに視点が流れるのを防ぐ。降ろす位置は1m程度。
 	const FVector ActorLocation = GetActorLocation();
 	const bool bTeleported =

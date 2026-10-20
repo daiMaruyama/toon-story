@@ -129,7 +129,7 @@ bool ATBGameMode::PlaceInLobby(AController* Player)
 				const FVector View = Camera->GetComponentTransform().InverseTransformPosition(Center);
 				const float TanHalfFOV = FMath::Tan(FMath::DegreesToRadians(Camera->FieldOfView * .5f));
 				if (View.X < 100 || FMath::Abs(View.Y) + Radius > View.X * TanHalfFOV * .8f ||
-				    FMath::Abs(View.Z) + HalfHeight > View.X * TanHalfFOV / 1.7778f * .8f) continue;
+				    FMath::Abs(View.Z) + HalfHeight > View.X * TanHalfFOV / Camera->AspectRatio * .8f) continue;
 				FCollisionQueryParams VisibilityQuery = Query;
 				VisibilityQuery.bTraceComplex = true;
 				FHitResult Obstacle;
@@ -551,8 +551,11 @@ bool ATBGameMode::Watched(ATBCharacter* Toy, ATBCharacter* Human) const
 	const FVector Up = Basis.GetUnitAxis(EAxis::Z);
 	// 視野角と画面比率から、画面の端より少し内側を判定範囲にする。
 	const auto& Vision = TB::Rules().Vision;
-	const auto Half =
-	    TBRuleMath::JudgeHalfAngles(Vision.FieldOfView, Vision.AspectWidth, Vision.AspectHeight, Vision.EdgeMargin);
+	// 画面が基準より狭い人は、映っている範囲まで判定を狭める。画面比は本人のPCから届いた値（届く前は基準の画面比）で、
+	// 嘘で得をできないよう基準より広げる方向には使わない。
+	const auto* HumanController = Cast<ATBController>(Human->GetController());
+	const auto Half = TBRuleMath::JudgeHalfAngles(Vision.FieldOfView, Vision.AspectWidth, Vision.AspectHeight,
+	                                              Vision.EdgeMargin, HumanController ? HumanController->ViewAspect : 0.f);
 	const float TanH = FMath::Tan(FMath::DegreesToRadians(Half.Horizontal));
 	const float TanV = FMath::Tan(FMath::DegreesToRadians(Half.Vertical));
 	const float SampleHeight = Toy->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() * Vision.BodySampleRatio;

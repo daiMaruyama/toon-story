@@ -63,7 +63,6 @@ void ATBCharacter::ApplyComfortBody(bool Toy)
 		                                      Toy ? 13.f * TBToyPresentation::SizeScale : (bIsCrouched ? 42.f : 65.f));
 	}
 	BaseEyeHeight = Toy ? 7.f * TBToyPresentation::SizeScale : (bIsCrouched ? 26.f : 42.f);
-	Camera->bConstrainAspectRatio = false;
 	Camera->SetRelativeLocation(FVector(0, 0, BaseEyeHeight));
 }
 

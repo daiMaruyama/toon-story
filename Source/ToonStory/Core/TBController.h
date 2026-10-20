@@ -77,8 +77,14 @@ public:
 	void ClientPlaySoundEvent(ETBSoundEvent Event, FVector Location);
 	UPROPERTY(BlueprintReadOnly)
 	FString Notice;
+	// この人の画面比（横÷縦）。本人のPCが測り、基準より横長なら黒帯を出す。サーバーにも送り、画面が狭い人の
+	// 視界の判定を狭めるのに使う。0 はまだ測っていない（届いていない）ことを表し、基準の画面比として扱う。
+	float ViewAspect = 0.f;
+	UFUNCTION(Server, Reliable)
+	void ServerSetViewAspect(float Aspect);
 
 private:
+	void UpdateViewAspect();
 	void TickRecovery();
 	TWeakObjectPtr<APawn> RecoveryPawn;
 	TWeakObjectPtr<UWorld> RecoveryWorld;
