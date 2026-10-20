@@ -45,10 +45,43 @@ void ATBController::PlayerTick(float DeltaTime)
 	UpdateLobbyCamera(InLobby);
 	UpdateMenuInput(ShowMenu);
 	UpdateScreenTransition();
+	UpdateViewAspect();
 	if (NoticeExpires > 0 && GetWorld()->GetTimeSeconds() > NoticeExpires)
 	{
 		Notice.Reset();
 		NoticeExpires = 0;
+	}
+}
+
+// 画面比を測る。上限より横長なら黒帯を出し（ATBCharacter::CalcCamera）、視界の判定もその人に映っている範囲で
+// 行えるよう、変わったときだけサーバーへ伝える。
+void ATBController::UpdateViewAspect()
+{
+	int32 SizeX = 0;
+	int32 SizeY = 0;
+	GetViewportSize(SizeX, SizeY);
+	if (SizeX <= 0 || SizeY <= 0)
+	{
+		return; // 最小化中など
+	}
+	const float Aspect = FMath::Clamp(float(SizeX) / SizeY, .25f, 8.f);
+	if (FMath::IsNearlyEqual(Aspect, ViewAspect, .001f))
+	{
+		return;
+	}
+	ViewAspect = Aspect;
+	if (!HasAuthority())
+	{
+		ServerSetViewAspect(Aspect);
+	}
+}
+
+void ATBController::ServerSetViewAspect_Implementation(float Aspect)
+{
+	// 判定に使う範囲は TB::Rules().Vision の上限で止めるので、ここでは壊れた値だけ弾く。
+	if (FMath::IsFinite(Aspect))
+	{
+		ViewAspect = FMath::Clamp(Aspect, .25f, 8.f);
 	}
 }
 

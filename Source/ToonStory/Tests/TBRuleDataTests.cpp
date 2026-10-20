@@ -30,6 +30,7 @@ bool FTBRuleDataTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Lobby duration range"), FVector(Defaults->Match.MinDuration, Defaults->Match.MaxDuration,
 	                                                 Defaults->Match.DurationStep), FVector(60, 3600, 60));
 	TestEqual(TEXT("Toy voice reaches humans only nearby"), Defaults->Voice.ToyToHumanDistance, 400.f);
+	TestEqual(TEXT("View widens up to 21:9 monitors"), Defaults->Vision.MaxViewAspect, 2.4f);
 
 	// プロジェクト設定でアセットを選んでいれば、初期値ではなくそのアセットを使う。
 	const auto& Selected = GetDefault<UTBDataSettings>()->RuleData;

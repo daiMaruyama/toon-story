@@ -15,7 +15,7 @@ struct FTBVisionRules
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "視界",
 	          meta = (DisplayName = "視野角", Units = "Degrees", ClampMin = "60", ClampMax = "120"))
 	float FieldOfView = 90.f;
-	/** 判定の縦の広さはこの比率から決まる。実際の画面の比率が違っても、判定はこの比率で行う */
+	/** 基準の画面比。視野角はこの比率のときの横の視野角で、縦の広さもこの比率で決まる。横長の画面では横だけ広がる */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "視界",
 	          meta = (DisplayName = "画面比率（幅）", ClampMin = "1", ClampMax = "32"))
 	int32 AspectWidth = 16;
@@ -30,6 +30,11 @@ struct FTBVisionRules
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "視界",
 	          meta = (DisplayName = "頭と足の判定点", ClampMin = "0", ClampMax = "1"))
 	float BodySampleRatio = .85f;
+	/** 映る範囲と判定の横の広さは、その人の画面比に合わせる。これより横長の画面は左右に黒帯を出し、
+	    この画面比の範囲までにする（横÷縦。16:9 は 1.78。21:9 として売られている画面は 2.37〜2.4） */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "視界",
+	          meta = (DisplayName = "画面比の上限（横÷縦）", ClampMin = "1", ClampMax = "4"))
+	float MaxViewAspect = 2.4f;
 };
 
 USTRUCT(BlueprintType)

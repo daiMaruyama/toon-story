@@ -80,13 +80,30 @@ namespace TBRuleMath
 		float Vertical;
 	};
 
-	// 視界判定に使う片側の角度（度）。画面の上下左右の端から、余白の分だけ内側にする。
-	inline FVisionAngles JudgeHalfAngles(float FieldOfView, int AspectWidth, int AspectHeight, float EdgeMargin)
+	// 基準の画面比 BaseAspect で横の視野角が FieldOfView のとき、縦の視野をそのままに画面比 ViewAspect まで
+	// 横を広げた（狭めた）横の視野角（度）。
+	inline float WidenedFieldOfView(float FieldOfView, float BaseAspect, float ViewAspect)
 	{
 		constexpr float DegToRad = 3.14159265f / 180.f;
-		const float HalfH = FieldOfView * .5f;
-		const float Aspect = float(AspectWidth > 0 ? AspectWidth : 1) / float(AspectHeight > 0 ? AspectHeight : 1);
-		const float HalfV = std::atan(std::tan(HalfH * DegToRad) / Aspect) / DegToRad;
+		const float Base = BaseAspect > 0.f ? BaseAspect : 1.f;
+		const float View = ViewAspect > 0.f ? ViewAspect : Base;
+		return 2.f * std::atan(std::tan(FieldOfView * .5f * DegToRad) / Base * View) / DegToRad;
+	}
+
+	// 視界判定に使う片側の角度（度）。その人の画面に映っている範囲から、上下左右とも余白の分だけ内側にする。
+	// カメラは縦の視野を基準の画面比のときにそろえ、画面比に合わせて横だけ広げる（エンジンの初期設定の Hor+）。
+	// 判定もそれに合わせ、縦は一定、横は画面比 ViewAspect の範囲にする。MaxAspect より横長の画面は
+	// 左右に黒帯が出て MaxAspect の範囲だけが映るので、判定もそこで止める（0 なら止めない）。
+	// ViewAspect が 0 なら基準の画面比で見ているとみなす。
+	inline FVisionAngles JudgeHalfAngles(float FieldOfView, int AspectWidth, int AspectHeight, float EdgeMargin,
+	                                     float ViewAspect = 0.f, float MaxAspect = 0.f)
+	{
+		constexpr float DegToRad = 3.14159265f / 180.f;
+		const float Base = float(AspectWidth > 0 ? AspectWidth : 1) / float(AspectHeight > 0 ? AspectHeight : 1);
+		float View = ViewAspect > 0.f ? ViewAspect : Base;
+		View = MaxAspect > 0.f && View > MaxAspect ? MaxAspect : View;
+		const float HalfH = WidenedFieldOfView(FieldOfView, Base, View) * .5f;
+		const float HalfV = std::atan(std::tan(FieldOfView * .5f * DegToRad) / Base) / DegToRad;
 		const float Margin = EdgeMargin > 0.f ? EdgeMargin : 0.f;
 		return {HalfH > Margin ? HalfH - Margin : 0.f, HalfV > Margin ? HalfV - Margin : 0.f};
 	}

@@ -5,6 +5,7 @@
 #include "Core/TBPlayerState.h"
 #include "Core/TBGameState.h"
 #include "Core/TBGameMode.h"
+#include "Core/TBController.h"
 #include "Character/TBMovement.h"
 #include "Character/TBVoiceComponent.h"
 #include "Audio/TBCharacterAudioComponent.h"
@@ -95,8 +96,12 @@ void ATBCharacter::BeginPlay()
 	GetMesh()->SetOwnerNoSee(true);
 	GetMesh()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	// 視界判定と同じ視野角で映す。運ばれている間も同じにして、切り替えのたびに視野角が伸び縮みしないようにする。
-	Camera->FieldOfView = TB::Rules().Vision.FieldOfView;
+	// 縦の視野は基準の画面比で決まり、実際の画面が横長なら横だけ広がる（判定も同じ範囲で行う）。
+	const auto& Vision = TB::Rules().Vision;
+	Camera->FieldOfView = Vision.FieldOfView;
+	Camera->AspectRatio = float(Vision.AspectWidth) / FMath::Max(1, Vision.AspectHeight);
 	CarryCamera->FieldOfView = Camera->FieldOfView;
+	CarryCamera->AspectRatio = Camera->AspectRatio;
 	const auto& CarryView = TB::CharacterData().CarryCamera;
 	CarryCameraArm->TargetArmLength = CarryView.ArmLength;
 	CarryCameraArm->TargetOffset = FVector(0, 0, CarryView.LookHeight);
@@ -385,6 +390,15 @@ void ATBCharacter::UpdateCarryCamera()
 void ATBCharacter::CalcCamera(float DeltaTime, FMinimalViewInfo& OutResult)
 {
 	Super::CalcCamera(DeltaTime, OutResult);
+	// 上限より横長の画面は左右に黒帯を出し、判定の範囲より外は映さない。縦の視野は変えない。
+	const auto* Player = Cast<ATBController>(GetController());
+	const float MaxAspect = TB::Rules().Vision.MaxViewAspect;
+	if (Player && MaxAspect > 0.f && Player->ViewAspect > MaxAspect)
+	{
+		OutResult.FOV = TBRuleMath::WidenedFieldOfView(OutResult.FOV, OutResult.AspectRatio, MaxAspect);
+		OutResult.AspectRatio = MaxAspect;
+		OutResult.bConstrainAspectRatio = true;
+	}
 	// 箱への収納など瞬間移動を伴う切替はつながず、壁越しに視点が流れるのを防ぐ。降ろす位置は1m程度。
 	const FVector ActorLocation = GetActorLocation();
 	const bool bTeleported =

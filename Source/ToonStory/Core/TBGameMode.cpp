@@ -546,8 +546,11 @@ bool ATBGameMode::Watched(ATBCharacter* Toy, ATBCharacter* Human) const
 	const FVector Up = Basis.GetUnitAxis(EAxis::Z);
 	// 視野角と画面比率から、画面の端より少し内側を判定範囲にする。
 	const auto& Vision = TB::Rules().Vision;
-	const auto Half =
-	    TBRuleMath::JudgeHalfAngles(Vision.FieldOfView, Vision.AspectWidth, Vision.AspectHeight, Vision.EdgeMargin);
+	// その人の画面に映っている範囲で判定する。画面比は本人のPCから届いた値（届く前は16:9）。
+	const auto* HumanController = Cast<ATBController>(Human->GetController());
+	const auto Half = TBRuleMath::JudgeHalfAngles(Vision.FieldOfView, Vision.AspectWidth, Vision.AspectHeight,
+	                                              Vision.EdgeMargin, HumanController ? HumanController->ViewAspect : 0.f,
+	                                              Vision.MaxViewAspect);
 	const float TanH = FMath::Tan(FMath::DegreesToRadians(Half.Horizontal));
 	const float TanV = FMath::Tan(FMath::DegreesToRadians(Half.Vertical));
 	const float SampleHeight = Toy->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() * Vision.BodySampleRatio;
