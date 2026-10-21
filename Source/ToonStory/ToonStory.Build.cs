@@ -21,6 +21,7 @@ public class ToonStory : ModuleRules
 			"OnlineSubsystem",
 			"OnlineSubsystemUtils",
 			"SignalProcessing",
+			"AudioMixer",
 			"EnhancedInput",
 			"UMG",
 			"Slate",
