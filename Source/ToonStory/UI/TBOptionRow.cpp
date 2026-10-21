@@ -5,8 +5,8 @@
 #include "Components/Button.h"
 #include "Components/CanvasPanel.h"
 #include "Components/CanvasPanelSlot.h"
-#include "Components/ProgressBar.h"
 #include "Components/SizeBox.h"
+#include "Components/Slider.h"
 #include "Components/TextBlock.h"
 #include "TBPaperStyle.h"
 
@@ -46,12 +46,16 @@ void UTBOptionRow::Build(const FString& Label, UFont* Font, UTexture2D* Paper, b
 	ValueText = Text(TEXT(""), 19);
 	if (bBar)
 	{
-		Bar = WidgetTree->ConstructWidget<UProgressBar>();
-		FProgressBarStyle Style;
-		Style.BackgroundImage.TintColor = FLinearColor(.78f, .78f, .75f);
-		Style.FillImage.TintColor = TBPaper::Accent;
-		Bar->SetWidgetStyle(Style);
-		Place(Bar, 340, 16, 250, 18);
+		// つまんで動かすほか、バーのどこかを押すとそこへ飛ぶ。細かく合わせるときは「<」「>」を使う。
+		Slider = WidgetTree->ConstructWidget<USlider>();
+		// マウスでも目盛り（StepSize）にそろえる。表示より前に決める値なので、ここで入れる。
+		Slider->MouseUsesStep = true;
+		Slider->SetSliderBarColor(FLinearColor(.78f, .78f, .75f));
+		Slider->SetSliderHandleColor(TBPaper::Accent);
+		Slider->OnValueChanged.AddDynamic(this, &ThisClass::SliderMoved);
+		Slider->OnMouseCaptureBegin.AddDynamic(this, &ThisClass::SliderGrabbed);
+		Slider->OnMouseCaptureEnd.AddDynamic(this, &ThisClass::SliderReleased);
+		Place(Slider, 340, 13, 250, 24);
 		Place(ValueText, 606, 10, 102, 36);
 	}
 	else
@@ -65,13 +69,21 @@ void UTBOptionRow::Build(const FString& Label, UFont* Font, UTexture2D* Paper, b
 
 void UTBOptionRow::Refresh()
 {
+	RefreshText();
+	// 動かしている途中は、指の位置を優先する（目盛りへのそろえで手元が跳ねないように）。
+	if (Slider && Fill && !bDragging)
+	{
+		TGuardValue<bool> Guard(bRefreshing, true);
+		Slider->SetStepSize(SliderStep > 0.f ? SliderStep : .01f);
+		Slider->SetValue(FMath::Clamp(Fill(), 0.f, 1.f));
+	}
+}
+
+void UTBOptionRow::RefreshText()
+{
 	if (Value)
 	{
 		ValueText->SetText(FText::FromString(Value()));
-	}
-	if (Bar && Fill)
-	{
-		Bar->SetPercent(FMath::Clamp(Fill(), 0.f, 1.f));
 	}
 	DownButton->SetIsEnabled(!CanStep || CanStep(-1));
 	UpButton->SetIsEnabled(!CanStep || CanStep(1));
@@ -85,6 +97,43 @@ void UTBOptionRow::Move(int32 Steps)
 	if (Step)
 	{
 		Step(Steps);
+	}
+	if (Changed)
+	{
+		Changed();
+	}
+	Refresh();
+}
+
+void UTBOptionRow::SliderMoved(float Fraction)
+{
+	if (bRefreshing)
+	{
+		return;
+	}
+	if (Slide)
+	{
+		Slide(Fraction);
+	}
+	RefreshText();
+	// キー操作など、つまんでいないときの変化は、その場で確定する。
+	if (!bDragging)
+	{
+		SliderReleased();
+	}
+}
+
+void UTBOptionRow::SliderGrabbed()
+{
+	bDragging = true;
+}
+
+void UTBOptionRow::SliderReleased()
+{
+	bDragging = false;
+	if (Released)
+	{
+		Released();
 	}
 	if (Changed)
 	{

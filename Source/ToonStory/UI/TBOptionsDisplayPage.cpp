@@ -164,6 +164,10 @@ void TBOptionsPages::BuildDisplay(UTBOptionsMenu& Menu, UTBGameUserSettings& Set
 		S->StepResolutionScale(Steps);
 		S->CommitDisplay();
 	};
+	// 描画解像度は変えるたびに画面の作り直しが走るので、手を離したときだけ反映する。
+	const auto& ScaleRange = TB::ConfigData().Display.ResolutionScale;
+	BindSlider(*ResolutionScale, ScaleRange.Min, FMath::Min(ScaleRange.Max, 100.f), ScaleRange.Step,
+	           [S](float Percent) { S->SetResolutionScalePercent(Percent); }, nullptr, [S] { S->CommitDisplay(); });
 	auto* Brightness = Menu.AddRow(TBOptionsPage::Display, TEXT("明るさ"), true);
 	Brightness->Value = [S]
 	{
@@ -187,6 +191,9 @@ void TBOptionsPages::BuildDisplay(UTBOptionsMenu& Menu, UTBGameUserSettings& Set
 		S->StepBrightness(Steps);
 		S->CommitDisplay();
 	};
+	const auto& BrightnessRange = TB::ConfigData().Display.Brightness;
+	BindSlider(*Brightness, BrightnessRange.Min, BrightnessRange.Max, BrightnessRange.Step,
+	           [S](float Gamma) { S->SetBrightness(Gamma); }, [S] { S->PreviewBrightness(); }, [S] { S->CommitDisplay(); });
 	auto* MotionBlur = Menu.AddRow(TBOptionsPage::Display, TEXT("モーションブラー"), false);
 	MotionBlur->Value = [S] { return OnOff(S->IsMotionBlurEnabled()); };
 	MotionBlur->CanStep = [S](int32 Steps) { return (Steps > 0) != S->IsMotionBlurEnabled(); };

@@ -30,5 +30,11 @@ void TBOptionsPages::BuildAudio(UTBOptionsMenu& Menu, UTBGameUserSettings& Setti
 			const float Volume = S->GetVolume(Kind);
 			return Steps < 0 ? Volume > Range.Clamp(0.f) + KINDA_SMALL_NUMBER : Volume < Range.Clamp(1.f) - KINDA_SMALL_NUMBER;
 		};
+		// 動かしている途中も音量を変えて聞かせる。保存は手を離したときだけ。
+		const float VolumeStep = TB::ConfigData().Audio.Step;
+		BindSlider(*Row, 0.f, 1.f, VolumeStep,
+		           [S, Kind, VolumeStep](float Volume) { S->SetVolume(Kind, TBSettings::Snap(Volume, 0.f, VolumeStep)); },
+		           [M, S] { S->PreviewVolumes(M->GetOwningPlayer() ? M->GetOwningPlayer()->GetGameInstance() : nullptr); },
+		           [M, S] { S->CommitVolumes(M->GetOwningPlayer() ? M->GetOwningPlayer()->GetGameInstance() : nullptr); });
 	}
 }

@@ -2,6 +2,7 @@
 
 #pragma once
 #include "CoreMinimal.h"
+#include "TBOptionRow.h"
 
 class UTBGameUserSettings;
 class UTBOptionsMenu;
@@ -34,5 +35,22 @@ namespace TBOptionsPages
 	inline float Fraction(float Value, float Min, float Max)
 	{
 		return Max > Min ? (Value - Min) / (Max - Min) : 1.f;
+	}
+
+	// スライダーを Min〜Max の値につなぐ。Set は範囲と刻みにそろえて入れる側（設定の関門）が受け持つ。
+	// Preview は動かしている途中にすぐ反映するもの、Commit は手を離したときの保存。
+	inline void BindSlider(UTBOptionRow& Row, float Min, float Max, float Step, TFunction<void(float)> Set,
+	                       TFunction<void()> Preview, TFunction<void()> Commit)
+	{
+		Row.SliderStep = Max > Min ? Step / (Max - Min) : 0.f;
+		Row.Slide = [Min, Max, Set = MoveTemp(Set), Preview = MoveTemp(Preview)](float Position)
+		{
+			Set(Min + Position * (Max - Min));
+			if (Preview)
+			{
+				Preview();
+			}
+		};
+		Row.Released = MoveTemp(Commit);
 	}
 }

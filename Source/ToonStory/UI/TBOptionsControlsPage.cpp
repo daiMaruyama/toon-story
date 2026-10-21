@@ -26,6 +26,9 @@ void TBOptionsPages::BuildControls(UTBOptionsMenu& Menu, UTBGameUserSettings& Se
 		S->StepMouseSensitivity(Steps);
 		S->SaveSettings();
 	};
+	const auto& SensitivityRange = TB::ConfigData().Controls.MouseSensitivity;
+	BindSlider(*Sensitivity, SensitivityRange.Min, SensitivityRange.Max, SensitivityRange.Step,
+	           [S](float Value) { S->SetMouseSensitivity(Value); }, nullptr, [S] { S->SaveSettings(); });
 	auto* Invert = Menu.AddRow(TBOptionsPage::Controls, TEXT("上下反転"), false);
 	Invert->Value = [S] { return OnOff(S->IsMouseYInverted()); };
 	Invert->CanStep = [S](int32 Steps) { return (Steps > 0) != S->IsMouseYInverted(); };
