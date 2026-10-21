@@ -25,10 +25,7 @@ void UTBGameUserSettings::ApplyNonResolutionSettings()
 {
 	EnforceLimits();
 	Super::ApplyNonResolutionSettings();
-	if (GEngine)
-	{
-		GEngine->DisplayGamma = GetBrightness();
-	}
+	PreviewBrightness();
 	// -1 は各ステージのポストプロセスの設定どおり、0 は切る。
 	if (auto* BlurAmount = IConsoleManager::Get().FindConsoleVariable(TEXT("r.MotionBlur.Amount")))
 	{
@@ -91,12 +88,17 @@ void UTBGameUserSettings::ApplyVolumes(UTBAudioSubsystem& Audio) const
 	Audio.SetVoiceVolume(GetVolume(ETBVolume::Voice));
 }
 
-void UTBGameUserSettings::CommitVolumes(const UGameInstance* GameInstance)
+void UTBGameUserSettings::PreviewVolumes(const UGameInstance* GameInstance) const
 {
 	if (auto* Audio = GameInstance ? GameInstance->GetSubsystem<UTBAudioSubsystem>() : nullptr)
 	{
 		ApplyVolumes(*Audio);
 	}
+}
+
+void UTBGameUserSettings::CommitVolumes(const UGameInstance* GameInstance)
+{
+	PreviewVolumes(GameInstance);
 	SaveSettings();
 }
 
@@ -127,6 +129,12 @@ void UTBGameUserSettings::StepResolutionScale(int32 Steps)
 	EnforceLimits();
 }
 
+void UTBGameUserSettings::SetResolutionScalePercent(float Percent)
+{
+	SetResolutionScaleValueEx(TB::ConfigData().Display.ResolutionScale.Snap(Percent));
+	EnforceLimits();
+}
+
 float UTBGameUserSettings::GetBrightness() const
 {
 	const auto& Setting = TB::ConfigData().Display.Brightness;
@@ -136,6 +144,19 @@ float UTBGameUserSettings::GetBrightness() const
 void UTBGameUserSettings::StepBrightness(int32 Steps)
 {
 	Brightness = TB::ConfigData().Display.Brightness.StepFrom(GetBrightness(), Steps);
+}
+
+void UTBGameUserSettings::SetBrightness(float Gamma)
+{
+	Brightness = TB::ConfigData().Display.Brightness.Snap(Gamma);
+}
+
+void UTBGameUserSettings::PreviewBrightness() const
+{
+	if (GEngine)
+	{
+		GEngine->DisplayGamma = GetBrightness();
+	}
 }
 
 bool UTBGameUserSettings::IsMotionBlurEnabled() const
@@ -217,6 +238,11 @@ float UTBGameUserSettings::GetMouseSensitivity() const
 void UTBGameUserSettings::StepMouseSensitivity(int32 Steps)
 {
 	MouseSensitivity = TB::ConfigData().Controls.MouseSensitivity.StepFrom(GetMouseSensitivity(), Steps);
+}
+
+void UTBGameUserSettings::SetMouseSensitivity(float Value)
+{
+	MouseSensitivity = TB::ConfigData().Controls.MouseSensitivity.Snap(Value);
 }
 
 bool UTBGameUserSettings::IsMouseYInverted() const

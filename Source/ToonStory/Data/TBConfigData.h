@@ -25,6 +25,13 @@ namespace TBSettings
 		const float Next = Steps > 0 ? FMath::FloorToFloat(Position + .001f) + Steps : FMath::CeilToFloat(Position - .001f) + Steps;
 		return Origin + Next * Size;
 	}
+
+	// Origin から Step ごとの目盛りのうち、いちばん近いもの。スライダーで選んだ値をそろえる。
+	inline float Snap(float Value, float Origin, float Step)
+	{
+		const float Size = FMath::Max(Step, KINDA_SMALL_NUMBER);
+		return Origin + FMath::RoundToFloat((Value - Origin) / Size) * Size;
+	}
 }
 
 /** プレイヤーが変えられる数値1つ分の、初期値・範囲・刻み */
@@ -55,6 +62,10 @@ struct FTBNumberSetting
 	float StepFrom(float Value, int32 Steps) const
 	{
 		return Clamp(TBSettings::StepFrom(Value, Min, Step, Steps));
+	}
+	float Snap(float Value) const
+	{
+		return Clamp(TBSettings::Snap(FMath::IsFinite(Value) ? Value : Default, Min, Step));
 	}
 };
 

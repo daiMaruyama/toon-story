@@ -32,6 +32,8 @@ public:
 	void ResetVolumes();
 	// 今の音量で鳴らす。
 	void ApplyVolumes(UTBAudioSubsystem& Audio) const;
+	// 今の音量で鳴らすが、保存はしない。スライダーを動かしている途中に呼ぶ。
+	void PreviewVolumes(const UGameInstance* GameInstance) const;
 	// 今の音量で鳴らし、保存する。設定画面で変えたときに呼ぶ。
 	void CommitVolumes(const UGameInstance* GameInstance);
 
@@ -41,8 +43,13 @@ public:
 	void SetQualityPreset(int32 Level);
 	float GetResolutionScalePercent() const;
 	void StepResolutionScale(int32 Steps);
+	// データの刻みにそろえ、範囲に収めて入れる（スライダー用）。
+	void SetResolutionScalePercent(float Percent);
 	float GetBrightness() const;
 	void StepBrightness(int32 Steps);
+	void SetBrightness(float Gamma);
+	// 明るさだけをすぐ画面に出す。保存も、ほかの画面の設定の反映もしない。
+	void PreviewBrightness() const;
 	bool IsMotionBlurEnabled() const;
 	void SetMotionBlurEnabled(bool bEnabled);
 	// 光の計算（Lumen）にレイトレーシングを使うか。この PC の GPU が対応していなければ選べない。
@@ -62,6 +69,7 @@ public:
 	// 操作
 	float GetMouseSensitivity() const;
 	void StepMouseSensitivity(int32 Steps);
+	void SetMouseSensitivity(float Value);
 	bool IsMouseYInverted() const;
 	void SetMouseYInverted(bool bInverted);
 	void ResetControls();
