@@ -1,6 +1,6 @@
 # おもちゃの「音を鳴らす」
 
-試合中、自由に動けるおもちゃで **F** を押すと、自分の位置から仮の「プーッ」というSEを1回鳴らす。
+試合中、自由に動けるおもちゃで **F** を押すと、自分の位置から仮の「プッ！」というSEを1回鳴らす。
 人間・おもちゃの両方に聞こえる。距離で減衰し、既定の最大距離は1800cm。
 凍結中・運搬中・収納中、人間、ロビー・リザルトでは使用できない。
 長押しで自動連発はせず、サーバーで検証・CD管理して既存の音声通知経路から各プレイヤーへ一度ずつ配信する。
@@ -9,11 +9,11 @@
 
 - キー：Project Settings → Input → Action Mappings → `Taunt`（既定F）。
   `Config/DefaultInput.ini` に保存する。実行中のプレイヤー向けキー変更画面は今回追加していない。
-- CD：`Content/Data/DA_TBRules` → 人形の見た目 → 「音を鳴らすクールダウン」（既定3秒、最小0.1秒）。
+- CD：`Content/Data/DA_TBRules` → 人形の見た目 → 「音を鳴らすクールダウン」（既定0.1秒、最小0.1秒）。
 - SE：Project Settings → Game → Toon Story Audio → Sounds → `ToyTaunt`。
   Sound、Volume、Pitch、MaxDistanceなどを変更できる。
 - 仮素材：`Content/Audio/SE/toy_taunt`。元WAVは `Content/Audio/Source/toy_taunt.wav`。
-  合成したモノラル・約0.62秒の短いホーン音。
+  合成したモノラル・約0.09秒の短いクラクション音。Fを押し直すたびに発音でき、最短0.1秒間隔で連打できる。
 
 現在のBGM・SE一覧は `UTBAudioSettings`（DeveloperSettings）のMusic／Soundsマップ。
 参照・音量等は `Config/DefaultGame.ini` に保存し、音声サブシステムが読み込む。DataAssetやDataTableではない。

@@ -72,7 +72,7 @@ bool FTBToyTauntTest::RunTest(const FString& Parameters)
 		if (TestNotNull(TEXT("Placeholder asset loads"), Sound))
 		{
 			TestEqual(TEXT("Spatial sound is mono"), Sound->NumChannels, 1);
-			TestTrue(TEXT("Short non-looping horn"), !Sound->bLooping && Sound->Duration > .1f && Sound->Duration < 1.f);
+			TestTrue(TEXT("Short non-looping horn"), !Sound->bLooping && Sound->Duration > .02f && Sound->Duration <= .1f);
 		}
 	}
 	TArray<FInputActionKeyMapping> Keys;
