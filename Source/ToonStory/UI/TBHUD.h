@@ -23,9 +23,8 @@ private:
  TWeakObjectPtr<class APlayerState> KickSelection;
  void DrawPlayers();
  bool HandleSafetyClick(FName Name);
-	bool bAudioOpen = false;
-	void DrawAudioSettings();
-	bool HandleAudioClick(FName Name);
+	// ロビーと試合中のメニューから開いたオプション画面。試合の切り替わりで閉じる。
+	TWeakObjectPtr<class UTBOptionsMenu> Options;
  FName LastClickedButton;
 	double LastButtonClickTime = -1;
 	bool bLobbySettingsOpen = false;

@@ -1,0 +1,79 @@
+// Copyright (c) 2026 Mamodou. All Rights Reserved.
+
+#pragma once
+#include "CoreMinimal.h"
+#include "Blueprint/UserWidget.h"
+#include "TBOptionsMenu.generated.h"
+
+class APlayerController;
+class UButton;
+class UFont;
+class UTBGameUserSettings;
+class UTBOptionRow;
+class UTextBlock;
+class UTexture2D;
+class UVerticalBox;
+
+/** オプション画面（音・画面・操作）。タイトル・ロビー・試合中のメニューから、同じ画面を開く。
+    値の範囲と初期値は UTBConfigData、プレイヤーが選んだ値は UTBGameUserSettings にある */
+UCLASS()
+class TOONSTORY_API UTBOptionsMenu : public UUserWidget
+{
+	GENERATED_BODY()
+public:
+	// 画面の手前に開く。閉じたら OnClosed を呼ぶ（開いた側がフォーカスを戻す）。
+	static UTBOptionsMenu* Open(APlayerController* Player, TFunction<void()> OnClosed = nullptr);
+	// 閉じるボタンと Esc。
+	UFUNCTION()
+	void Close();
+	// 試合が終わったときなど、音を鳴らさずに閉じる。
+	void Dismiss();
+
+protected:
+	virtual void NativeOnInitialized() override;
+	virtual FReply NativeOnPreviewKeyDown(const FGeometry& Geometry, const FKeyEvent& KeyEvent) override;
+	virtual void NativeTick(const FGeometry& Geometry, float DeltaTime) override;
+
+private:
+	void Build(UTBGameUserSettings& Settings);
+	UTBOptionRow* AddRow(int32 PageIndex, const FString& Label, bool bBar);
+	void ShowPage(int32 Index);
+	void RefreshRows();
+	void PlayClick(bool bBack = false) const;
+	// 解像度と画面モードは、変えたあと確認がなければ元に戻す。
+	void ChangeVideoMode(TFunctionRef<void(UTBGameUserSettings&)> Change);
+	bool IsConfirming() const;
+	UFUNCTION()
+	void ShowAudio();
+	UFUNCTION()
+	void ShowDisplay();
+	UFUNCTION()
+	void ShowControls();
+	UFUNCTION()
+	void ResetPage();
+	UFUNCTION()
+	void KeepVideoMode();
+	UFUNCTION()
+	void RevertVideoMode();
+	TFunction<void()> Closed;
+	int32 Page = 0;
+	double ConfirmUntil = 0;
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UVerticalBox>> Pages;
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UButton>> Tabs;
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UTBOptionRow>> Rows;
+	UPROPERTY(Transient)
+	TObjectPtr<UWidget> ConfirmOverlay;
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> ConfirmText;
+	UPROPERTY(Transient)
+	TObjectPtr<UButton> KeepButton;
+	UPROPERTY(Transient)
+	TObjectPtr<UButton> CloseButton;
+	UPROPERTY(Transient)
+	TObjectPtr<UFont> PaperFont;
+	UPROPERTY(Transient)
+	TObjectPtr<UTexture2D> PaperTexture;
+};

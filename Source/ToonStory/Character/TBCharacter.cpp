@@ -7,6 +7,7 @@
 #include "Core/TBGameState.h"
 #include "Core/TBGameMode.h"
 #include "Core/TBController.h"
+#include "Core/TBGameUserSettings.h"
 #include "Character/TBMovement.h"
 #include "Character/TBVoiceComponent.h"
 #include "Audio/TBCharacterAudioComponent.h"
@@ -701,8 +702,15 @@ void ATBCharacter::Yaw(float InputValue)
 {
 	if (!IsMovementLocked() || Carrier)
 	{
-		AddControllerYawInput(InputValue);
+		AddControllerYawInput(InputValue * LookScale().X);
 	}
+}
+
+// オプションで選んだ感度と上下反転。設定がないとき（専用サーバーなど）はそのまま。
+FVector2D ATBCharacter::LookScale()
+{
+	const auto* Settings = UTBGameUserSettings::Get();
+	return Settings ? Settings->GetLookScale() : FVector2D(1.f);
 }
 
 // 運ばれている間の見下ろし角は掴まれた時点の値で固定する。
@@ -710,7 +718,7 @@ void ATBCharacter::Pitch(float InputValue)
 {
 	if (!IsMovementLocked())
 	{
-		AddControllerPitchInput(InputValue);
+		AddControllerPitchInput(InputValue * LookScale().Y);
 	}
 }
 

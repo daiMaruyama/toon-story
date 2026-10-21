@@ -8,9 +8,7 @@
 
 class UTBSession;
 class UButton;
-class UProgressBar;
 class UTextBlock;
-enum class ETBVolume : uint8;
 
 /** Temporary UMG menu; observes the existing session subsystem. */
 UCLASS()
@@ -47,27 +45,9 @@ private:
 	UPROPERTY(Transient) TObjectPtr<UWidget> HelpOverlay;
 	UPROPERTY(Transient) TObjectPtr<UButton> HelpButton;
 	UPROPERTY(Transient) TObjectPtr<UButton> CloseHelpButton;
-	// 音量の設定。ゲーム中のメニュー（ATBHUD）と同じ項目・同じ操作にする。並びは ETBVolume の順。
-	UFUNCTION() void OpenAudio();
-	UFUNCTION() void CloseAudio();
-	UFUNCTION() void ResetAudio();
-	UFUNCTION() void MasterDown();
-	UFUNCTION() void MasterUp();
-	UFUNCTION() void MusicDown();
-	UFUNCTION() void MusicUp();
-	UFUNCTION() void EffectsDown();
-	UFUNCTION() void EffectsUp();
-	UFUNCTION() void VoiceDown();
-	UFUNCTION() void VoiceUp();
-	void StepVolume(ETBVolume Kind, int32 Steps);
-	void RefreshAudio();
-	UPROPERTY(Transient) TObjectPtr<UWidget> AudioOverlay;
-	UPROPERTY(Transient) TObjectPtr<UButton> AudioButton;
-	UPROPERTY(Transient) TObjectPtr<UButton> CloseAudioButton;
-	UPROPERTY(Transient) TArray<TObjectPtr<UProgressBar>> VolumeBars;
-	UPROPERTY(Transient) TArray<TObjectPtr<UTextBlock>> VolumeTexts;
-	UPROPERTY(Transient) TArray<TObjectPtr<UButton>> VolumeDownButtons;
-	UPROPERTY(Transient) TArray<TObjectPtr<UButton>> VolumeUpButtons;
+	// オプション画面（UTBOptionsMenu）を開く。ロビー・試合中のメニューと同じ画面。
+	UFUNCTION() void OpenOptions();
+	UPROPERTY(Transient) TObjectPtr<UButton> OptionsButton;
 	UFUNCTION()
 	class UWidget* RoomLabel(FString Item);
 	UPROPERTY(Transient)

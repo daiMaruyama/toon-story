@@ -3,6 +3,7 @@
 #include "TBHUD.h"
 #include "Core/TBLobbySettings.h"
 #include "TBPaperStyle.h"
+#include "TBOptionsMenu.h"
 #include "Audio/TBAudioSubsystem.h"
 #include "Core/TBPlayerState.h"
 #include "Core/TBGameState.h"
@@ -28,7 +29,6 @@ void ATBHUD::NotifyHitBoxClick(FName Name)
 	{
 		return;
 	}
-	if (HandleAudioClick(Name)) return;
 	if (auto* Audio = PC->GetGameInstance()->GetSubsystem<UTBAudioSubsystem>())
 	{
 		if (Name != TEXT("Ready") && Name != TEXT("Child") && Name != TEXT("Toy") && Name != TEXT("Either") &&
@@ -37,6 +37,11 @@ void ATBHUD::NotifyHitBoxClick(FName Name)
 			Audio->PlaySoundEvent(Name == TEXT("Resume") || Name == TEXT("Leave") || Name == TEXT("CloseSettings") || Name == TEXT("CancelStage") ? ETBSoundEvent::UIBack : ETBSoundEvent::UIClick);
 	}
 	if (HandleSafetyClick(Name)) return;
+	if (Name == TEXT("OpenOptions"))
+	{
+		Options = UTBOptionsMenu::Open(PC);
+		return;
+	}
 	if (Name == TEXT("Resume"))
 	{
 		PC->ToggleLeaveMenu();
@@ -107,13 +112,11 @@ void ATBHUD::DrawHUD()
 	    (State->Phase == ETBPhase::Playing && !PC->IsLeaveMenuOpen()))
 	{
 		bPlayersOpen = false;
-		bAudioOpen = false;
 		KickSelection.Reset();
-	}
-	if (bAudioOpen)
-	{
-		DrawAudioSettings();
-		return;
+		if (Options.IsValid() && Options->IsInViewport())
+		{
+			Options->Dismiss();
+		}
 	}
 	if (bPlayersOpen)
 	{
@@ -149,7 +152,7 @@ void ATBHUD::DrawHUD()
 			const FMenuButton Buttons[] = {{TEXT("Resume"), TEXT("あそびにもどる [Esc]")},
 			                               {TEXT("Unstuck"), TEXT("スタック解除（3秒待機）")},
 			                               {TEXT("Players"), TEXT("参加者一覧")},
-			                               {TEXT("OpenAudio"), TEXT("おとの設定")},
+			                               {TEXT("OpenOptions"), TEXT("オプション")},
 			                               {TEXT("Leave"), TEXT("タイトルにもどる")}};
 			for (int32 I = 0; I < UE_ARRAY_COUNT(Buttons); ++I)
 			{

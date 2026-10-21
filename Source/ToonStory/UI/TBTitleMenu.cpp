@@ -2,10 +2,9 @@
 
 #include "UI/TBTitleMenu.h"
 #include "Audio/TBAudioSubsystem.h"
-#include "Core/TBGameUserSettings.h"
 #include "Core/TBSession.h"
 #include "Components/Button.h"
-#include "Components/ProgressBar.h"
+#include "UI/TBOptionsMenu.h"
 #include "Components/TextBlock.h"
 #include "Engine/GameInstance.h"
 #include "TBPaperStyle.h"
@@ -86,67 +85,12 @@ void UTBTitleMenu::Join() { PlayMenuClick(GetGameInstance()); if (Session) Sessi
 void UTBTitleMenu::Hover() { PlayMenuClick(GetGameInstance(), ETBSoundEvent::UIHover); }
 void UTBTitleMenu::Cleanup() { PlayMenuClick(GetGameInstance(), ETBSoundEvent::UIBack); if (Session) Session->Leave(); }
 
-void UTBTitleMenu::OpenAudio()
+void UTBTitleMenu::OpenOptions()
 {
 	PlayMenuClick(GetGameInstance());
-	RefreshAudio();
-	TitleContent->SetIsEnabled(false);
-	AudioOverlay->SetVisibility(ESlateVisibility::Visible);
-	CloseAudioButton->SetKeyboardFocus();
-}
-
-void UTBTitleMenu::CloseAudio()
-{
-	PlayMenuClick(GetGameInstance(), ETBSoundEvent::UIBack);
-	AudioOverlay->SetVisibility(ESlateVisibility::Collapsed);
-	TitleContent->SetIsEnabled(true);
-	AudioButton->SetKeyboardFocus();
-}
-
-void UTBTitleMenu::ResetAudio()
-{
-	if (auto* Settings = UTBGameUserSettings::Get())
+	TWeakObjectPtr<UButton> Button = OptionsButton;
+	UTBOptionsMenu::Open(GetOwningPlayer(), [Button]
 	{
-		Settings->ResetVolumes();
-		Settings->CommitVolumes(GetGameInstance());
-	}
-	PlayMenuClick(GetGameInstance());
-	RefreshAudio();
-}
-
-void UTBTitleMenu::StepVolume(ETBVolume Kind, int32 Steps)
-{
-	if (auto* Settings = UTBGameUserSettings::Get())
-	{
-		Settings->StepVolume(Kind, Steps);
-		Settings->CommitVolumes(GetGameInstance());
-	}
-	// 変えたあとの音量で鳴らして、聞こえ方を確かめられるようにする。
-	PlayMenuClick(GetGameInstance());
-	RefreshAudio();
-}
-
-void UTBTitleMenu::MasterDown() { StepVolume(ETBVolume::Master, -1); }
-void UTBTitleMenu::MasterUp() { StepVolume(ETBVolume::Master, 1); }
-void UTBTitleMenu::MusicDown() { StepVolume(ETBVolume::Music, -1); }
-void UTBTitleMenu::MusicUp() { StepVolume(ETBVolume::Music, 1); }
-void UTBTitleMenu::EffectsDown() { StepVolume(ETBVolume::Effects, -1); }
-void UTBTitleMenu::EffectsUp() { StepVolume(ETBVolume::Effects, 1); }
-void UTBTitleMenu::VoiceDown() { StepVolume(ETBVolume::Voice, -1); }
-void UTBTitleMenu::VoiceUp() { StepVolume(ETBVolume::Voice, 1); }
-
-void UTBTitleMenu::RefreshAudio()
-{
-	const auto* Settings = UTBGameUserSettings::Get();
-	if (!Settings) return;
-	for (int32 Index = 0; Index < VolumeBars.Num(); ++Index)
-	{
-		const auto Kind = ETBVolume(Index);
-		const auto& Range = TB::ConfigData().Audio.Get(Kind);
-		const float Volume = Settings->GetVolume(Kind);
-		VolumeBars[Index]->SetPercent(Volume);
-		VolumeTexts[Index]->SetText(FText::FromString(FString::Printf(TEXT("%d%%"), FMath::RoundToInt(Volume * 100))));
-		VolumeDownButtons[Index]->SetIsEnabled(Volume > Range.Clamp(0.f) + KINDA_SMALL_NUMBER);
-		VolumeUpButtons[Index]->SetIsEnabled(Volume < Range.Clamp(1.f) - KINDA_SMALL_NUMBER);
-	}
+		if (Button.IsValid()) Button->SetKeyboardFocus();
+	});
 }
