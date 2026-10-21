@@ -4,6 +4,7 @@
 #include "Audio/TBAudioSubsystem.h"
 #include "Core/TBSession.h"
 #include "Components/Button.h"
+#include "UI/TBOptionsMenu.h"
 #include "Components/TextBlock.h"
 #include "Engine/GameInstance.h"
 #include "TBPaperStyle.h"
@@ -83,3 +84,13 @@ void UTBTitleMenu::Find() { PlayMenuClick(GetGameInstance()); if (Session) Sessi
 void UTBTitleMenu::Join() { PlayMenuClick(GetGameInstance()); if (Session) Session->Join(RoomList->GetSelectedIndex()); }
 void UTBTitleMenu::Hover() { PlayMenuClick(GetGameInstance(), ETBSoundEvent::UIHover); }
 void UTBTitleMenu::Cleanup() { PlayMenuClick(GetGameInstance(), ETBSoundEvent::UIBack); if (Session) Session->Leave(); }
+
+void UTBTitleMenu::OpenOptions()
+{
+	PlayMenuClick(GetGameInstance());
+	TWeakObjectPtr<UButton> Button = OptionsButton;
+	UTBOptionsMenu::Open(GetOwningPlayer(), [Button]
+	{
+		if (Button.IsValid()) Button->SetKeyboardFocus();
+	});
+}

@@ -100,7 +100,8 @@ void UTBTitleMenu::BuildPaperLayout()
 	HostButton = AddButton(TEXT("Host"), TEXT("部屋をつくる"), 90, 445, 370);
 	FindButton = AddButton(TEXT("Find"), TEXT("部屋をさがす"), 90, 523, 370, true);
 	HelpButton = AddButton(TEXT("Help"), TEXT("あそびかた"), 90, 601, 175, true);
-	auto* QuitButton = AddButton(TEXT("Quit"), TEXT("ゲームを閉じる"), 280, 601, 180, true);
+	OptionsButton = AddButton(TEXT("Options"), TEXT("オプション"), 280, 601, 180, true);
+	auto* QuitButton = AddButton(TEXT("Quit"), TEXT("ゲームを閉じる"), 90, 679, 175, true);
 	auto* Card = WidgetTree->ConstructWidget<UBorder>();
 	Card->SetBrush(TBPaper::Brush(PaperTexture));
 	Place(Card, 700, 85, 490, 205);
@@ -120,13 +121,14 @@ void UTBTitleMenu::BuildPaperLayout()
 	JoinButton = AddButton(TEXT("Join"), TEXT("選んだ部屋に入る"), 745, 490, 415);
 	CleanupButton = AddButton(TEXT("Cleanup"), TEXT("部屋から退出する"), 745, 567, 415, true);
 	StatusText = Label(TEXT(""), 17, TBPaper::Cream);
-	Place(StatusText, 90, 685, 1100, 90);
+	Place(StatusText, 90, 757, 1100, 40);
 	HostButton->OnClicked.AddDynamic(this, &ThisClass::Host);
 	FindButton->OnClicked.AddDynamic(this, &ThisClass::Find);
 	JoinButton->OnClicked.AddDynamic(this, &ThisClass::Join);
 	CleanupButton->OnClicked.AddDynamic(this, &ThisClass::Cleanup);
 	QuitButton->OnClicked.AddDynamic(this, &ThisClass::Quit);
 	HelpButton->OnClicked.AddDynamic(this, &ThisClass::Help);
+	OptionsButton->OnClicked.AddDynamic(this, &ThisClass::OpenOptions);
 	RoomList->OnSelectionChanged.AddDynamic(this, &ThisClass::SelectionChanged);
 	TitleContent = Scale;
 	auto* Overlay = WidgetTree->ConstructWidget<UCanvasPanel>();
