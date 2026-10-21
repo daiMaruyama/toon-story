@@ -27,7 +27,7 @@ bool ATBHUD::HandleSafetyClick(FName Name)
 	{
 		for (APlayerState* Player : State->PlayerArray)
 		{
-			if (Player && Player != PC->PlayerState &&
+			if (Player && !Player->IsABot() && Player != PC->PlayerState &&
 			    Name == FName(*FString::Printf(TEXT("Kick_%d"), Player->GetPlayerId())))
 			{
 				KickSelection = Player;
@@ -61,7 +61,7 @@ bool ATBHUD::HandleSafetyClick(FName Name)
 		{
 			for (APlayerState* Player : State->PlayerArray)
 			{
-				if (Player && Player != PC->PlayerState &&
+				if (Player && !Player->IsABot() && Player != PC->PlayerState &&
 				    Name == FName(*FString::Printf(TEXT("Kick_%d"), Player->GetPlayerId())))
 				{
 					KickSelection = Player;
@@ -128,6 +128,10 @@ void ATBHUD::DrawPlayers()
 			if (Player == PC->PlayerState)
 			{
 				Text(TEXT("あなた"), 540, PY + 6, .85f);
+			}
+			else if (Player->IsABot())
+			{
+				Text(TEXT("NPC"), 540, PY + 6, .85f);
 			}
 			else if (PC->HasAuthority() && !State->bTravelPending)
 			{

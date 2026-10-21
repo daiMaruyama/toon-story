@@ -119,6 +119,7 @@ private:
 	void Right(float V);
 	void Yaw(float V);
 	void Pitch(float V);
+	static FVector2D LookScale();
 	void JumpPressed();
 	void JumpReleased();
 	void UpdateCarryCamera();

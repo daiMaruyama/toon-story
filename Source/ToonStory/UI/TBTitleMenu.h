@@ -45,6 +45,9 @@ private:
 	UPROPERTY(Transient) TObjectPtr<UWidget> HelpOverlay;
 	UPROPERTY(Transient) TObjectPtr<UButton> HelpButton;
 	UPROPERTY(Transient) TObjectPtr<UButton> CloseHelpButton;
+	// オプション画面（UTBOptionsMenu）を開く。ロビー・試合中のメニューと同じ画面。
+	UFUNCTION() void OpenOptions();
+	UPROPERTY(Transient) TObjectPtr<UButton> OptionsButton;
 	UFUNCTION()
 	class UWidget* RoomLabel(FString Item);
 	UPROPERTY(Transient)

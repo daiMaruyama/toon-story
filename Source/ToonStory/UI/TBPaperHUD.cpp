@@ -33,7 +33,7 @@ bool ATBHUD::HandleLobbyPanelClick(FName Name)
 		bStagePickerOpen = false;
 		return true;
 	}
-	if (Name == TEXT("Ready"))
+	if (Name == TEXT("Ready") || Name == TEXT("Start"))
 	{
 		return false;
 	}
@@ -116,23 +116,34 @@ void ATBHUD::DrawLobby()
 		}
 	};
 	const auto* Local = PC->GetPlayerState<ATBPlayerState>();
-	int32 ReadyCount = 0;
+	int32 ReadyCount = 0, PlayerCount = 0;
 	for (APlayerState* Player : State->PlayerArray)
 	{
-		if (const auto* P = Cast<ATBPlayerState>(Player))
+		if (const auto* P = Cast<ATBPlayerState>(Player); P && !P->IsABot())
 		{
 			ReadyCount += P->bReady ? 1 : 0;
+			++PlayerCount;
 		}
 	}
+	const bool EveryoneReady = PlayerCount > 0 && ReadyCount == PlayerCount &&
+	    PlayerCount == State->Settings.Humans + State->Settings.Toys;
+	const bool EnoughPlayers = State->Settings.Humans + State->Settings.NPCHumans >= 1 &&
+	    State->Settings.Toys + State->Settings.NPCToys >= 1;
+	const bool CanStart = PC->HasAuthority() && EveryoneReady && EnoughPlayers && !State->bTravelPending;
 	if (!bLobbySettingsOpen)
 	{
 		const float Bottom = (Canvas->ClipY - Y) / S - 84;
-		Panel(216, Bottom - 12, 768, 72, TBPaper::Cream);
-		Button(TEXT("Ready"), Local && Local->bReady ? TEXT("準備をやめる [R]") : TEXT("準備OK [R]"), 232, Bottom, 240,
-		       Local != nullptr, Local && Local->bReady);
-		Text(FString::Printf(TEXT("%d / %d人 準備OK"), ReadyCount, State->Settings.Humans + State->Settings.Toys), 496,
-		     Bottom + 8, 1.05f, Ink);
-		Button(TEXT("OpenSettings"), TEXT("設定を開く"), 752, Bottom, 216);
+		Panel(28, Bottom - 40, 1144, 100, TBPaper::Cream);
+		Text(!EnoughPlayers ? TEXT("にんげんとおもちゃの両方が必要です。設定で陣営かNPCを変更してください。")
+		     : !EveryoneReady ? TEXT("全員の準備ができたら、はじめよう。")
+		     : State->bTravelPending ? TEXT("ステージへ移動中…") : TEXT("準備がそろいました！"),
+		     48, Bottom - 30, .9f, Ink);
+		Button(TEXT("Ready"), Local && Local->bReady ? TEXT("準備をやめる [R]") : TEXT("準備OK [R]"), 48, Bottom, 240,
+		       Local != nullptr && !State->bTravelPending, Local && Local->bReady);
+		Text(FString::Printf(TEXT("%d / %d人 準備OK"), ReadyCount, PlayerCount), 308, Bottom + 8, 1.05f, Ink);
+		Button(TEXT("OpenSettings"), TEXT("設定を開く"), 622, Bottom, 216);
+		Button(TEXT("Start"), PC->HasAuthority() ? TEXT("あそびはじめる [F5]") : TEXT("ホストを待っています"),
+		       858, Bottom, 294, CanStart, CanStart);
 		return;
 	}
 	DrawRect(FLinearColor(.009f, .018f, .027f, .48f), 0, 0, Canvas->ClipX, Canvas->ClipY);
@@ -143,7 +154,7 @@ void ATBHUD::DrawLobby()
 		Text(TEXT("試合開始時に、選んだステージへ移動します。"), 312, 241, .95f, Muted);
 		const int32 Current = State->SelectedStage;
 		Button(TEXT("StageExpanded"), TEXT("Demo ＋ こども部屋"), 312, 284, 576, PC->HasAuthority(), Current == 1);
-		Text(TEXT("リビングと、ドアでつながる子ども部屋"), 328, 330, .85f, Muted);
+		Text(TEXT("リビングと子ども部屋"), 328, 330, .85f, Muted);
 		Button(TEXT("StageKidsRoom"), TEXT("Kids' Rooms"), 312, 369, 576, PC->HasAuthority(), Current == 0);
 		Text(TEXT("家具付きの4部屋と廊下"), 328, 415, .85f, Muted);
 		Button(TEXT("StageArchViz"), TEXT("ArchViz Apartment"), 312, 454, 576, PC->HasAuthority(), Current == 2);
@@ -161,7 +172,7 @@ void ATBHUD::DrawLobby()
 	for (APlayerState* Player : State->PlayerArray)
 	{
 		const auto* P = Cast<ATBPlayerState>(Player);
-		if (!P)
+		if (!P || P->IsABot())
 		{
 			continue;
 		}
@@ -169,18 +180,29 @@ void ATBHUD::DrawLobby()
 		const FString PreferredRole = P->Preference == ETBTeam::Human ? TEXT("にんげん")
 		                              : P->Preference == ETBTeam::Toy ? TEXT("おもちゃ")
 		                                                              : TEXT("どちらでも");
-		const float PY = 186 + Row++ * 34;
-		Panel(40, PY - 4, 666, 30, FLinearColor(.10f, .15f, .18f, Row % 2 ? .42f : .18f));
+		const float PY = 182 + Row++ * 21;
+		Panel(40, PY - 4, 666, 20, FLinearColor(.10f, .15f, .18f, Row % 2 ? .42f : .18f));
 		Panel(48, PY + 4, 4, 12, P->bReady ? Accent : Muted);
-		Text(P->GetPlayerName().Left(18), 62, PY - 5, 1.f, Ink);
-		Text(PreferredRole, 320, PY - 5, 1.1f, Muted);
-		Text(P->bReady ? TEXT("準備OK") : TEXT("準備中"), 455, PY - 5, 1.1f, P->bReady ? Accent : Muted);
+		Text(P->GetPlayerName().Left(18), 62, PY - 5, .8f, Ink);
+		Text(PreferredRole, 320, PY - 5, .8f, Muted);
+		Text(P->bReady ? TEXT("準備OK") : TEXT("準備中"), 455, PY - 5, .8f, P->bReady ? Accent : Muted);
 		if (PC->HasAuthority() && P != Local)
 		{
 			Button(FName(*FString::Printf(TEXT("Kick_%d"), P->GetPlayerId())), TEXT("キック"),
-			       610, PY - 4, 88, !State->bTravelPending, false, 28);
+			       610, PY - 4, 88, !State->bTravelPending, false, 20);
 		}
 	}
+	const bool CanEditNPC = PC->HasAuthority() && !State->bTravelPending;
+	const int32 NPCCount = State->Settings.NPCHumans + State->Settings.NPCToys;
+	const bool CanAddNPC = State->Settings.Humans + State->Settings.Toys + NPCCount < State->PlayerLimit;
+	Text(FString::Printf(TEXT("NPC（0人で参加なし・参加者と合わせて%d人まで）"), State->PlayerLimit), 48, 356, .85f, Muted);
+	Text(FString::Printf(TEXT("にんげんNPC  %d人"), State->Settings.NPCHumans), 48, 390, .95f, Ink);
+	Button(TEXT("FewerNPCHumans"), TEXT("-"), 250, 382, 50, CanEditNPC && State->Settings.NPCHumans > 0, false, 36);
+	Button(TEXT("MoreNPCHumans"), TEXT("+"), 308, 382, 50, CanEditNPC && CanAddNPC, false, 36);
+	Text(FString::Printf(TEXT("おもちゃNPC  %d体"), State->Settings.NPCToys), 380, 390, .95f, Ink);
+	Button(TEXT("FewerNPCToys"), TEXT("-"), 580, 382, 50, CanEditNPC && State->Settings.NPCToys > 0, false, 36);
+	Button(TEXT("MoreNPCToys"), TEXT("+"), 638, 382, 50, CanEditNPC && CanAddNPC, false, 36);
+	Text(TEXT("NPCは自動で準備完了になります。"), 48, 430, .8f, Muted);
 	Panel(738, 130, 434, 360, FLinearColor::White);
 	Text(TEXT("今回のあそび"), 758, 146, 1.25f, Accent);
 	const bool Host = PC->HasAuthority();
@@ -197,10 +219,10 @@ void ATBHUD::DrawLobby()
 	Button(TEXT("FewerBatteries"), TEXT("-"), 1032, 291, 52, Host && State->Settings.RequiredItems > 1);
 	Button(TEXT("MoreBatteries"), TEXT("+"), 1098, 291, 52,
 	       Host && State->Settings.RequiredItems < TBLobbySettings::AvailableItems(GetWorld()));
-	Button(TEXT("FewerToys"), TEXT("- おもちゃ"), 758, 350, 184, Host && State->Settings.Toys > 1);
+	Button(TEXT("FewerToys"), TEXT("- おもちゃ"), 758, 350, 184, Host && State->Settings.Toys > (State->Settings.NPCToys > 0 ? 0 : 1));
 	Button(TEXT("MoreToys"), TEXT("+ おもちゃ"), 956, 350, 194,
-	       Host && State->Settings.Humans > 1);
-	Text(FString::Printf(TEXT("にんげん %d人 ／ おもちゃ %d体"), State->Settings.Humans, State->Settings.Toys), 758,
+	       Host && State->Settings.Humans > (State->Settings.NPCHumans > 0 ? 0 : 1));
+	Text(FString::Printf(TEXT("参加者：にんげん %d人 ／ おもちゃ %d体"), State->Settings.Humans, State->Settings.Toys), 758,
 	     405, .95f, Ink);
 	Text(FString::Printf(TEXT("%d / %d人 準備OK"), Ready, State->Settings.Humans + State->Settings.Toys), 758, 430,
 	     1.25f, Accent);
@@ -210,18 +232,16 @@ void ATBHUD::DrawLobby()
 	Button(TEXT("Either"), TEXT("どちらでも"), 432, 542, 180, true, Local && Local->Preference == ETBTeam::None);
 	Button(TEXT("Ready"), Local && Local->bReady ? TEXT("準備をやめる [R]") : TEXT("準備OK [R]"), 632, 542, 240,
 	       Local != nullptr, Local && Local->bReady);
-	const bool EveryoneReady = Ready == State->Settings.Humans + State->Settings.Toys && Ready == Row;
-	const bool EnoughPlayers = State->Settings.Humans >= 1 && State->Settings.Toys >= 1;
-	const bool CanStart = Host && EveryoneReady && EnoughPlayers;
 	Button(TEXT("Start"), Host ? TEXT("あそびはじめる [F5]") : TEXT("ホストを待っています"), 890, 542, 282, CanStart,
 	       CanStart);
 	if (!EveryoneReady || !EnoughPlayers)
 	{
 		Text(!EnoughPlayers
-		         ? TEXT("にんげんとおもちゃ、2人以上で遊べます。")
+		         ? TEXT("両陣営をそろえてください。NPCとも遊べます。")
 		         : TEXT("全員の準備ができたら、はじめよう。"),
 		     48, 456, .85f, Muted);
 	}
+	Button(TEXT("OpenOptions"), TEXT("オプション"), 700, 600, 200);
 	Button(TEXT("Leave"), Host ? TEXT("部屋を閉じてタイトルへ") : TEXT("部屋を出てタイトルへ"), 922, 600, 250);
 	if (auto* Session = PC->GetGameInstance()->GetSubsystem<UTBSession>())
 	{
@@ -282,7 +302,7 @@ void ATBHUD::DrawMatch(const ATBGameState& MatchState, ATBController& Controller
 	PaperPanel(Panel, W - 286 * S, 24 * S, 262 * S, 77 * S);
 	DrawText(FString::Printf(TEXT("電池  %d / %d"), MatchState.Collected, MatchState.Settings.RequiredItems), Ink,
 	         W - 270 * S, 36 * S, PaperFont, 1.35f * S);
-	DrawText(FString::Printf(TEXT("箱のなか  %d / %d"), MatchState.BoxedCount, MatchState.Settings.Toys), Accent,
+	DrawText(FString::Printf(TEXT("箱のなか  %d / %d"), MatchState.BoxedCount, MatchState.Settings.Toys + MatchState.Settings.NPCToys), Accent,
 	         W - 270 * S, 68 * S, PaperFont, .95f * S);
 	PaperPanel(Panel, 24 * S, H - 62 * S, (Child ? 900 : 700) * S, 38 * S);
 	DrawText(Child ? TEXT("WASD 移動 ／ Ctrl しゃがむ ／ Space ジャンプ ／ E つかむ・収納 ／ Q おろす")

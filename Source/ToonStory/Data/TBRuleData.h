@@ -194,12 +194,32 @@ struct FTBToyRules
 	     1}};
 };
 
+class UTBRandomEvent;
+
+USTRUCT(BlueprintType)
+struct FTBEventRules
+{
+	GENERATED_BODY()
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "イベント", meta = (DisplayName = "イベントを有効化"))
+	bool bEnabled = true;
+	/** 全イベント共通の毎秒抽選。0.01 = 1%。候補数で発生率は増えない。 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "イベント", meta = (DisplayName = "毎秒の発生確率", ClampMin = "0", ClampMax = "1"))
+	float ChancePerSecond = .01f;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "イベント", meta = (DisplayName = "発生後の共通クールダウン", Units = "s", ClampMin = "0"))
+	float CooldownSeconds = 30.f;
+	/** 実行可能な候補から等確率で1つ選ぶ。重複登録は無視。試合開始時に読み込む。 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "イベント", meta = (DisplayName = "イベント候補"))
+	TArray<TSubclassOf<UTBRandomEvent>> EventClasses;
+};
+
 /** 作る側が決めるルールの値。試合中は読むだけ */
 UCLASS(BlueprintType)
 class TOONSTORY_API UTBRuleData : public UDataAsset
 {
 	GENERATED_BODY()
 public:
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "イベント", meta = (ShowOnlyInnerProperties))
+	FTBEventRules Events;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "視界", meta = (ShowOnlyInnerProperties))
 	FTBVisionRules Vision;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "狙う・つかむ", meta = (ShowOnlyInnerProperties))

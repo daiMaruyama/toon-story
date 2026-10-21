@@ -2,6 +2,7 @@
 
 #include "Data/TBDataSettings.h"
 #include "Data/TBCharacterData.h"
+#include "Data/TBConfigData.h"
 #include "Data/TBPresentationData.h"
 #include "Data/TBRuleData.h"
 
@@ -44,6 +45,12 @@ const UTBPresentationData& UTBDataSettings::GetPresentationData()
 	                     Settings->bTriedPresentationData);
 }
 
+const UTBConfigData& UTBDataSettings::GetConfigData()
+{
+	auto* Settings = GetMutableDefault<UTBDataSettings>();
+	return LoadOrDefault(Settings->ConfigData, Settings->LoadedConfigData, Settings->bTriedConfigData);
+}
+
 const UTBRuleData& TB::Rules()
 {
 	return UTBDataSettings::GetRuleData();
@@ -59,6 +66,11 @@ const UTBPresentationData& TB::PresentationData()
 	return UTBDataSettings::GetPresentationData();
 }
 
+const UTBConfigData& TB::ConfigData()
+{
+	return UTBDataSettings::GetConfigData();
+}
+
 #if WITH_EDITOR
 void UTBDataSettings::PostEditChangeProperty(FPropertyChangedEvent& Event)
 {
@@ -67,6 +79,7 @@ void UTBDataSettings::PostEditChangeProperty(FPropertyChangedEvent& Event)
 	LoadedRuleData = nullptr;
 	LoadedCharacterData = nullptr;
 	LoadedPresentationData = nullptr;
-	bTriedRuleData = bTriedCharacterData = bTriedPresentationData = false;
+	LoadedConfigData = nullptr;
+	bTriedRuleData = bTriedCharacterData = bTriedPresentationData = bTriedConfigData = false;
 }
 #endif

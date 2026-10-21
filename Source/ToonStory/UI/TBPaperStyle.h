@@ -4,6 +4,7 @@
 #include "Engine/Texture2D.h"
 #include "Misc/Paths.h"
 #include "Styling/SlateBrush.h"
+#include "Styling/SlateTypes.h"
 
 namespace TBPaper
 {
@@ -72,5 +73,15 @@ namespace TBPaper
 		Result.ImageSize = FVector2D(128);
 		Result.TintColor = Tint;
 		return Result;
+	}
+	// 紙のボタン。Secondary は少し暗い紙。
+	inline FButtonStyle ButtonStyle(UTexture2D* Texture, bool Secondary = false)
+	{
+		FButtonStyle Style;
+		Style.SetNormal(Brush(Texture, Secondary ? FLinearColor(.78f, .78f, .75f) : FLinearColor::White));
+		Style.SetHovered(Brush(Texture, Cream));
+		Style.SetPressed(Brush(Texture, FLinearColor(.9f, .66f, .47f)));
+		Style.SetDisabled(Brush(Texture, FLinearColor(.46f, .46f, .43f)));
+		return Style;
 	}
 } // namespace TBPaper
