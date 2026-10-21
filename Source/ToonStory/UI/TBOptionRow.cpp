@@ -24,10 +24,10 @@ void UTBOptionRow::Build(const FString& Label, UFont* Font, UTexture2D* Paper, b
 		Slot->SetPosition(FVector2D(X, Y));
 		Slot->SetSize(FVector2D(W, H));
 	};
-	auto Text = [&](const FString& Value, int32 FontSize)
+	auto Text = [&](const FString& String, int32 FontSize)
 	{
 		auto* Block = WidgetTree->ConstructWidget<UTextBlock>();
-		Block->SetText(FText::FromString(Value));
+		Block->SetText(FText::FromString(String));
 		Block->SetFont(FSlateFontInfo(Font, FontSize));
 		Block->SetColorAndOpacity(TBPaper::Ink);
 		return Block;
