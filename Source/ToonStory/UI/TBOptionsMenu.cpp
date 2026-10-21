@@ -478,6 +478,8 @@ void UTBOptionsMenu::ChangeVideoMode(TFunctionRef<void(UTBGameUserSettings&)> Ch
 	{
 		return;
 	}
+	PreviousResolution = Settings->GetScreenResolution();
+	PreviousWindowMode = Settings->GetFullscreenMode();
 	Change(*Settings);
 	Settings->ApplyResolutionSettings(false);
 	ConfirmUntil = FPlatformTime::Seconds() + 15;
@@ -503,12 +505,19 @@ void UTBOptionsMenu::KeepVideoMode()
 	SetKeyboardFocus();
 }
 
+void UTBOptionsMenu::RestoreVideoMode(UTBGameUserSettings& Settings) const
+{
+	Settings.SetScreenResolution(PreviousResolution);
+	Settings.SetFullscreenMode(PreviousWindowMode);
+	Settings.ApplyResolutionSettings(false);
+	Settings.ConfirmVideoMode();
+}
+
 void UTBOptionsMenu::RevertVideoMode()
 {
 	if (auto* Settings = UTBGameUserSettings::Get())
 	{
-		Settings->RevertVideoMode();
-		Settings->ApplyResolutionSettings(false);
+		RestoreVideoMode(*Settings);
 	}
 	ConfirmOverlay->SetVisibility(ESlateVisibility::Collapsed);
 	PlayClick(true);
@@ -565,18 +574,22 @@ void UTBOptionsMenu::Close()
 	Dismiss();
 }
 
-void UTBOptionsMenu::Dismiss()
+void UTBOptionsMenu::NativeDestruct()
 {
-	// 確認していない解像度・画面モードは、閉じるときに元に戻す。
+	// 確認していない解像度・画面モードは、閉じるときに元に戻す。ステージの移動で画面ごと消えたときも、ここを通る。
 	if (IsConfirming())
 	{
 		if (auto* Settings = UTBGameUserSettings::Get())
 		{
-			Settings->RevertVideoMode();
-			Settings->ApplyResolutionSettings(false);
+			RestoreVideoMode(*Settings);
 		}
 		ConfirmOverlay->SetVisibility(ESlateVisibility::Collapsed);
 	}
+	Super::NativeDestruct();
+}
+
+void UTBOptionsMenu::Dismiss()
+{
 	RemoveFromParent();
 	if (Closed)
 	{

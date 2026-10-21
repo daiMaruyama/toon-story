@@ -3,6 +3,7 @@
 #pragma once
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "GenericPlatform/GenericWindow.h"
 #include "TBOptionsMenu.generated.h"
 
 class APlayerController;
@@ -31,6 +32,7 @@ public:
 
 protected:
 	virtual void NativeOnInitialized() override;
+	virtual void NativeDestruct() override;
 	virtual FReply NativeOnPreviewKeyDown(const FGeometry& Geometry, const FKeyEvent& KeyEvent) override;
 	virtual void NativeTick(const FGeometry& Geometry, float DeltaTime) override;
 
@@ -43,6 +45,8 @@ private:
 	// 解像度と画面モードは、変えたあと確認がなければ元に戻す。
 	void ChangeVideoMode(TFunctionRef<void(UTBGameUserSettings&)> Change);
 	bool IsConfirming() const;
+	// 変える前の解像度と画面モードに戻す。
+	void RestoreVideoMode(UTBGameUserSettings& Settings) const;
 	UFUNCTION()
 	void ShowAudio();
 	UFUNCTION()
@@ -58,6 +62,9 @@ private:
 	TFunction<void()> Closed;
 	int32 Page = 0;
 	double ConfirmUntil = 0;
+	// ウィンドウの大きさが変わると、エンジンはそれを「確認済み」にしてしまう。戻す先は自分で覚えておく。
+	FIntPoint PreviousResolution = FIntPoint::ZeroValue;
+	EWindowMode::Type PreviousWindowMode = EWindowMode::Windowed;
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UVerticalBox>> Pages;
 	UPROPERTY(Transient)
