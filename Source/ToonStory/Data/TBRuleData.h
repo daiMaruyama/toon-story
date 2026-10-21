@@ -180,6 +180,9 @@ USTRUCT(BlueprintType)
 struct FTBToyRules
 {
 	GENERATED_BODY()
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "おもちゃ",
+	          meta = (DisplayName = "音を鳴らすクールダウン", Units = "s", ClampMin = "0.1"))
+	float TauntCooldownSeconds = .1f;
 	/** 下の一覧にない見た目の、選ばれやすさ */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "人形の見た目",
 	          meta = (DisplayName = "ふつうの重み", ClampMin = "0", ClampMax = "1000"))

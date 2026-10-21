@@ -160,7 +160,7 @@ void UTBTitleMenu::BuildPaperLayout()
 	Place(Label(TEXT("にんげん"), 24, TBPaper::Accent), 660, 215, 390, 45);
 	Place(Label(TEXT("おもちゃに近づいてEでつかもう。\n箱の正面まで運び、Eを長押しして箱にしまおう。Qでおろせるよ。"), 19, TBPaper::Ink), 660, 265, 390, 165);
 	Place(Label(TEXT("基本操作"), 23, TBPaper::Accent), 220, 445, 840, 40);
-	Place(Label(TEXT("WASD：移動 ／ マウス：見回す ／ Space：ジャンプ\nShift：ダッシュ（おもちゃ） ／ Ctrl：しゃがむ（にんげん）\nE：つかむ・収納・救助 ／ Q：おろす ／ Esc：メニュー"), 18, TBPaper::Ink), 220, 495, 840, 120);
+	Place(Label(TEXT("WASD：移動 ／ マウス：見回す ／ Space：ジャンプ\nShift：ダッシュ（おもちゃ） ／ Ctrl：しゃがむ（にんげん）\nE：つかむ・収納・救助 ／ Q：おろす ／ F：音（おもちゃ） ／ Esc：メニュー"), 18, TBPaper::Ink), 220, 495, 840, 120);
 	CloseHelpButton = AddButton(TEXT("CloseHelp"), TEXT("閉じる [Esc]"), 465, 640, 350);
 	CloseHelpButton->OnClicked.AddDynamic(this, &ThisClass::CloseHelp);
 	HelpOverlay->SetVisibility(ESlateVisibility::Collapsed);

@@ -16,6 +16,8 @@ bool UTBAudioEvents::ShouldDeliver(ETBSoundEvent Event, const ATBPlayerState* Re
 
 	switch (Event)
 	{
+	case ETBSoundEvent::ToyTaunt:
+		return Recipient->Team == ETBTeam::Human || Recipient->Team == ETBTeam::Toy;
 	case ETBSoundEvent::Unready:
 	case ETBSoundEvent::CarryLift:
 	case ETBSoundEvent::CarryDrop:

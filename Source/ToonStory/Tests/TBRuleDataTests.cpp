@@ -8,6 +8,7 @@
 #include "Misc/ScopeExit.h"
 #if WITH_EDITOR
 #include "Misc/DataValidation.h"
+#include <limits>
 #endif
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBRuleDataTest, "ToonStory.Data.Rules",
@@ -83,6 +84,17 @@ bool FTBRuleDataValidationTest::RunTest(const FString& Parameters)
 	Rules->Match.DefaultDuration = 600.f;
 	Rules->Match.MinDuration = Rules->Match.MaxDuration + 60.f;
 	TestFalse(TEXT("Reversed duration range is rejected"), Passes(*Rules));
+	auto* TauntRules = NewObject<UTBRuleData>();
+	for (float Invalid : {-1.f, 0.f, .0999f, std::numeric_limits<float>::quiet_NaN(),
+	                      std::numeric_limits<float>::infinity()})
+	{
+		TauntRules->Toys.TauntCooldownSeconds = Invalid;
+		TestFalse(TEXT("Too short or non-finite taunt cooldown is rejected"), Passes(*TauntRules));
+	}
+	TauntRules->Toys.TauntCooldownSeconds = .1f;
+	TestTrue(TEXT("Taunt cooldown at lower bound is accepted"), Passes(*TauntRules));
+	TauntRules->Toys.TauntCooldownSeconds = .2f;
+	TestTrue(TEXT("Longer taunt cooldown is accepted"), Passes(*TauntRules));
 	return true;
 }
 #endif
