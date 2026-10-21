@@ -15,6 +15,7 @@
 #include "Components/CanvasPanelSlot.h"
 #include "Components/ScaleBox.h"
 #include "Components/Image.h"
+#include "Components/ProgressBar.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "InputCoreTypes.h"
 
@@ -100,7 +101,8 @@ void UTBTitleMenu::BuildPaperLayout()
 	HostButton = AddButton(TEXT("Host"), TEXT("部屋をつくる"), 90, 445, 370);
 	FindButton = AddButton(TEXT("Find"), TEXT("部屋をさがす"), 90, 523, 370, true);
 	HelpButton = AddButton(TEXT("Help"), TEXT("あそびかた"), 90, 601, 175, true);
-	auto* QuitButton = AddButton(TEXT("Quit"), TEXT("ゲームを閉じる"), 280, 601, 180, true);
+	AudioButton = AddButton(TEXT("Audio"), TEXT("おとの設定"), 280, 601, 180, true);
+	auto* QuitButton = AddButton(TEXT("Quit"), TEXT("ゲームを閉じる"), 90, 679, 175, true);
 	auto* Card = WidgetTree->ConstructWidget<UBorder>();
 	Card->SetBrush(TBPaper::Brush(PaperTexture));
 	Place(Card, 700, 85, 490, 205);
@@ -120,34 +122,40 @@ void UTBTitleMenu::BuildPaperLayout()
 	JoinButton = AddButton(TEXT("Join"), TEXT("選んだ部屋に入る"), 745, 490, 415);
 	CleanupButton = AddButton(TEXT("Cleanup"), TEXT("部屋から退出する"), 745, 567, 415, true);
 	StatusText = Label(TEXT(""), 17, TBPaper::Cream);
-	Place(StatusText, 90, 685, 1100, 90);
+	Place(StatusText, 90, 757, 1100, 40);
 	HostButton->OnClicked.AddDynamic(this, &ThisClass::Host);
 	FindButton->OnClicked.AddDynamic(this, &ThisClass::Find);
 	JoinButton->OnClicked.AddDynamic(this, &ThisClass::Join);
 	CleanupButton->OnClicked.AddDynamic(this, &ThisClass::Cleanup);
 	QuitButton->OnClicked.AddDynamic(this, &ThisClass::Quit);
 	HelpButton->OnClicked.AddDynamic(this, &ThisClass::Help);
+	AudioButton->OnClicked.AddDynamic(this, &ThisClass::OpenAudio);
 	RoomList->OnSelectionChanged.AddDynamic(this, &ThisClass::SelectionChanged);
 	TitleContent = Scale;
-	auto* Overlay = WidgetTree->ConstructWidget<UCanvasPanel>();
-	HelpOverlay = Overlay;
-	Fill(Overlay);
-	auto* Dim = WidgetTree->ConstructWidget<UImage>();
-	Dim->SetColorAndOpacity(FLinearColor(0.015f, .025f, .02f, .78f));
-	auto* DimSlot = Overlay->AddChildToCanvas(Dim);
-	DimSlot->SetAnchors(FAnchors(0, 0, 1, 1));
-	DimSlot->SetOffsets(FMargin(0));
-	auto* PopupScale = WidgetTree->ConstructWidget<UScaleBox>();
-	PopupScale->SetStretch(EStretch::ScaleToFit);
-	auto* PopupSlot = Overlay->AddChildToCanvas(PopupScale);
-	PopupSlot->SetAnchors(FAnchors(0, 0, 1, 1));
-	PopupSlot->SetOffsets(FMargin(0));
-	auto* PopupSize = WidgetTree->ConstructWidget<USizeBox>();
-	PopupSize->SetWidthOverride(1280);
-	PopupSize->SetHeightOverride(800);
-	PopupScale->SetContent(PopupSize);
-	Canvas = WidgetTree->ConstructWidget<UCanvasPanel>();
-	PopupSize->SetContent(Canvas);
+	// 画面全体を暗くして、1280×800 の上に置くポップアップ。このあとの Place と AddButton はポップアップに置く。
+	auto AddOverlay = [&]()
+	{
+		auto* Overlay = WidgetTree->ConstructWidget<UCanvasPanel>();
+		Fill(Overlay);
+		auto* Dim = WidgetTree->ConstructWidget<UImage>();
+		Dim->SetColorAndOpacity(FLinearColor(0.015f, .025f, .02f, .78f));
+		auto* DimSlot = Overlay->AddChildToCanvas(Dim);
+		DimSlot->SetAnchors(FAnchors(0, 0, 1, 1));
+		DimSlot->SetOffsets(FMargin(0));
+		auto* PopupScale = WidgetTree->ConstructWidget<UScaleBox>();
+		PopupScale->SetStretch(EStretch::ScaleToFit);
+		auto* PopupSlot = Overlay->AddChildToCanvas(PopupScale);
+		PopupSlot->SetAnchors(FAnchors(0, 0, 1, 1));
+		PopupSlot->SetOffsets(FMargin(0));
+		auto* PopupSize = WidgetTree->ConstructWidget<USizeBox>();
+		PopupSize->SetWidthOverride(1280);
+		PopupSize->SetHeightOverride(800);
+		PopupScale->SetContent(PopupSize);
+		Canvas = WidgetTree->ConstructWidget<UCanvasPanel>();
+		PopupSize->SetContent(Canvas);
+		return Overlay;
+	};
+	HelpOverlay = AddOverlay();
 	auto* HelpCard = WidgetTree->ConstructWidget<UBorder>();
 	HelpCard->SetBrush(TBPaper::Brush(PaperTexture, TBPaper::Cream));
 	Place(HelpCard, 170, 60, 940, 680);
@@ -162,6 +170,50 @@ void UTBTitleMenu::BuildPaperLayout()
 	CloseHelpButton = AddButton(TEXT("CloseHelp"), TEXT("閉じる [Esc]"), 465, 640, 350);
 	CloseHelpButton->OnClicked.AddDynamic(this, &ThisClass::CloseHelp);
 	HelpOverlay->SetVisibility(ESlateVisibility::Collapsed);
+
+	AudioOverlay = AddOverlay();
+	auto* AudioCard = WidgetTree->ConstructWidget<UBorder>();
+	AudioCard->SetBrush(TBPaper::Brush(PaperTexture, TBPaper::Cream));
+	Place(AudioCard, 250, 120, 780, 560);
+	Place(Label(TEXT("おとの設定"), 32, TBPaper::Accent), 290, 150, 700, 55);
+	Place(Label(TEXT("変えた音量はすぐに反映され、次からもこの音量になります。"), 18, TBPaper::Ink), 290, 210, 700, 40);
+	const TCHAR* VolumeNames[] = {TEXT("全体"), TEXT("BGM"), TEXT("効果音"), TEXT("ボイスチャット")};
+	for (int32 Index = 0; Index < UE_ARRAY_COUNT(VolumeNames); ++Index)
+	{
+		const float Y = 265 + Index * 76;
+		Place(Label(VolumeNames[Index], 20, TBPaper::Ink), 290, Y + 14, 185, 40);
+		auto* Down = AddButton(*FString::Printf(TEXT("VolumeDown%d"), Index), TEXT("-"), 480, Y, 90, true);
+		auto* Bar = WidgetTree->ConstructWidget<UProgressBar>();
+		FProgressBarStyle BarStyle;
+		BarStyle.BackgroundImage.TintColor = FLinearColor(.78f, .78f, .75f);
+		BarStyle.FillImage.TintColor = TBPaper::Accent;
+		Bar->SetWidgetStyle(BarStyle);
+		Place(Bar, 590, Y + 22, 230, 20);
+		auto* Value = Label(TEXT(""), 20, TBPaper::Ink);
+		Place(Value, 834, Y + 14, 70, 36);
+		auto* Up = AddButton(*FString::Printf(TEXT("VolumeUp%d"), Index), TEXT("+"), 910, Y, 90, true);
+		for (auto* Step : {Down, Up})
+		{
+			Cast<UTextBlock>(Step->GetContent())->SetFont(FSlateFontInfo(PaperFont, 24));
+		}
+		VolumeDownButtons.Add(Down);
+		VolumeUpButtons.Add(Up);
+		VolumeBars.Add(Bar);
+		VolumeTexts.Add(Value);
+	}
+	VolumeDownButtons[0]->OnClicked.AddDynamic(this, &ThisClass::MasterDown);
+	VolumeUpButtons[0]->OnClicked.AddDynamic(this, &ThisClass::MasterUp);
+	VolumeDownButtons[1]->OnClicked.AddDynamic(this, &ThisClass::MusicDown);
+	VolumeUpButtons[1]->OnClicked.AddDynamic(this, &ThisClass::MusicUp);
+	VolumeDownButtons[2]->OnClicked.AddDynamic(this, &ThisClass::EffectsDown);
+	VolumeUpButtons[2]->OnClicked.AddDynamic(this, &ThisClass::EffectsUp);
+	VolumeDownButtons[3]->OnClicked.AddDynamic(this, &ThisClass::VoiceDown);
+	VolumeUpButtons[3]->OnClicked.AddDynamic(this, &ThisClass::VoiceUp);
+	auto* ResetAudioButton = AddButton(TEXT("ResetAudio"), TEXT("初期設定に戻す"), 290, 580, 320, true);
+	ResetAudioButton->OnClicked.AddDynamic(this, &ThisClass::ResetAudio);
+	CloseAudioButton = AddButton(TEXT("CloseAudio"), TEXT("閉じる [Esc]"), 660, 580, 330);
+	CloseAudioButton->OnClicked.AddDynamic(this, &ThisClass::CloseAudio);
+	AudioOverlay->SetVisibility(ESlateVisibility::Collapsed);
 }
 
 void UTBTitleMenu::Quit()
@@ -197,6 +249,11 @@ FReply UTBTitleMenu::NativeOnPreviewKeyDown(const FGeometry& Geometry, const FKe
 	if (HelpOverlay && HelpOverlay->GetVisibility() == ESlateVisibility::Visible && KeyEvent.GetKey() == EKeys::Escape)
 	{
 		CloseHelp();
+		return FReply::Handled();
+	}
+	if (AudioOverlay && AudioOverlay->GetVisibility() == ESlateVisibility::Visible && KeyEvent.GetKey() == EKeys::Escape)
+	{
+		CloseAudio();
 		return FReply::Handled();
 	}
 	return Super::NativeOnPreviewKeyDown(Geometry, KeyEvent);

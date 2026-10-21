@@ -241,6 +241,7 @@ void ATBHUD::DrawLobby()
 		         : TEXT("全員の準備ができたら、はじめよう。"),
 		     48, 456, .85f, Muted);
 	}
+	Button(TEXT("OpenAudio"), TEXT("おとの設定"), 700, 600, 200);
 	Button(TEXT("Leave"), Host ? TEXT("部屋を閉じてタイトルへ") : TEXT("部屋を出てタイトルへ"), 922, 600, 250);
 	if (auto* Session = PC->GetGameInstance()->GetSubsystem<UTBSession>())
 	{

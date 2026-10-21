@@ -2,6 +2,7 @@
 #include "Components/AudioComponent.h"
 #include "Components/SceneComponent.h"
 #include "Core/TBGameState.h"
+#include "Core/TBGameUserSettings.h"
 #include "Core/TBPlayerState.h"
 #include "Core/TBTitleGameMode.h"
 #include "Engine/GameInstance.h"
@@ -21,6 +22,11 @@ void UTBAudioSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	bInitialized = true;
 	CleanupHandle = FWorldDelegates::OnWorldCleanup.AddUObject(this, &ThisClass::OnWorldCleanup);
 	ReloadAudioSettings();
+	// プレイヤーが設定画面で選んだ音量（保存済み）で鳴らす。
+	if (const auto* Settings = UTBGameUserSettings::Get())
+	{
+		Settings->ApplyVolumes(*this);
+	}
 }
 
 void UTBAudioSubsystem::Deinitialize()

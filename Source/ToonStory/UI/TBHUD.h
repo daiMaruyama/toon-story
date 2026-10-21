@@ -23,6 +23,9 @@ private:
  TWeakObjectPtr<class APlayerState> KickSelection;
  void DrawPlayers();
  bool HandleSafetyClick(FName Name);
+	bool bAudioOpen = false;
+	void DrawAudioSettings();
+	bool HandleAudioClick(FName Name);
  FName LastClickedButton;
 	double LastButtonClickTime = -1;
 	bool bLobbySettingsOpen = false;

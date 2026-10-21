@@ -5,6 +5,16 @@
 #include "Engine/DataAsset.h"
 #include "TBConfigData.generated.h"
 
+/** プレイヤーが変えられる音量の種類 */
+UENUM()
+enum class ETBVolume : uint8
+{
+	Master,
+	Music,
+	Effects,
+	Voice
+};
+
 /** プレイヤーが変えられる音量1つ分の、初期値と範囲 */
 USTRUCT(BlueprintType)
 struct FTBVolumeSetting
@@ -43,6 +53,24 @@ struct FTBAudioConfig
 	FTBVolumeSetting Effects;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "音量", meta = (DisplayName = "ボイスチャット"))
 	FTBVolumeSetting Voice;
+	/** 設定画面で「-」「+」を1回押したときに変わる量 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "音量", meta = (DisplayName = "刻み", ClampMin = "0.01", ClampMax = "0.5"))
+	float Step = .1f;
+
+	const FTBVolumeSetting& Get(ETBVolume Kind) const
+	{
+		switch (Kind)
+		{
+			case ETBVolume::Music:
+				return Music;
+			case ETBVolume::Effects:
+				return Effects;
+			case ETBVolume::Voice:
+				return Voice;
+			default:
+				return Master;
+		}
+	}
 };
 
 /** プレイヤーが変えられる設定の、初期値と範囲。プレイヤーが選んだ値は UTBGameUserSettings に保存する */

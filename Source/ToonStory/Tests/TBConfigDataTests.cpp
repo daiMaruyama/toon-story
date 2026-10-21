@@ -1,9 +1,13 @@
 #include "Misc/AutomationTest.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
+#include "Audio/TBAudioSubsystem.h"
 #include "Core/TBGameUserSettings.h"
 #include "Data/TBConfigData.h"
 #include "Data/TBDataSettings.h"
+#include "Engine/Engine.h"
+#include "Engine/GameInstance.h"
+#include "Engine/World.h"
 #include "Misc/ScopeExit.h"
 #include <limits>
 #if WITH_EDITOR
@@ -21,6 +25,7 @@ bool FTBConfigDataTest::RunTest(const FString& Parameters)
 	{
 		TestEqual(TEXT("Volume default and range"), FVector(Volume->Default, Volume->Min, Volume->Max), FVector(1, 0, 1));
 	}
+	TestEqual(TEXT("Volume step"), Defaults.Step, .1f);
 
 	// プロジェクト設定でアセットを選んでいれば、初期値ではなくそのアセットを使う。
 	const auto& Selected = GetDefault<UTBDataSettings>()->ConfigData;
@@ -48,18 +53,52 @@ bool FTBConfigDataTest::RunTest(const FString& Parameters)
 	{
 		Config.Audio = Saved;
 	};
-	Config.Audio.Music.Default = .6f;
+	Config.Audio = FTBAudioConfig();
+	Config.Audio.Music.Default = .65f;
 	auto* Settings = NewObject<UTBGameUserSettings>();
-	TestEqual(TEXT("Unchosen volume follows the data default"), Settings->GetMusicVolume(), .6f);
-	Settings->SetMusicVolume(.3f);
-	TestEqual(TEXT("Chosen volume is kept"), Settings->GetMusicVolume(), .3f);
-	Settings->SetMasterVolume(5.f);
-	TestEqual(TEXT("Volume cannot go above the max"), Settings->GetMasterVolume(), 1.f);
+	TestEqual(TEXT("Unchosen volume follows the data default"), Settings->GetVolume(ETBVolume::Music), .65f);
+	Settings->StepVolume(ETBVolume::Music, 1);
+	TestEqual(TEXT("A step from between marks stops at the next mark"), Settings->GetVolume(ETBVolume::Music), .7f);
+	Settings->StepVolume(ETBVolume::Music, -1);
+	Settings->StepVolume(ETBVolume::Music, -1);
+	TestEqual(TEXT("Steps move by the data step"), Settings->GetVolume(ETBVolume::Music), .5f);
+	Settings->SetVolume(ETBVolume::Master, 5.f);
+	TestEqual(TEXT("Volume cannot go above the max"), Settings->GetVolume(ETBVolume::Master), 1.f);
+	Settings->StepVolume(ETBVolume::Master, 1);
+	TestEqual(TEXT("A step at the max stays at the max"), Settings->GetVolume(ETBVolume::Master), 1.f);
 	Config.Audio.Music.Max = .2f;
-	TestEqual(TEXT("Saved volume is clamped by the current data"), Settings->GetMusicVolume(), .2f);
+	TestEqual(TEXT("Saved volume is clamped by the current data"), Settings->GetVolume(ETBVolume::Music), .2f);
 	Config.Audio.Music.Max = 1.f;
-	Settings->SetToDefaults();
-	TestEqual(TEXT("Reset goes back to the data default"), Settings->GetMusicVolume(), .6f);
+	Settings->ResetVolumes();
+	TestEqual(TEXT("Reset goes back to the data default"), Settings->GetVolume(ETBVolume::Music), .65f);
+
+	// エンジンはこのクラスを使う。選んだ音量は実際の音に届く。終わったら音量を戻す。
+	TestNotNull(TEXT("Engine uses the game's user settings"), UTBGameUserSettings::Get());
+	UGameInstance* GameInstance = nullptr;
+	for (const auto& Context : GEngine->GetWorldContexts())
+	{
+		if (Context.World() && Context.World()->GetGameInstance())
+		{
+			GameInstance = Context.World()->GetGameInstance();
+			break;
+		}
+	}
+	auto* Audio = GameInstance ? GameInstance->GetSubsystem<UTBAudioSubsystem>() : nullptr;
+	if (TestNotNull(TEXT("Audio subsystem"), Audio))
+	{
+		const FVector4 Before(Audio->GetMasterVolume(), Audio->GetMusicVolume(), Audio->GetEffectsVolume(),
+		                      Audio->GetVoiceVolume());
+		ON_SCOPE_EXIT
+		{
+			Audio->SetMasterVolume(Before.X);
+			Audio->SetMusicVolume(Before.Y);
+			Audio->SetEffectsVolume(Before.Z);
+			Audio->SetVoiceVolume(Before.W);
+		};
+		Settings->SetVolume(ETBVolume::Music, .3f);
+		Settings->ApplyVolumes(*Audio);
+		TestEqual(TEXT("Chosen volume reaches the sound"), Audio->GetMusicVolume(), .3f);
+	}
 	return true;
 }
 

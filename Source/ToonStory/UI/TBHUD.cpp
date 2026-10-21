@@ -28,6 +28,7 @@ void ATBHUD::NotifyHitBoxClick(FName Name)
 	{
 		return;
 	}
+	if (HandleAudioClick(Name)) return;
 	if (auto* Audio = PC->GetGameInstance()->GetSubsystem<UTBAudioSubsystem>())
 	{
 		if (Name != TEXT("Ready") && Name != TEXT("Child") && Name != TEXT("Toy") && Name != TEXT("Either") &&
@@ -106,7 +107,13 @@ void ATBHUD::DrawHUD()
 	    (State->Phase == ETBPhase::Playing && !PC->IsLeaveMenuOpen()))
 	{
 		bPlayersOpen = false;
+		bAudioOpen = false;
 		KickSelection.Reset();
+	}
+	if (bAudioOpen)
+	{
+		DrawAudioSettings();
+		return;
 	}
 	if (bPlayersOpen)
 	{
@@ -128,9 +135,9 @@ void ATBHUD::DrawHUD()
 		if (PC->IsLeaveMenuOpen())
 		{
 			const float S = FMath::Min(Canvas->ClipX / 1280.f, Canvas->ClipY / 800.f);
-			const float X = Canvas->ClipX * .5f - 260 * S, Y = Canvas->ClipY * .5f - 150 * S;
+			const float X = Canvas->ClipX * .5f - 260 * S, Y = Canvas->ClipY * .5f - 180 * S;
 			DrawRect(FLinearColor(0, 0, 0, .45f), 0, 0, Canvas->ClipX, Canvas->ClipY);
-			PaperPanel(FLinearColor::White, X, Y, 520 * S, 370 * S);
+			PaperPanel(FLinearColor::White, X, Y, 520 * S, 430 * S);
 			DrawText(TEXT("ひとやすみ"), TBPaper::Accent, X + 32 * S, Y + 24 * S, PaperFont, 1.5f * S);
 			DrawText(TEXT("オンラインの試合は進み続けます。"), TBPaper::Muted, X + 32 * S, Y + 69 * S, PaperFont,
 			         .85f * S);
@@ -142,6 +149,7 @@ void ATBHUD::DrawHUD()
 			const FMenuButton Buttons[] = {{TEXT("Resume"), TEXT("あそびにもどる [Esc]")},
 			                               {TEXT("Unstuck"), TEXT("スタック解除（3秒待機）")},
 			                               {TEXT("Players"), TEXT("参加者一覧")},
+			                               {TEXT("OpenAudio"), TEXT("おとの設定")},
 			                               {TEXT("Leave"), TEXT("タイトルにもどる")}};
 			for (int32 I = 0; I < UE_ARRAY_COUNT(Buttons); ++I)
 			{
