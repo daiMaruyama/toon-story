@@ -2,6 +2,7 @@
 
 #include "TBMovement.h"
 #include "Character/TBCharacter.h"
+#include "Character/TBNPCController.h"
 #include "Data/TBCharacterData.h"
 #include "GamePlay/TBRuleMath.h"
 #include "GameFramework/PhysicsVolume.h"
@@ -69,6 +70,9 @@ float UTBMovement::GetMaxSpeed() const
 	{
 		return TB::CharacterData().Toy.SprintSpeed;
 	}
+	if (Character && Character->IsHuman())
+		if (const auto* NPC = Cast<ATBNPCController>(Character->GetController()))
+			return Super::GetMaxSpeed() * FMath::Clamp(NPC->HumanSpeedScale, .1f, 1.f);
 	return Super::GetMaxSpeed();
 }
 

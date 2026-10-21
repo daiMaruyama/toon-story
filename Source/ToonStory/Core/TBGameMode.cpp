@@ -12,6 +12,8 @@
 #include "Core/TBSession.h"
 #include "Core/TBGameHelpers.h"
 #include "Character/TBCharacter.h"
+#include "Character/TBNPCController.h"
+#include "Character/TBNPCNavigation.h"
 #include "Character/TBToyCharacter.h"
 #include "GamePlay/TBBox.h"
 #include "GamePlay/TBDummyToy.h"
@@ -95,7 +97,7 @@ void ATBGameMode::BeginPlay()
 void ATBGameMode::RestartPlayer(AController* NewPlayer)
 {
 	Super::RestartPlayer(NewPlayer);
-	PlaceInLobby(NewPlayer);
+	if (NewPlayer && NewPlayer->IsPlayerController()) PlaceInLobby(NewPlayer);
 }
 
 bool ATBGameMode::PlaceInLobby(AController* Player)
@@ -267,7 +269,7 @@ int32 ATBGameMode::LobbyPlayerCount() const
 	{
 		for (const APlayerState* Player : State->PlayerArray)
 		{
-			Count += Cast<ATBPlayerState>(Player) ? 1 : 0;
+			Count += Cast<ATBPlayerState>(Player) && !Player->IsABot() ? 1 : 0;
 		}
 	}
 	return Count;
@@ -278,8 +280,24 @@ void ATBGameMode::SyncLobbyCounts()
 	auto* State = TB::GS(GetWorld());
 	if (!State || State->Phase != ETBPhase::Lobby || State->bTravelPending) return;
 	const int32 Count = LobbyPlayerCount();
-	// Preserve children where possible, leaving one toy when there are at least two players.
-	const int32 Humans = Count < 2 ? Count : FMath::Clamp(State->Settings.Humans, 1, Count - 1);
+	// Real players take precedence if someone joins after NPC counts were selected.
+	const int32 ParticipantLimit = GameSession ? GameSession->MaxPlayers : 0;
+	State->Settings.NPCHumans = FMath::Clamp(State->Settings.NPCHumans, 0, FMath::Max(0, ParticipantLimit - Count));
+	State->Settings.NPCToys = FMath::Clamp(State->Settings.NPCToys, 0, FMath::Max(0, ParticipantLimit - Count - State->Settings.NPCHumans));
+	// Reserve a real player for each team that has no NPC, when both teams can be filled.
+	const int32 MinimumHumans = Count > 0 && State->Settings.NPCHumans == 0 ? 1 : 0;
+	const int32 MaximumHumans = Count > 0 && State->Settings.NPCToys == 0 && (Count > 1 || State->Settings.NPCHumans > 0) ? Count - 1 : Count;
+	int32 HumanPreferences = 0, ToyPreferences = 0;
+	for (const APlayerState* Player : State->PlayerArray)
+	{
+		const auto* Info = Cast<ATBPlayerState>(Player);
+		if (!Info || Info->IsABot()) continue;
+		HumanPreferences += Info->Preference == ETBTeam::Human ? 1 : 0;
+		ToyPreferences += Info->Preference == ETBTeam::Toy ? 1 : 0;
+	}
+	// Only "either" players may fill missing teams. Explicit choices are never overridden.
+	const int32 BalancedHumans = FMath::Clamp(State->Settings.Humans, MinimumHumans, MaximumHumans);
+	const int32 Humans = FMath::Clamp(BalancedHumans, HumanPreferences, Count - ToyPreferences);
 	if (State->Settings.Humans == Humans && State->Settings.Toys == Count - Humans) return;
 	State->Settings.Humans = Humans;
 	State->Settings.Toys = Count - Humans;
@@ -307,8 +325,12 @@ void ATBGameMode::SetRules(APlayerController* PlayerController, const FTBSetting
 		if (Rules.Toys < 0 || Rules.Toys > Count) return;
 		Adjusted.Humans = Count - Rules.Toys;
 	}
+	const int32 ParticipantLimit = GameSession ? GameSession->MaxPlayers : 0;
+	const int32 NPCLimit = FMath::Max(0, ParticipantLimit - 1); // Reserve a slot for the host.
 	// 下限はロビーの最短より緩め、テスト用コマンドの短い試合も通す。
-	if (!GameSession || Adjusted.Humans < (Count > 0 ? 1 : 0) || Adjusted.Toys < (Count > 1 ? 1 : 0) ||
+	if (!GameSession || Adjusted.Humans < 0 || Adjusted.Toys < 0 ||
+	    Rules.NPCHumans < 0 || Rules.NPCHumans > NPCLimit || Rules.NPCToys < 0 || Rules.NPCToys > NPCLimit ||
+	    int64(Count) + Rules.NPCHumans + Rules.NPCToys > ParticipantLimit ||
 	    int64(Adjusted.Humans) + Adjusted.Toys != Count || Count > GameSession->MaxPlayers || !FMath::IsFinite(Rules.Duration) ||
 	    Rules.Duration < 10 || Rules.Duration > TB::Rules().Match.MaxDuration || Rules.RequiredItems < 1)
 	{
@@ -320,6 +342,7 @@ void ATBGameMode::SetRules(APlayerController* PlayerController, const FTBSetting
 	}
 	CastChecked<ATBController>(PlayerController)->ClientPlaySoundEvent(ETBSoundEvent::UIChange, FVector::ZeroVector);
 	MatchInfo->Settings = Adjusted;
+	SyncLobbyCounts();
 	MatchInfo->ForceNetUpdate();
 }
 
@@ -332,15 +355,17 @@ void ATBGameMode::StartRound(APlayerController* PlayerController)
 	{
 		return;
 	}
+	SyncLobbyCounts();
 	TArray<ATBPlayerState*> Players;
 	for (APlayerState* ToyPlayerInfo : MatchInfo->PlayerArray)
 	{
-		if (auto* CandidateState = Cast<ATBPlayerState>(ToyPlayerInfo))
+		if (auto* CandidateState = Cast<ATBPlayerState>(ToyPlayerInfo); CandidateState && !CandidateState->IsABot())
 		{
 			Players.Add(CandidateState);
 		}
 	}
-	if (MatchInfo->Settings.Humans < 1 || MatchInfo->Settings.Toys < 1 ||
+	if (MatchInfo->Settings.Humans + MatchInfo->Settings.NPCHumans < 1 ||
+	    MatchInfo->Settings.Toys + MatchInfo->Settings.NPCToys < 1 ||
 	    Players.Num() != MatchInfo->Settings.Humans + MatchInfo->Settings.Toys)
 	{
 		if (HostController)
@@ -390,6 +415,12 @@ void ATBGameMode::StartRound(APlayerController* PlayerController)
 		}
 		return;
 	}
+	if ((MatchInfo->Settings.NPCHumans > 0 || MatchInfo->Settings.NPCToys > 0) &&
+	    !TBNPCNavigation::Prepare(GetWorld()))
+	{
+		if (HostController) HostController->ClientNotice(TEXT("NPCの移動経路を準備できませんでした。"));
+		return;
+	}
 	// 同じ希望内では抽選し、人間希望・希望なし・おもちゃ希望の順に人間枠を割り当てる。
 	for (int32 Index = Players.Num() - 1; Index > 0; --Index)
 	{
@@ -430,6 +461,13 @@ void ATBGameMode::StartRound(APlayerController* PlayerController)
 	MatchInfo->BoxedCount = 0;
 	MatchInfo->Winner = ETBWinner::None;
 	MatchInfo->EndTime = MatchInfo->GetServerWorldTimeSeconds() + MatchInfo->Settings.Duration;
+	// Spawn only after travel and player assignment; NPCs are not network arrivals or ready voters.
+	if (!SpawnNPCs())
+	{
+		RemoveNPCs();
+		if (HostController) HostController->ClientNotice(TEXT("NPCを配置できませんでした。"));
+		return;
+	}
 	MatchInfo->Phase = ETBPhase::Playing;
 	MatchInfo->ForceNetUpdate();
 	if (auto* Session = GetGameInstance()->GetSubsystem<UTBSession>())
@@ -446,6 +484,7 @@ void ATBGameMode::ReturnToLobby(APlayerController* PlayerController)
 	{
 		return;
 	}
+	RemoveNPCs();
 	if (GetGameInstance()->GetSubsystem<UTBLobbySettings>()->bDedicatedLobby)
 	{
 		if (!TBLobbySettings::Travel(this, false)) return;
@@ -546,6 +585,8 @@ bool ATBGameMode::Watched(ATBCharacter* Toy, ATBCharacter* Human) const
 	{
 		return false;
 	}
+	// An NPC that has not noticed this toy must not freeze it just by facing it.
+	if (const auto* NPC = Cast<ATBNPCController>(Human->GetController()); NPC && !NPC->IsTracking(Toy)) return false;
 	const FVector Eye = Human->GetPawnViewLocation();
 	const FRotationMatrix Basis(Human->GetControlRotation());
 	const FVector View = Basis.GetUnitAxis(EAxis::X);
@@ -736,5 +777,53 @@ void ATBGameMode::Logout(AController* Exiting)
 	else
 	{
 		CheckWin();
+	}
+}
+
+bool ATBGameMode::SpawnNPCs()
+{
+	const auto* State = TB::GS(GetWorld());
+	if (!State) return false;
+	for (ETBTeam Team : {ETBTeam::Human, ETBTeam::Toy})
+	{
+		const int32 Count = Team == ETBTeam::Human ? State->Settings.NPCHumans : State->Settings.NPCToys;
+		for (int32 Index = 0; Index < Count; ++Index)
+		{
+			auto* AI = GetWorld()->SpawnActor<ATBNPCController>();
+			if (!AI) return false;
+			auto* Info = AI->GetPlayerState<ATBPlayerState>();
+			if (!Info) { AI->Destroy(); return false; }
+			Info->SetIsABot(true);
+			Info->SetPlayerName(FString::Printf(TEXT("NPC %s %d"), Team == ETBTeam::Human ? TEXT("Human") : TEXT("Toy"), Index + 1));
+			Info->Team = Team;
+			Info->Preference = Team;
+			Info->bReady = true;
+			// RestartPlayer also provides collision-aware spawning from the normal player starts.
+			RestartPlayer(AI);
+			auto* Body = Cast<ATBCharacter>(AI->GetPawn());
+			if (!Body) return false;
+			Body->ApplyState();
+			Body->UpdateNavAgent();
+			if (auto* Toy = Cast<ATBToyCharacter>(Body)) Toy->ChooseRandomToy();
+			Info->ForceNetUpdate();
+		}
+	}
+	return true;
+}
+
+void ATBGameMode::RemoveNPCs()
+{
+	TArray<ATBNPCController*> Bots;
+	for (TActorIterator<ATBNPCController> It(GetWorld()); It; ++It) Bots.Add(*It);
+	for (auto* AI : Bots)
+	{
+		if (auto* Body = Cast<ATBCharacter>(AI->GetPawn()))
+		{
+			if (IsValid(Body->Carrier)) Body->Carrier->DropToy();
+			Body->DropToy();
+			AI->UnPossess();
+			Body->Destroy();
+		}
+		AI->Destroy();
 	}
 }
