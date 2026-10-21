@@ -63,6 +63,8 @@ bool FTBConfigDataTest::RunTest(const FString& Parameters)
 	Config.Audio = FTBAudioConfig();
 	Config.Audio.Music.Default = .65f;
 	auto* Settings = NewObject<UTBGameUserSettings>();
+	// 新しく作っても、この PC に保存した値を引き継ぐ。どの PC でも「まだ選んでいない」から始める。
+	Settings->SetToDefaults();
 	TestEqual(TEXT("Unchosen volume follows the data default"), Settings->GetVolume(ETBVolume::Music), .65f);
 	Settings->StepVolume(ETBVolume::Music, 1);
 	TestEqual(TEXT("A step from between marks stops at the next mark"), Settings->GetVolume(ETBVolume::Music), .7f);
