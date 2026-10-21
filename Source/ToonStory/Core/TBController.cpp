@@ -258,6 +258,7 @@ void ATBController::TBStart()
 void ATBController::TBRules(int32 HumanCount, int32 ToyCount, float Seconds, int32 Items)
 {
 	FTBSettings Settings;
+	if (const auto* State = TB::GS(GetWorld())) Settings = State->Settings;
 	Settings.Humans = HumanCount;
 	Settings.Toys = ToyCount;
 	Settings.Duration = Seconds;
@@ -308,6 +309,7 @@ void ATBController::ServerPreference_Implementation(ETBTeam Team)
 		if (ToyPlayerInfo->Preference != Team) ClientPlaySoundEvent(ETBSoundEvent::UIChange, FVector::ZeroVector);
 		ToyPlayerInfo->Preference = Team;
 		ToyPlayerInfo->ForceNetUpdate();
+		if (auto* Mode = GetWorld()->GetAuthGameMode<ATBGameMode>()) Mode->SyncLobbyCounts();
 	}
 }
 
