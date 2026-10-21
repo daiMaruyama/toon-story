@@ -151,6 +151,10 @@ struct FTBDisplayConfig
 	bool bDefaultVSync = false;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "画面", meta = (DisplayName = "モーションブラーの初期値"))
 	bool bDefaultMotionBlur = true;
+	/** 光の計算（Lumen）にレイトレーシングを使うか。対応している GPU だけ選べる。
+	    切ると暗がりが暗くなる（自分が見えにくくなるだけ）かわりに、動作が軽くなる */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "画面", meta = (DisplayName = "レイトレーシングの初期値"))
+	bool bDefaultRayTracing = true;
 };
 
 USTRUCT(BlueprintType)

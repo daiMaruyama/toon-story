@@ -14,7 +14,7 @@ void UTBOptionRow::Build(const FString& Label, UFont* Font, UTexture2D* Paper, b
 {
 	auto* Size = WidgetTree->ConstructWidget<USizeBox>();
 	Size->SetWidthOverride(800);
-	Size->SetHeightOverride(54);
+	Size->SetHeightOverride(50);
 	WidgetTree->RootWidget = Size;
 	auto* Canvas = WidgetTree->ConstructWidget<UCanvasPanel>();
 	Size->SetContent(Canvas);
@@ -37,10 +37,10 @@ void UTBOptionRow::Build(const FString& Label, UFont* Font, UTexture2D* Paper, b
 		auto* Button = WidgetTree->ConstructWidget<UButton>();
 		Button->SetStyle(TBPaper::ButtonStyle(Paper));
 		Button->SetContent(Text(Glyph, 22));
-		Place(Button, X, 3, 84, 48);
+		Place(Button, X, 3, 84, 44);
 		return Button;
 	};
-	Place(Text(Label, 20), 0, 12, 230, 36);
+	Place(Text(Label, 20), 0, 10, 230, 36);
 	DownButton = Arrow(TEXT("<"), 240);
 	UpButton = Arrow(TEXT(">"), 716);
 	ValueText = Text(TEXT(""), 19);
@@ -51,13 +51,13 @@ void UTBOptionRow::Build(const FString& Label, UFont* Font, UTexture2D* Paper, b
 		Style.BackgroundImage.TintColor = FLinearColor(.78f, .78f, .75f);
 		Style.FillImage.TintColor = TBPaper::Accent;
 		Bar->SetWidgetStyle(Style);
-		Place(Bar, 340, 19, 250, 18);
-		Place(ValueText, 606, 12, 102, 36);
+		Place(Bar, 340, 16, 250, 18);
+		Place(ValueText, 606, 10, 102, 36);
 	}
 	else
 	{
 		ValueText->SetJustification(ETextJustify::Center);
-		Place(ValueText, 330, 12, 380, 36);
+		Place(ValueText, 330, 10, 380, 36);
 	}
 	DownButton->OnClicked.AddDynamic(this, &ThisClass::Down);
 	UpButton->OnClicked.AddDynamic(this, &ThisClass::Up);

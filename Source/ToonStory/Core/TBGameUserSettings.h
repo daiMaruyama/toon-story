@@ -45,6 +45,10 @@ public:
 	void StepBrightness(int32 Steps);
 	bool IsMotionBlurEnabled() const;
 	void SetMotionBlurEnabled(bool bEnabled);
+	// 光の計算（Lumen）にレイトレーシングを使うか。この PC の GPU が対応していなければ選べない。
+	static bool IsRayTracingSupported();
+	bool IsRayTracingOn() const;
+	void SetRayTracingOn(bool bOn);
 	// データの選択肢の中で、fps の上限を前後に動かす。
 	int32 GetFrameRateLimitIndex() const;
 	void StepFrameRateLimit(int32 Steps);
@@ -83,6 +87,8 @@ private:
 	float Brightness = -1.f;
 	UPROPERTY(Config)
 	int32 MotionBlur = -1;
+	UPROPERTY(Config)
+	int32 RayTracing = -1;
 	UPROPERTY(Config)
 	float MouseSensitivity = -1.f;
 	UPROPERTY(Config)

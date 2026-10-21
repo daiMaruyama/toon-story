@@ -100,6 +100,11 @@ bool FTBConfigDataTest::RunTest(const FString& Parameters)
 	Settings->SetFrameRateLimit(0.f);
 	Settings->StepFrameRateLimit(-1);
 	TestEqual(TEXT("Frame rate limit moves through the data choices"), Settings->GetFrameRateLimit(), 144.f);
+	TestTrue(TEXT("Ray tracing follows the data default"), Settings->IsRayTracingOn() == Display.bDefaultRayTracing);
+	Settings->SetRayTracingOn(false);
+	TestFalse(TEXT("Ray tracing can be turned off"), Settings->IsRayTracingOn());
+	Settings->ResetDisplay();
+	TestTrue(TEXT("Reset display restores ray tracing"), Settings->IsRayTracingOn() == Display.bDefaultRayTracing);
 
 	// 操作。上下反転は縦だけ逆にする。
 	Settings->StepMouseSensitivity(1);

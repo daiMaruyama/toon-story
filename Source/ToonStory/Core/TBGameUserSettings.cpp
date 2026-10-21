@@ -5,6 +5,7 @@
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
 #include "HAL/IConsoleManager.h"
+#include "RenderUtils.h"
 
 UTBGameUserSettings* UTBGameUserSettings::Get()
 {
@@ -16,7 +17,7 @@ void UTBGameUserSettings::SetToDefaults()
 	Super::SetToDefaults();
 	// 初回起動もここを通る。データはまだ読めないことがあるので、「まだ選んでいない」に戻すだけにする。
 	ResetVolumes();
-	QualityPreset = MotionBlur = InvertMouseY = -1;
+	QualityPreset = MotionBlur = RayTracing = InvertMouseY = -1;
 	Brightness = MouseSensitivity = -1.f;
 }
 
@@ -32,6 +33,11 @@ void UTBGameUserSettings::ApplyNonResolutionSettings()
 	if (auto* BlurAmount = IConsoleManager::Get().FindConsoleVariable(TEXT("r.MotionBlur.Amount")))
 	{
 		BlurAmount->Set(IsMotionBlurEnabled() ? -1.f : 0.f, ECVF_SetByGameSetting);
+	}
+	// 切ると Lumen はソフトウェアの計算になる。非対応の GPU では、オンでもエンジンが自動でソフトウェアにする。
+	if (auto* LumenHardware = IConsoleManager::Get().FindConsoleVariable(TEXT("r.Lumen.HardwareRayTracing")))
+	{
+		LumenHardware->Set(IsRayTracingOn() ? 1 : 0, ECVF_SetByGameSetting);
 	}
 }
 
@@ -142,6 +148,21 @@ void UTBGameUserSettings::SetMotionBlurEnabled(bool bEnabled)
 	MotionBlur = bEnabled ? 1 : 0;
 }
 
+bool UTBGameUserSettings::IsRayTracingSupported()
+{
+	return ::IsRayTracingEnabled();
+}
+
+bool UTBGameUserSettings::IsRayTracingOn() const
+{
+	return RayTracing < 0 ? TB::ConfigData().Display.bDefaultRayTracing : RayTracing != 0;
+}
+
+void UTBGameUserSettings::SetRayTracingOn(bool bOn)
+{
+	RayTracing = bOn ? 1 : 0;
+}
+
 int32 UTBGameUserSettings::GetFrameRateLimitIndex() const
 {
 	return TB::ConfigData().Display.FrameRateLimits.IndexOfByKey(FMath::RoundToInt(GetFrameRateLimit()));
@@ -164,7 +185,7 @@ void UTBGameUserSettings::ResetDisplay()
 	SetQualityPreset(Display.DefaultQuality);
 	SetResolutionScaleValueEx(Display.ResolutionScale.Clamp(Display.ResolutionScale.Default));
 	Brightness = -1.f;
-	MotionBlur = -1;
+	MotionBlur = RayTracing = -1;
 	SetVSyncEnabled(Display.bDefaultVSync);
 	SetFrameRateLimit(Display.DefaultFrameRateLimit);
 	EnforceLimits();

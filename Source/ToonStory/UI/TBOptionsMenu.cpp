@@ -330,6 +330,20 @@ void UTBOptionsMenu::Build(UTBGameUserSettings& Settings)
 		S->SetMotionBlurEnabled(Steps > 0);
 		S->CommitDisplay();
 	};
+	auto* RayTracing = AddRow(1, TEXT("レイトレーシング"), false);
+	RayTracing->Value = [S]
+	{
+		return UTBGameUserSettings::IsRayTracingSupported() ? OnOff(S->IsRayTracingOn()) : FString(TEXT("この PC では使えません"));
+	};
+	RayTracing->CanStep = [S](int32 Steps)
+	{
+		return UTBGameUserSettings::IsRayTracingSupported() && (Steps > 0) != S->IsRayTracingOn();
+	};
+	RayTracing->Step = [S](int32 Steps)
+	{
+		S->SetRayTracingOn(Steps > 0);
+		S->CommitDisplay();
+	};
 	Pages[1]->AddChildToVerticalBox(Label(TEXT("解像度と画面モードは、変えたあと「このままにする」を押さないと15秒で元に戻ります。"), 15,
 	                                      TBPaper::Muted));
 
@@ -389,7 +403,7 @@ UTBOptionRow* UTBOptionsMenu::AddRow(int32 PageIndex, const FString& Label, bool
 		PlayClick();
 		RefreshRows();
 	};
-	Pages[PageIndex]->AddChildToVerticalBox(Row)->SetPadding(FMargin(0, 0, 0, 4));
+	Pages[PageIndex]->AddChildToVerticalBox(Row)->SetPadding(FMargin(0, 0, 0, 2));
 	Rows.Add(Row);
 	return Row;
 }
