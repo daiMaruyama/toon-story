@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Mamodou. All Rights Reserved.
 
 #include "TBGameMode.h"
+#include "GamePlay/Events/TBEventDirector.h"
 #include "GamePlay/TBRoomLighting.h"
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
@@ -53,6 +54,7 @@ void ATBGameMode::InitGameState()
 
 ATBGameMode::ATBGameMode()
 {
+	EventDirector = CreateDefaultSubobject<UTBEventDirector>(TEXT("EventDirector"));
 	PrimaryActorTick.bCanEverTick = true;
 	PlayerStateClass = ATBPlayerState::StaticClass();
 	GameStateClass = ATBGameState::StaticClass();
@@ -617,10 +619,12 @@ void ATBGameMode::Tick(float DeltaSeconds)
 	TBLobbySettings::TickArrival(this);
 	if (!TB::Playing(GetWorld()))
 	{
+		EventDirector->ResetRound();
 		return;
 	}
 	EvaluateGaze();
 	CheckWin();
+	EventDirector->Advance(DeltaSeconds);
 }
 
 // この呼び出しでは時間切れ → アイテム達成 → 全員収納の順で判定する。
