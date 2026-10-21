@@ -31,6 +31,10 @@ EDataValidationResult UTBRuleData::IsDataValid(FDataValidationContext& Context) 
 		Fail(LOCTEXT("DurationDefaultOutOfRange",
 		             "試合時間の初期値が最短〜最長の範囲の外にあるため、ロビーで試合時間を変えられなくなります。"));
 	}
+	if (!FMath::IsFinite(Toys.TauntCooldownSeconds) || Toys.TauntCooldownSeconds < .1f)
+	{
+		Fail(LOCTEXT("TauntCooldownTooShort", "音を鳴らすクールダウンは0.1秒以上の有限の値にしてください。"));
+	}
 	return Result;
 }
 

@@ -9,7 +9,7 @@
 
 - キー：Project Settings → Input → Action Mappings → `Taunt`（既定F）。
   `Config/DefaultInput.ini` に保存する。実行中のプレイヤー向けキー変更画面は今回追加していない。
-- CD：`Content/Data/DA_TBRules` → 人形の見た目 → 「音を鳴らすクールダウン」（既定0.1秒、最小0.1秒）。
+- CD：`Content/Data/DA_TBRules` → おもちゃ → 「音を鳴らすクールダウン」（既定0.1秒、最小0.1秒）。
 - SE：Project Settings → Game → Toon Story Audio → Sounds → `ToyTaunt`。
   Sound、Volume、Pitch、MaxDistanceなどを変更できる。現在のPitchは1.5（高めの音）。
 - 仮素材：`Content/Audio/SE/toy_taunt`。元WAVは `Content/Audio/Source/toy_taunt.wav`。

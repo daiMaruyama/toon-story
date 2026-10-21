@@ -696,7 +696,7 @@ bool ATBCharacter::TryTaunt()
 {
 	if (!HasAuthority() || !CanAct() || TBPS()->Team != ETBTeam::Toy) return false;
 	const double Now = GetWorld()->GetTimeSeconds();
-	const float Cooldown = FMath::Max(.1f, TB::Rules().Toys.TauntCooldownSeconds);
+	const float Cooldown = TB::Rules().Toys.TauntCooldownSeconds;
 	if (Now - LastTauntTime < Cooldown) return false;
 	LastTauntTime = Now;
 	UTBAudioEvents::Emit(this, ETBSoundEvent::ToyTaunt, TBPS(), GetActorLocation());
