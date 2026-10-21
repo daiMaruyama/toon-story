@@ -30,6 +30,12 @@ public:
 	// 試合が終わったときなど、音を鳴らさずに閉じる。
 	void Dismiss();
 
+	// ページを作る側（TBOptionsPages）が使う。PageIndex は TBOptionsPage の値。
+	UTBOptionRow* AddRow(int32 PageIndex, const FString& Label, bool bBar);
+	void AddNote(int32 PageIndex, const FString& Text);
+	// 解像度と画面モードは、変えたあと確認がなければ元に戻す。
+	void ChangeVideoMode(TFunctionRef<void(UTBGameUserSettings&)> Change);
+
 protected:
 	virtual void NativeOnInitialized() override;
 	virtual void NativeDestruct() override;
@@ -38,12 +44,10 @@ protected:
 
 private:
 	void Build(UTBGameUserSettings& Settings);
-	UTBOptionRow* AddRow(int32 PageIndex, const FString& Label, bool bBar);
+	UTextBlock* MakeLabel(const FString& Text, int32 FontSize, FLinearColor Color);
 	void ShowPage(int32 Index);
 	void RefreshRows();
 	void PlayClick(bool bBack = false) const;
-	// 解像度と画面モードは、変えたあと確認がなければ元に戻す。
-	void ChangeVideoMode(TFunctionRef<void(UTBGameUserSettings&)> Change);
 	bool IsConfirming() const;
 	// 変える前の解像度と画面モードに戻す。
 	void RestoreVideoMode(UTBGameUserSettings& Settings) const;
