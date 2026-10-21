@@ -344,8 +344,10 @@ void UTBOptionsMenu::Build(UTBGameUserSettings& Settings)
 		S->SetRayTracingOn(Steps > 0);
 		S->CommitDisplay();
 	};
-	Pages[1]->AddChildToVerticalBox(Label(TEXT("解像度と画面モードは、変えたあと「このままにする」を押さないと15秒で元に戻ります。"), 15,
-	                                      TBPaper::Muted));
+	Pages[1]->AddChildToVerticalBox(
+	    Label(FString::Printf(TEXT("解像度と画面モードは、変えたあと「このままにする」を押さないと%d秒で元に戻ります。"),
+	                          FMath::RoundToInt(TB::ConfigData().Display.VideoModeConfirmSeconds)),
+	          15, TBPaper::Muted));
 
 	// 操作
 	auto* Sensitivity = AddRow(2, TEXT("マウス感度"), true);
@@ -482,7 +484,7 @@ void UTBOptionsMenu::ChangeVideoMode(TFunctionRef<void(UTBGameUserSettings&)> Ch
 	PreviousWindowMode = Settings->GetFullscreenMode();
 	Change(*Settings);
 	Settings->ApplyResolutionSettings(false);
-	ConfirmUntil = FPlatformTime::Seconds() + 15;
+	ConfirmUntil = FPlatformTime::Seconds() + TB::ConfigData().Display.VideoModeConfirmSeconds;
 	ConfirmOverlay->SetVisibility(ESlateVisibility::Visible);
 	KeepButton->SetKeyboardFocus();
 }

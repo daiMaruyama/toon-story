@@ -155,6 +155,10 @@ struct FTBDisplayConfig
 	    切ると暗がりが暗くなる（自分が見えにくくなるだけ）かわりに、動作が軽くなる */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "画面", meta = (DisplayName = "レイトレーシングの初期値"))
 	bool bDefaultRayTracing = true;
+	/** 解像度や画面モードを変えたあと、「このままにする」を押さなければ元に戻すまでの時間 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "画面",
+	          meta = (DisplayName = "解像度を変えたときの確認時間", Units = "s", ClampMin = "3", ClampMax = "60"))
+	float VideoModeConfirmSeconds = 15.f;
 };
 
 USTRUCT(BlueprintType)

@@ -33,6 +33,7 @@ bool FTBConfigDataTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Resolution scale is never above 100%"), Display.ResolutionScale.Max <= 100.f);
 	TestEqual(TEXT("Brightness default is the standard gamma"), Display.Brightness.Default, 2.2f);
 	TestEqual(TEXT("Mouse sensitivity default"), GetDefault<UTBConfigData>()->Controls.MouseSensitivity.Default, 1.f);
+	TestEqual(TEXT("Video mode confirm seconds"), Display.VideoModeConfirmSeconds, 15.f);
 
 	// プロジェクト設定でアセットを選んでいれば、初期値ではなくそのアセットを使う。
 	const auto& Selected = GetDefault<UTBDataSettings>()->ConfigData;
