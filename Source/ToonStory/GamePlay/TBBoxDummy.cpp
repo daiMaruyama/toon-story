@@ -12,6 +12,18 @@ bool ATBBox::StoreDummy(ATBDummyToy* Toy)
 	{
 		return false;
 	}
+	// 本物と同じく、リモコン上の落下エリアの空いている所へ落とす。空きがなければ別室の壁際へ。
+	FVector DropSpot;
+	if (FindDropSpot(Toy,
+	                 FCollisionShape::MakeCapsule(Toy->Collision->GetScaledCapsuleRadius(),
+	                                              Toy->Collision->GetScaledCapsuleHalfHeight()),
+	                 DropSpot))
+	{
+		Toy->Place(DropSpot, this);
+		UTBAudioEvents::Emit(this, ETBSoundEvent::Store, nullptr, InteractionPoint->GetComponentLocation());
+		MulticastOpened();
+		return true;
+	}
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(StoreDecoy), false, Toy);
 	for (int Slot = 0; Slot < StorageSlotCount; ++Slot)
 	{

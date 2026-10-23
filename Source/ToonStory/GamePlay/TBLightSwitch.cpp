@@ -18,9 +18,13 @@ ATBLightSwitch::ATBLightSwitch()
 	Toggle.MaxDistance = GetDefault<UTBLightSwitchData>()->InteractionDistance;
 	Actions.Add(Toggle);
 	SwitchData = TSoftObjectPtr<UTBLightSwitchData>(FSoftObjectPath(TEXT("/Game/Data/DA_LightSwitch.DA_LightSwitch")));
-	static ConstructorHelpers::FObjectFinder<UStaticMesh> Cube(TEXT("/Engine/BasicShapes/Cube.Cube"));
-	Mesh->SetStaticMesh(Cube.Object);
-	Mesh->SetRelativeScale3D(FVector(.12f, .3f, .4f));
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> Plate(TEXT("/Game/Meshes/SM_Switch.SM_Switch"));
+	Mesh->SetStaticMesh(Plate.Object);
+	// 実物大（幅6・高さ10cm）のプレートを、おもちゃからも見つけやすいよう4倍にする。裏を壁側に、表を部屋側（+X）に向け、
+	// 前の仮の箱と同じ高さ・奥行きに収める。
+	Mesh->SetRelativeLocation(FVector(-6.f, 0.f, -20.f));
+	Mesh->SetRelativeRotation(FRotator(0.f, -90.f, 0.f));
+	Mesh->SetRelativeScale3D(FVector(4.f));
 	Mesh->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 	Mesh->SetCollisionResponseToAllChannels(ECR_Ignore);
 	Mesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);

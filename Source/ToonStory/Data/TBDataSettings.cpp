@@ -10,19 +10,19 @@ namespace
 {
 	// 選ばれたアセットの読み込みは一度だけ試す。見つからなくても毎フレーム読み直さず、C++ の初期値を使い続ける。
 	template <typename T>
-	const T& LoadOrDefault(const TSoftObjectPtr<T>& Selected, TObjectPtr<T>& Loaded, bool& bTried)
+	const T& LoadOrDefault(const TSoftObjectPtr<T>& Selected, TStrongObjectPtr<T>& Loaded, bool& bTried)
 	{
 		if (!bTried)
 		{
 			bTried = true;
-			Loaded = Selected.LoadSynchronous();
+			Loaded.Reset(Selected.LoadSynchronous());
 			if (!Loaded && !Selected.IsNull())
 			{
 				UE_LOG(LogTemp, Warning, TEXT("[ToonStoryData] %s not found; using the C++ defaults."),
 				       *Selected.ToString());
 			}
 		}
-		return Loaded ? *Loaded : *GetDefault<T>();
+		return Loaded ? *Loaded.Get() : *GetDefault<T>();
 	}
 }
 
@@ -76,10 +76,10 @@ void UTBDataSettings::PostEditChangeProperty(FPropertyChangedEvent& Event)
 {
 	Super::PostEditChangeProperty(Event);
 	// 参照先を差し替えたら読み直す
-	LoadedRuleData = nullptr;
-	LoadedCharacterData = nullptr;
-	LoadedPresentationData = nullptr;
-	LoadedConfigData = nullptr;
+	LoadedRuleData.Reset();
+	LoadedCharacterData.Reset();
+	LoadedPresentationData.Reset();
+	LoadedConfigData.Reset();
 	bTriedRuleData = bTriedCharacterData = bTriedPresentationData = bTriedConfigData = false;
 }
 #endif
