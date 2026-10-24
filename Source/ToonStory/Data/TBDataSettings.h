@@ -3,6 +3,7 @@
 #pragma once
 #include "CoreMinimal.h"
 #include "Engine/DeveloperSettings.h"
+#include "UObject/StrongObjectPtr.h"
 #include "TBDataSettings.generated.h"
 
 class UTBCharacterData;
@@ -42,14 +43,11 @@ public:
 
 private:
 	// 読み込んだアセットを持っておき、GC で消えて読み直しになるのを防ぐ。
-	UPROPERTY(Transient)
-	TObjectPtr<UTBRuleData> LoadedRuleData;
-	UPROPERTY(Transient)
-	TObjectPtr<UTBCharacterData> LoadedCharacterData;
-	UPROPERTY(Transient)
-	TObjectPtr<UTBPresentationData> LoadedPresentationData;
-	UPROPERTY(Transient)
-	TObjectPtr<UTBConfigData> LoadedConfigData;
+	// この設定は GC の対象外の領域に置かれるので、UPROPERTY で持つとパッケージ版の GC 検証で落ちる。強参照で持つ。
+	TStrongObjectPtr<UTBRuleData> LoadedRuleData;
+	TStrongObjectPtr<UTBCharacterData> LoadedCharacterData;
+	TStrongObjectPtr<UTBPresentationData> LoadedPresentationData;
+	TStrongObjectPtr<UTBConfigData> LoadedConfigData;
 	bool bTriedRuleData = false;
 	bool bTriedCharacterData = false;
 	bool bTriedPresentationData = false;

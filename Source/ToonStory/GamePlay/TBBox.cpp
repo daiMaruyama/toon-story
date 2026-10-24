@@ -161,6 +161,14 @@ const UBoxComponent* ATBBox::FindDropArea(const UWorld* World)
 // 真下に誰かいる・上面が物に埋まっている位置は飛ばして次を試す。どこも使えなければ false。
 bool ATBBox::FindDropSpot(const ATBCharacter* Toy, FVector& OutSpot) const
 {
+	const auto* Capsule = Toy->GetCapsuleComponent();
+	return FindDropSpot(
+	    Toy, FCollisionShape::MakeCapsule(Capsule->GetScaledCapsuleRadius(), Capsule->GetScaledCapsuleHalfHeight()),
+	    OutSpot);
+}
+
+bool ATBBox::FindDropSpot(const AActor* Ignore, const FCollisionShape& Shape, FVector& OutSpot) const
+{
 	const UBoxComponent* Area = FindDropArea(GetWorld());
 	if (!Area)
 	{
@@ -169,10 +177,7 @@ bool ATBBox::FindDropSpot(const ATBCharacter* Toy, FVector& OutSpot) const
 	const auto* State = TB::GS(GetWorld());
 	const int32 First = State ? State->BoxedCount : 0;
 	const FVector Extent = Area->GetScaledBoxExtent();
-	const auto* Capsule = Toy->GetCapsuleComponent();
-	const FCollisionShape Shape =
-	    FCollisionShape::MakeCapsule(Capsule->GetScaledCapsuleRadius(), Capsule->GetScaledCapsuleHalfHeight());
-	const FCollisionQueryParams Params(SCENE_QUERY_STAT(TBStorageDrop), false, Toy);
+	const FCollisionQueryParams Params(SCENE_QUERY_STAT(TBStorageDrop), false, Ignore);
 	const float DropSpacing = TB::Rules().Box.DropSpacing;
 	for (int32 Index = First; Index < First + StorageSlotCount; ++Index)
 	{

@@ -63,6 +63,8 @@ private:
 	void RefreshAppearance();
 	bool HasDummyPrisoners() const;
 	bool FindDropSpot(const ATBCharacter* Toy, FVector& OutSpot) const;
+	// ダミーも同じ落下エリアに落とすため、形と無視するアクタで探す版。
+	bool FindDropSpot(const AActor* Ignore, const FCollisionShape& Shape, FVector& OutSpot) const;
 	FVector ReleasePosition(int32 Slot) const;
 	int32 ReleaseDummyPrisoners(int32 FirstSlot);
 };

@@ -16,9 +16,39 @@
 #include "Camera/CameraComponent.h"
 #include "UI/TBScreenTransition.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "Components/AudioComponent.h"
+#include "UObject/UObjectIterator.h"
+#include "VoipListenerSynthComponent.h"
+
+namespace
+{
+	// ほかの人の声を鳴らす部品は、エンジンがステージを移ったあとにしか片付けない。片付けるステージ（移る途中のつなぎの
+	// ステージも含む）に登録されたまま残ると、あとで音の処理が消えた音を触って落ちるので、片付けのたびに止めて外す。
+	// 声がまた届けば、エンジンが今のステージに作り直す。
+	void ReleaseVoicePlayback(UWorld* World, bool, bool)
+	{
+		for (TObjectIterator<UVoipListenerSynthComponent> It; It; ++It)
+		{
+			if (It->GetWorld() != World)
+			{
+				continue;
+			}
+			It->Stop();
+			if (UAudioComponent* Audio = It->GetAudioComponent(); Audio && Audio->IsRegistered())
+			{
+				Audio->UnregisterComponent();
+			}
+			if (It->IsRegistered())
+			{
+				It->UnregisterComponent();
+			}
+		}
+	}
+}
 
 void ATBController::PreClientTravel(const FString& PendingURL, ETravelType TravelType, bool bIsSeamlessTravel)
 {
+	ReleaseVoicePlayback(GetWorld(), false, false);
 	SetViewTarget(this);
 	LobbyCamera.Reset();
 	bLobbyCameraSearched = false;
@@ -172,6 +202,8 @@ void ATBController::UpdateMenuInput(bool ShowMenu)
 void ATBController::BeginPlay()
 {
 	Super::BeginPlay();
+	// 切断でタイトルへ戻るときや、移る途中のつなぎのステージの片付けでも外すよう、片付けの通知に一度だけ登録する。
+	static const FDelegateHandle VoiceCleanup = FWorldDelegates::OnWorldCleanup.AddStatic(&ReleaseVoicePlayback);
 	if (IsLocalController())
 	{
 		if (auto* Session = GetGameInstance()->GetSubsystem<UTBSession>())
