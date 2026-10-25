@@ -118,6 +118,7 @@ private:
 	void ApplyComfortMovement(bool bToy);
 	void Forward(float V);
 	void Right(float V);
+	void Move(const FInputActionValue& Value);
 	void Look(const FInputActionValue& Value);
 	void Yaw(float V);
 	void Pitch(float V);

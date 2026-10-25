@@ -714,6 +714,13 @@ void ATBCharacter::Forward(float InputValue)
 	}
 }
 
+void ATBCharacter::Move(const FInputActionValue& Value)
+{
+	const FVector2D Axis = Value.Get<FVector2D>();
+	Forward(Axis.Y);
+	Right(Axis.X);
+}
+
 void ATBCharacter::Look(const FInputActionValue& Value)
 {
 	const FVector2D Axis = Value.Get<FVector2D>();
@@ -785,17 +792,25 @@ void ATBCharacter::SprintReleased()
 void ATBCharacter::SetupPlayerInputComponent(UInputComponent* Input)
 {
 	Super::SetupPlayerInputComponent(Input);
-	Input->BindAxis("Forward", this, &ATBCharacter::Forward);
-	Input->BindAxis("Right", this, &ATBCharacter::Right);
 	if (auto* Enhanced = Cast<UEnhancedInputComponent>(Input))
 	{
-		if (const UInputAction* LookAction = GetDefault<UTBInputSettings>()->LookAction.LoadSynchronous())
+		const auto* Settings = GetDefault<UTBInputSettings>();
+		if (const UInputAction* LookAction = Settings->LookAction.LoadSynchronous())
 		{
 			Enhanced->BindAction(LookAction, ETriggerEvent::Triggered, this, &ATBCharacter::Look);
 		}
+		if (const UInputAction* MoveAction = Settings->MoveAction.LoadSynchronous())
+		{
+			Enhanced->BindAction(MoveAction, ETriggerEvent::Triggered, this, &ATBCharacter::Move);
+		}
+		if (const UInputAction* JumpAction = Settings->JumpAction.LoadSynchronous())
+		{
+			Enhanced->BindAction(JumpAction, ETriggerEvent::Started, this, &ATBCharacter::JumpPressed);
+			// Canceledも離した扱い。押している間にIMCが付け替わっても跳び続けない。
+			Enhanced->BindAction(JumpAction, ETriggerEvent::Completed, this, &ATBCharacter::JumpReleased);
+			Enhanced->BindAction(JumpAction, ETriggerEvent::Canceled, this, &ATBCharacter::JumpReleased);
+		}
 	}
-	Input->BindAction("Jump", IE_Pressed, this, &ATBCharacter::JumpPressed);
-	Input->BindAction("Jump", IE_Released, this, &ATBCharacter::JumpReleased);
 	Input->BindKey(EKeys::LeftControl, IE_Pressed, this, &ATBCharacter::CrouchPressed);
 	Input->BindKey(EKeys::LeftControl, IE_Released, this, &ATBCharacter::CrouchReleased);
 	Input->BindKey(EKeys::LeftShift, IE_Pressed, this, &ATBCharacter::SprintPressed);
