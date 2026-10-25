@@ -6,6 +6,7 @@
 #include "Data/TBTypes.h"
 #include "TBCharacter.generated.h"
 
+struct FInputActionValue;
 class UCameraComponent;
 class USpringArmComponent;
 class UStaticMeshComponent;
@@ -117,6 +118,7 @@ private:
 	void ApplyComfortMovement(bool bToy);
 	void Forward(float V);
 	void Right(float V);
+	void Look(const FInputActionValue& Value);
 	void Yaw(float V);
 	void Pitch(float V);
 	static FVector2D LookScale();

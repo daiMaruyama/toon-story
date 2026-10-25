@@ -8,6 +8,9 @@
 #include "Core/TBGameMode.h"
 #include "Core/TBController.h"
 #include "Core/TBGameUserSettings.h"
+#include "Core/TBInputSettings.h"
+#include "EnhancedInputComponent.h"
+#include "InputAction.h"
 #include "Character/TBMovement.h"
 #include "Character/TBVoiceComponent.h"
 #include "Audio/TBCharacterAudioComponent.h"
@@ -711,6 +714,13 @@ void ATBCharacter::Forward(float InputValue)
 	}
 }
 
+void ATBCharacter::Look(const FInputActionValue& Value)
+{
+	const FVector2D Axis = Value.Get<FVector2D>();
+	Yaw(Axis.X);
+	Pitch(Axis.Y);
+}
+
 void ATBCharacter::Right(float InputValue)
 {
 	if (!IsMovementLocked())
@@ -777,8 +787,13 @@ void ATBCharacter::SetupPlayerInputComponent(UInputComponent* Input)
 	Super::SetupPlayerInputComponent(Input);
 	Input->BindAxis("Forward", this, &ATBCharacter::Forward);
 	Input->BindAxis("Right", this, &ATBCharacter::Right);
-	Input->BindAxis("Yaw", this, &ATBCharacter::Yaw);
-	Input->BindAxis("Pitch", this, &ATBCharacter::Pitch);
+	if (auto* Enhanced = Cast<UEnhancedInputComponent>(Input))
+	{
+		if (const UInputAction* LookAction = GetDefault<UTBInputSettings>()->LookAction.LoadSynchronous())
+		{
+			Enhanced->BindAction(LookAction, ETriggerEvent::Triggered, this, &ATBCharacter::Look);
+		}
+	}
 	Input->BindAction("Jump", IE_Pressed, this, &ATBCharacter::JumpPressed);
 	Input->BindAction("Jump", IE_Released, this, &ATBCharacter::JumpReleased);
 	Input->BindKey(EKeys::LeftControl, IE_Pressed, this, &ATBCharacter::CrouchPressed);
