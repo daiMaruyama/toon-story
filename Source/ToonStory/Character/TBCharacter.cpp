@@ -806,7 +806,7 @@ void ATBCharacter::SetupPlayerInputComponent(UInputComponent* Input)
 		if (const UInputAction* JumpAction = Settings->JumpAction.LoadSynchronous())
 		{
 			Enhanced->BindAction(JumpAction, ETriggerEvent::Started, this, &ATBCharacter::JumpPressed);
-			// Canceledも離した扱い。押している間にIMCが付け替わっても跳び続けない。
+			// 離したときやIMCが外れたときはCompletedが来る。Canceledは今はほぼ来ないが、Holdなどのトリガーを足したときの予防。
 			Enhanced->BindAction(JumpAction, ETriggerEvent::Completed, this, &ATBCharacter::JumpReleased);
 			Enhanced->BindAction(JumpAction, ETriggerEvent::Canceled, this, &ATBCharacter::JumpReleased);
 		}
