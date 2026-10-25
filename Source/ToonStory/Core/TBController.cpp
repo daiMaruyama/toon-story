@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Mamodou. All Rights Reserved.
 
 #include "TBController.h"
+#include "Algo/AllOf.h"
 #include "Audio/TBAudioEvents.h"
 #include "Audio/TBAudioSubsystem.h"
 #include "Core/TBPlayerState.h"
@@ -223,7 +224,7 @@ void ATBController::EndPlay(const EEndPlayReason::Type Reason)
 	Super::EndPlay(Reason);
 }
 
-// 陣営は PlayerState の Team で決まる。ホストでは通知なしに書き換わるので、Pawn の持ち替えではなく Team を毎フレーム見る。
+// 陣営はPlayerStateのTeamで決まる。ホストでは通知なしに書き換わるので、Pawnの持ち替えではなくTeamを毎フレーム見る。
 void ATBController::SyncInputContexts()
 {
 	const auto* Settings = GetDefault<UTBInputSettings>();
@@ -240,12 +241,14 @@ void ATBController::SyncInputContexts()
 			Wanted.Add(Context);
 		}
 	}
-	if (Wanted == AppliedContexts)
+	auto* Input = IsLocalController() ? ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer()) : nullptr;
+	// 記録が同じでも、エンジン側で外されていたら付け直す。
+	if (Wanted == AppliedContexts &&
+	    (!Input || Algo::AllOf(AppliedContexts, [Input](const auto& Context) { return Context.IsValid() && Input->HasMappingContext(Context.Get()); })))
 	{
 		return;
 	}
 	ClearInputContexts();
-	auto* Input = IsLocalController() ? ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer()) : nullptr;
 	if (!Input)
 	{
 		return;

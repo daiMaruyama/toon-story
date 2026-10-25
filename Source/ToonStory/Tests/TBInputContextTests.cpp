@@ -75,6 +75,12 @@ bool FTBInputContextTest::RunTest(const FString& Parameters)
 	PC->SyncInputContexts();
 	TestTrue(TEXT("Lobby: common"), Input->HasMappingContext(Common));
 	TestFalse(TEXT("Lobby: no role"), Input->HasMappingContext(Human) || Input->HasMappingContext(Toy));
+
+	// 外部から外されても、次のSyncで付き直る
+	Input->RemoveMappingContext(Common);
+	TestFalse(TEXT("Removed: common"), Input->HasMappingContext(Common));
+	PC->SyncInputContexts();
+	TestTrue(TEXT("Re-attached: common"), Input->HasMappingContext(Common));
 	return true;
 }
 #endif

@@ -42,7 +42,7 @@ public:
 		return bLeaveMenuOpen;
 	}
 	void ToggleLeaveMenu();
-	/** 陣営に合わせて Input Mapping Context を付け替える。設定が空なら何もしない */
+	/** 陣営に合わせてInput Mapping Contextを付け替える。設定が空なら何もしない */
 	void SyncInputContexts();
 	UFUNCTION(Exec)
 	void TBHost();
