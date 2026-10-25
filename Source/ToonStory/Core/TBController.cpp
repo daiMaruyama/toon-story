@@ -8,6 +8,9 @@
 #include "Core/TBGameMode.h"
 #include "Core/TBSession.h"
 #include "Core/TBGameHelpers.h"
+#include "Core/TBInputSettings.h"
+#include "EnhancedInputSubsystems.h"
+#include "InputMappingContext.h"
 #include "Components/InputComponent.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
@@ -76,6 +79,7 @@ void ATBController::PlayerTick(float DeltaTime)
 	UpdateMenuInput(ShowMenu);
 	UpdateScreenTransition();
 	UpdateViewAspect();
+	SyncInputContexts();
 	if (NoticeExpires > 0 && GetWorld()->GetTimeSeconds() > NoticeExpires)
 	{
 		Notice.Reset();
@@ -211,6 +215,58 @@ void ATBController::BeginPlay()
 			Session->Activate();
 		}
 	}
+}
+
+void ATBController::EndPlay(const EEndPlayReason::Type Reason)
+{
+	ClearInputContexts();
+	Super::EndPlay(Reason);
+}
+
+// 陣営は PlayerState の Team で決まる。ホストでは通知なしに書き換わるので、Pawn の持ち替えではなく Team を毎フレーム見る。
+void ATBController::SyncInputContexts()
+{
+	const auto* Settings = GetDefault<UTBInputSettings>();
+	const auto* Info = GetPlayerState<ATBPlayerState>();
+	const ETBTeam Team = Info ? Info->Team : ETBTeam::None;
+	const auto& RoleContext = Team == ETBTeam::Human ? Settings->HumanContext
+	                        : Team == ETBTeam::Toy   ? Settings->ToyContext
+	                                                 : TSoftObjectPtr<UInputMappingContext>();
+	TArray<TWeakObjectPtr<const UInputMappingContext>> Wanted;
+	for (const auto* Soft : {&Settings->CommonContext, &RoleContext})
+	{
+		if (const auto* Context = Soft->IsNull() ? nullptr : Soft->LoadSynchronous())
+		{
+			Wanted.Add(Context);
+		}
+	}
+	if (Wanted == AppliedContexts)
+	{
+		return;
+	}
+	ClearInputContexts();
+	auto* Input = IsLocalController() ? ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer()) : nullptr;
+	if (!Input)
+	{
+		return;
+	}
+	for (int32 Index = 0; Index < Wanted.Num(); ++Index)
+	{
+		Input->AddMappingContext(Wanted[Index].Get(), Index);
+		AppliedContexts.Add(Wanted[Index]);
+	}
+}
+
+void ATBController::ClearInputContexts()
+{
+	if (auto* Input = AppliedContexts.IsEmpty() ? nullptr : ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer()))
+	{
+		for (const auto& Context : AppliedContexts)
+		{
+			if (Context.IsValid()) Input->RemoveMappingContext(Context.Get());
+		}
+	}
+	AppliedContexts.Reset();
 }
 
 void ATBController::SetupInputComponent()
