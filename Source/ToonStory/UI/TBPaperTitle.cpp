@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Mamodou. All Rights Reserved.
 
 #include "UI/TBTitleMenu.h"
-#include "Core/TBKeyLabels.h"
+#include "Input/TBKeyLabels.h"
 #include "Core/TBSession.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/Border.h"

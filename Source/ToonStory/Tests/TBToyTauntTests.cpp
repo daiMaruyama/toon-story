@@ -9,7 +9,7 @@
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
-#include "Core/TBInputSettings.h"
+#include "Input/TBInputSettings.h"
 #include "InputAction.h"
 #include "InputMappingContext.h"
 #include "Sound/SoundWave.h"

@@ -3,7 +3,7 @@
 #include "Character/TBCharacter.h"
 #include "Core/TBController.h"
 #include "Core/TBGameState.h"
-#include "Core/TBInputSettings.h"
+#include "Input/TBInputSettings.h"
 #include "Core/TBPlayerState.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"

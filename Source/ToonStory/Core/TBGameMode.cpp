@@ -9,7 +9,7 @@
 #include "Core/TBPlayerState.h"
 #include "Core/TBGameState.h"
 #include "Core/TBController.h"
-#include "Core/TBKeyLabels.h"
+#include "Input/TBKeyLabels.h"
 #include "Core/TBSession.h"
 #include "Core/TBGameHelpers.h"
 #include "Character/TBCharacter.h"

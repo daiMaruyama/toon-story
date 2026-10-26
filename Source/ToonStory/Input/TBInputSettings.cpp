@@ -1,6 +1,6 @@
 // Copyright (c) 2026 Mamodou. All Rights Reserved.
 
-#include "Core/TBInputSettings.h"
+#include "Input/TBInputSettings.h"
 #include "Engine/LocalPlayer.h"
 #include "EnhancedInputSubsystems.h"
 #include "InputMappingContext.h"

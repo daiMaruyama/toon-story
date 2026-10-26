@@ -1,7 +1,7 @@
 #include "Misc/AutomationTest.h"
 #if WITH_DEV_AUTOMATION_TESTS
 #include "Core/TBController.h"
-#include "Core/TBKeyLabels.h"
+#include "Input/TBKeyLabels.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "EnhancedInputSubsystems.h"

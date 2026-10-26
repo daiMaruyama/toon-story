@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Mamodou. All Rights Reserved.
 
-#include "Core/TBKeyRemap.h"
+#include "Input/TBKeyRemap.h"
 #include "Algo/AllOf.h"
-#include "Core/TBInputSettings.h"
-#include "Core/TBKeyLabels.h"
+#include "Input/TBInputSettings.h"
+#include "Input/TBKeyLabels.h"
 #include "Engine/LocalPlayer.h"
 #include "EnhancedInputSubsystems.h"
 #include "GameFramework/InputSettings.h"
