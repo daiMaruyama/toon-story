@@ -9,6 +9,69 @@
 #include "Misc/ScopeExit.h"
 #include "UserSettings/EnhancedInputUserSettings.h"
 
+namespace
+{
+	// キーボード側の割り当てを変え、保存はせず、変える前のキーを控えて破棄時に書き戻す。
+	class FKeyRemapper
+	{
+	public:
+		FKeyRemapper(FAutomationTestBase& InTest, UEnhancedInputUserSettings* InUser) : Test(InTest), User(InUser)
+		{
+		}
+
+		~FKeyRemapper()
+		{
+			for (const FSaved& Item : Saved)
+			{
+				FGameplayTagContainer Failure;
+				User->MapPlayerKey(MakeArgs(Item.Name, Item.Slot, Item.Key), Failure);
+			}
+		}
+
+		void Remap(FName Name, const FKey& NewKey)
+		{
+			const FPlayerKeyMapping* Current = KeyboardMapping(Name);
+			if (!Test.TestNotNull(*FString::Printf(TEXT("%s has a keyboard slot"), *Name.ToString()), Current)) return;
+			Saved.Add({Name, Current->GetSlot(), Current->GetCurrentKey()});
+			FGameplayTagContainer Failure;
+			User->MapPlayerKey(MakeArgs(Name, Current->GetSlot(), NewKey), Failure);
+		}
+
+	private:
+		struct FSaved
+		{
+			FName Name;
+			EPlayerMappableKeySlot Slot;
+			FKey Key;
+		};
+
+		const FPlayerKeyMapping* KeyboardMapping(FName Name) const
+		{
+			const FKeyMappingRow* Row = User->GetActiveKeyProfile()->GetPlayerMappingRows().Find(Name);
+			if (!Row) return nullptr;
+			for (const FPlayerKeyMapping& Mapping : Row->Mappings)
+			{
+				if (!Mapping.GetCurrentKey().IsGamepadKey()) return &Mapping;
+			}
+			return nullptr;
+		}
+
+		FMapPlayerKeyArgs MakeArgs(FName Name, EPlayerMappableKeySlot Slot, const FKey& Key) const
+		{
+			FMapPlayerKeyArgs Args;
+			Args.MappingName = Name;
+			Args.Slot = Slot;
+			Args.NewKey = Key;
+			Args.ProfileIdString = User->GetActiveKeyProfile()->GetProfileIdString();
+			return Args;
+		}
+
+		FAutomationTestBase& Test;
+		UEnhancedInputUserSettings* User;
+		TArray<FSaved> Saved;
+	};
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBFormatKeyTest, "ToonStory.Input.FormatKey",
                                  EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
 bool FTBFormatKeyTest::RunTest(const FString& Parameters)
@@ -21,6 +84,78 @@ bool FTBFormatKeyTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Left ctrl"), TB::FormatKey(EKeys::LeftControl), FString(TEXT("Ctrl")));
 	TestEqual(TEXT("Right ctrl"), TB::FormatKey(EKeys::RightControl), FString(TEXT("Ctrl")));
 	TestEqual(TEXT("Unassigned"), TB::FormatKey(EKeys::Invalid), FString(TEXT("未割り当て")));
+	return true;
+}
+
+// {Mappable名}の印を置き換える。前後の文字は壊さず、知らない名前は残す。PCなしでもIMCの既定のキーが出る。
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBExpandKeyTokensTest, "ToonStory.Input.ExpandKeyTokens",
+                                 EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+bool FTBExpandKeyTokensTest::RunTest(const FString& Parameters)
+{
+	const auto Expand = [](const TCHAR* Text) { return TB::ExpandKeyTokens(nullptr, FString(Text)); };
+	TestEqual(TEXT("Known name"), Expand(TEXT("A {Lobby_Ready} B")), FString(TEXT("A R B")));
+	TestEqual(TEXT("Two names in a row"), Expand(TEXT("{Toy_Taunt}{Toy_Interact}")), FString(TEXT("FE")));
+	TestEqual(TEXT("Japanese around"), Expand(TEXT("準備は{Lobby_Ready}で！")), FString(TEXT("準備はRで！")));
+	TestEqual(TEXT("Unknown name stays"), Expand(TEXT("x {Typo} y")), FString(TEXT("x {Typo} y")));
+	TestEqual(TEXT("Unclosed brace stays"), Expand(TEXT("x {Lobby_Ready")), FString(TEXT("x {Lobby_Ready")));
+	TestEqual(TEXT("No token"), Expand(TEXT("plain text")), FString(TEXT("plain text")));
+	TestEqual(TEXT("Empty"), Expand(TEXT("")), FString());
+
+	// 境界。
+	TestEqual(TEXT("Open brace only"), Expand(TEXT("{")), FString(TEXT("{")));
+	TestEqual(TEXT("Close brace only"), Expand(TEXT("}")), FString(TEXT("}")));
+	TestEqual(TEXT("Close before open"), Expand(TEXT("}{")), FString(TEXT("}{")));
+	TestEqual(TEXT("Empty braces"), Expand(TEXT("{}")), FString(TEXT("{}")));
+	TestEqual(TEXT("Nested braces"), Expand(TEXT("{a{Lobby_Ready}}")), FString(TEXT("{aR}")));
+	TestEqual(TEXT("Double open"), Expand(TEXT("{{Lobby_Ready}")), FString(TEXT("{R")));
+	TestEqual(TEXT("Double close at the end"), Expand(TEXT("{Lobby_Ready}}")), FString(TEXT("R}")));
+	TestEqual(TEXT("Only closes"), Expand(TEXT("}}")), FString(TEXT("}}")));
+	// 名前はFNAME_Findで引く。名前の比較は大文字小文字を区別しないので、小文字でも通る。
+	TestEqual(TEXT("Lower case name"), Expand(TEXT("{lobby_ready}")), FString(TEXT("R")));
+	const FString LongName = FString::ChrN(65, TEXT('a'));
+	TestEqual(TEXT("Too long to be a token"), Expand(*(TEXT("{") + LongName + TEXT("}"))), TEXT("{") + LongName + TEXT("}"));
+
+	// サーバーの文字列の印は、全部TB::Keys::Allの名前。スペルミスの{Typo}が画面に出ない。
+	for (const TCHAR* Notice : TB::Notices::All())
+	{
+		const FString Expanded = Expand(Notice);
+		TestFalse(*FString::Printf(TEXT("No token is left in: %s"), Notice), Expanded.Contains(TEXT("{")));
+	}
+	TestEqual(TEXT("Items notice"), Expand(TB::Notices::ItemsAutoCollect),
+	          FString(TEXT("Items collect automatically while touching. E is for rescue.")));
+	TestEqual(TEXT("Ready notice"), Expand(TB::Notices::ReadyRequired), FString(TEXT("Every player must press R to be ready.")));
+	return true;
+}
+
+// サーバーからの通知は、ホスト自身も同じ経路（ClientNotice）を通り、自分の割り当てのキー名で出る。
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBNoticeKeyTest, "ToonStory.Input.NoticeKeys",
+                                 EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+bool FTBNoticeKeyTest::RunTest(const FString& Parameters)
+{
+	UWorld* World = nullptr;
+	for (const auto& Context : GEngine->GetWorldContexts())
+	{
+		if (Context.WorldType == EWorldType::Game) World = Context.World();
+	}
+	auto* PC = World ? Cast<ATBController>(World->GetFirstPlayerController()) : nullptr;
+	auto* Input = PC ? ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PC->GetLocalPlayer()) : nullptr;
+	auto* User = Input ? Input->GetUserSettings() : nullptr;
+	if (!TestNotNull(TEXT("Player controller"), PC) || !TestNotNull(TEXT("User settings"), User)) return false;
+	const FString SavedNotice = PC->Notice;
+	ON_SCOPE_EXIT
+	{
+		PC->Notice = SavedNotice;
+	};
+
+	// IMCの既定のキーではなく、このプレイヤーの割り当てが出る。取り違えも捕まえる。
+	FKeyRemapper Remapper(*this, User);
+	Remapper.Remap(TB::Keys::LobbyReady, EKeys::T);
+	Remapper.Remap(TB::Keys::ToyInteract, EKeys::U);
+	PC->ClientNotice(TB::Notices::ReadyRequired, false);
+	TestEqual(TEXT("Ready notice follows Lobby_Ready"), PC->Notice, FString(TEXT("Every player must press T to be ready.")));
+	PC->ClientNotice(TB::Notices::ItemsAutoCollect, false);
+	TestEqual(TEXT("Items notice follows Toy_Interact, not Human_Interact"), PC->Notice,
+	          FString(TEXT("Items collect automatically while touching. U is for rescue.")));
 	return true;
 }
 
@@ -72,57 +207,15 @@ bool FTBKeyLabelTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Fallback move keys"), TB::MoveKeysLabel(nullptr), FString(TEXT("WASD")));
 	TestEqual(TEXT("Nowhere"), TB::KeyLabel(nullptr, TEXT("No_Such_Row")), FString(TEXT("?")));
 
-	// 割り当てを変えるとキー名が変わる。保存はしない。変える前のキーを控え、最後に書き戻す。
-	struct FSavedKey
-	{
-		FName Name;
-		EPlayerMappableKeySlot Slot;
-		FKey Key;
-	};
-	TArray<FSavedKey> Saved;
-	const auto KeyboardMapping = [Profile](FName Name) -> const FPlayerKeyMapping*
-	{
-		const FKeyMappingRow* Row = Profile->GetPlayerMappingRows().Find(Name);
-		if (!Row) return nullptr;
-		for (const FPlayerKeyMapping& Mapping : Row->Mappings)
-		{
-			if (!Mapping.GetCurrentKey().IsGamepadKey()) return &Mapping;
-		}
-		return nullptr;
-	};
-	const auto MakeArgs = [Profile](FName Name, EPlayerMappableKeySlot Slot, const FKey& Key)
-	{
-		FMapPlayerKeyArgs Args;
-		Args.MappingName = Name;
-		Args.Slot = Slot;
-		Args.NewKey = Key;
-		Args.ProfileIdString = Profile->GetProfileIdString();
-		return Args;
-	};
-	ON_SCOPE_EXIT
-	{
-		for (const FSavedKey& Item : Saved)
-		{
-			FGameplayTagContainer Failure;
-			User->MapPlayerKey(MakeArgs(Item.Name, Item.Slot, Item.Key), Failure);
-		}
-	};
-	const auto Remap = [&](FName Name, const FKey& NewKey)
-	{
-		const FPlayerKeyMapping* Current = KeyboardMapping(Name);
-		if (!TestNotNull(*FString::Printf(TEXT("%s has a keyboard slot"), *Name.ToString()), Current)) return;
-		Saved.Add({Name, Current->GetSlot(), Current->GetCurrentKey()});
-		FGameplayTagContainer Failure;
-		User->MapPlayerKey(MakeArgs(Name, Current->GetSlot(), NewKey), Failure);
-	};
-
-	Remap(TB::Keys::LobbyReady, EKeys::T);
+	// 割り当てを変えるとキー名が変わる。
+	FKeyRemapper Remapper(*this, User);
+	Remapper.Remap(TB::Keys::LobbyReady, EKeys::T);
 	TestEqual(TEXT("Lobby_Ready after remap"), TB::KeyLabel(PC, TB::Keys::LobbyReady), FString(TEXT("T")));
 
 	// 人間と人形の取り違えを捕まえる。片方だけ変えると、もう片方の表示は変わらない。
-	Remap(TB::Keys::HumanInteract, EKeys::Y);
-	Remap(TB::Keys::HumanCrouch, EKeys::C);
-	Remap(TB::Keys::ToySprint, EKeys::G);
+	Remapper.Remap(TB::Keys::HumanInteract, EKeys::Y);
+	Remapper.Remap(TB::Keys::HumanCrouch, EKeys::C);
+	Remapper.Remap(TB::Keys::ToySprint, EKeys::G);
 	const FString HumanHint = TB::MatchHintText(PC, true);
 	const FString ToyHint = TB::MatchHintText(PC, false);
 	TestTrue(TEXT("Human hint follows Human_Interact"), HumanHint.Contains(TEXT("Y つかむ・収納")));
@@ -133,7 +226,7 @@ bool FTBKeyLabelTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Toy hint is not the human crouch"), !ToyHint.Contains(TEXT("しゃがむ")));
 
 	// 割り当てを外すと「未割り当て」になる。
-	Remap(TB::Keys::LobbyStart, EKeys::Invalid);
+	Remapper.Remap(TB::Keys::LobbyStart, EKeys::Invalid);
 	TestEqual(TEXT("Unassigned row"), TB::KeyLabel(PC, TB::Keys::LobbyStart), FString(TEXT("未割り当て")));
 	return true;
 }
