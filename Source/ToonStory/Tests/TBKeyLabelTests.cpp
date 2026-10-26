@@ -7,70 +7,8 @@
 #include "EnhancedInputSubsystems.h"
 #include "GameplayTagContainer.h"
 #include "Misc/ScopeExit.h"
+#include "Tests/TBKeyRemapper.h"
 #include "UserSettings/EnhancedInputUserSettings.h"
-
-namespace
-{
-	// キーボード側の割り当てを変え、保存はせず、変える前のキーを控えて破棄時に書き戻す。
-	class FKeyRemapper
-	{
-	public:
-		FKeyRemapper(FAutomationTestBase& InTest, UEnhancedInputUserSettings* InUser) : Test(InTest), User(InUser)
-		{
-		}
-
-		~FKeyRemapper()
-		{
-			for (const FSaved& Item : Saved)
-			{
-				FGameplayTagContainer Failure;
-				User->MapPlayerKey(MakeArgs(Item.Name, Item.Slot, Item.Key), Failure);
-			}
-		}
-
-		void Remap(FName Name, const FKey& NewKey)
-		{
-			const FPlayerKeyMapping* Current = KeyboardMapping(Name);
-			if (!Test.TestNotNull(*FString::Printf(TEXT("%s has a keyboard slot"), *Name.ToString()), Current)) return;
-			Saved.Add({Name, Current->GetSlot(), Current->GetCurrentKey()});
-			FGameplayTagContainer Failure;
-			User->MapPlayerKey(MakeArgs(Name, Current->GetSlot(), NewKey), Failure);
-		}
-
-	private:
-		struct FSaved
-		{
-			FName Name;
-			EPlayerMappableKeySlot Slot;
-			FKey Key;
-		};
-
-		const FPlayerKeyMapping* KeyboardMapping(FName Name) const
-		{
-			const FKeyMappingRow* Row = User->GetActiveKeyProfile()->GetPlayerMappingRows().Find(Name);
-			if (!Row) return nullptr;
-			for (const FPlayerKeyMapping& Mapping : Row->Mappings)
-			{
-				if (!Mapping.GetCurrentKey().IsGamepadKey()) return &Mapping;
-			}
-			return nullptr;
-		}
-
-		FMapPlayerKeyArgs MakeArgs(FName Name, EPlayerMappableKeySlot Slot, const FKey& Key) const
-		{
-			FMapPlayerKeyArgs Args;
-			Args.MappingName = Name;
-			Args.Slot = Slot;
-			Args.NewKey = Key;
-			Args.ProfileIdString = User->GetActiveKeyProfile()->GetProfileIdString();
-			return Args;
-		}
-
-		FAutomationTestBase& Test;
-		UEnhancedInputUserSettings* User;
-		TArray<FSaved> Saved;
-	};
-}
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBFormatKeyTest, "ToonStory.Input.FormatKey",
                                  EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
@@ -80,9 +18,11 @@ bool FTBFormatKeyTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("F5"), TB::FormatKey(EKeys::F5), FString(TEXT("F5")));
 	TestEqual(TEXT("Space"), TB::FormatKey(EKeys::SpaceBar), FString(TEXT("Space")));
 	TestEqual(TEXT("Left shift"), TB::FormatKey(EKeys::LeftShift), FString(TEXT("Shift")));
-	TestEqual(TEXT("Right shift"), TB::FormatKey(EKeys::RightShift), FString(TEXT("Shift")));
+	TestEqual(TEXT("Right shift"), TB::FormatKey(EKeys::RightShift), FString(TEXT("右Shift")));
 	TestEqual(TEXT("Left ctrl"), TB::FormatKey(EKeys::LeftControl), FString(TEXT("Ctrl")));
-	TestEqual(TEXT("Right ctrl"), TB::FormatKey(EKeys::RightControl), FString(TEXT("Ctrl")));
+	TestEqual(TEXT("Right ctrl"), TB::FormatKey(EKeys::RightControl), FString(TEXT("右Ctrl")));
+	TestEqual(TEXT("Left alt"), TB::FormatKey(EKeys::LeftAlt), FString(TEXT("Alt")));
+	TestEqual(TEXT("Right alt"), TB::FormatKey(EKeys::RightAlt), FString(TEXT("右Alt")));
 	TestEqual(TEXT("Unassigned"), TB::FormatKey(EKeys::Invalid), FString(TEXT("未割り当て")));
 	return true;
 }
@@ -148,7 +88,7 @@ bool FTBNoticeKeyTest::RunTest(const FString& Parameters)
 	};
 
 	// IMCの既定のキーではなく、このプレイヤーの割り当てが出る。取り違えも捕まえる。
-	FKeyRemapper Remapper(*this, User);
+	FTBKeyRemapper Remapper(*this, User);
 	Remapper.Remap(TB::Keys::LobbyReady, EKeys::T);
 	Remapper.Remap(TB::Keys::ToyInteract, EKeys::U);
 	PC->ClientNotice(TB::Notices::ReadyRequired, false);
@@ -208,7 +148,7 @@ bool FTBKeyLabelTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Nowhere"), TB::KeyLabel(nullptr, TEXT("No_Such_Row")), FString(TEXT("?")));
 
 	// 割り当てを変えるとキー名が変わる。
-	FKeyRemapper Remapper(*this, User);
+	FTBKeyRemapper Remapper(*this, User);
 	Remapper.Remap(TB::Keys::LobbyReady, EKeys::T);
 	TestEqual(TEXT("Lobby_Ready after remap"), TB::KeyLabel(PC, TB::Keys::LobbyReady), FString(TEXT("T")));
 
