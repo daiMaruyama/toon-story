@@ -9,7 +9,9 @@
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
-#include "GameFramework/InputSettings.h"
+#include "Core/TBInputSettings.h"
+#include "InputAction.h"
+#include "InputMappingContext.h"
 #include "Sound/SoundWave.h"
 #include "Misc/ScopeExit.h"
 
@@ -75,9 +77,14 @@ bool FTBToyTauntTest::RunTest(const FString& Parameters)
 			TestTrue(TEXT("Short non-looping horn"), !Sound->bLooping && Sound->Duration > .02f && Sound->Duration <= .1f);
 		}
 	}
-	TArray<FInputActionKeyMapping> Keys;
-	GetDefault<UInputSettings>()->GetActionMappingByName(TEXT("Taunt"), Keys);
-	TestTrue(TEXT("F is mapped to Taunt"), Keys.ContainsByPredicate([](const FInputActionKeyMapping& Key) { return Key.Key == EKeys::F; }));
+	// 挑発のキーはIMC_Toyの実行時のマッピングで見る。
+	const auto* InputSettings = GetDefault<UTBInputSettings>();
+	const UInputAction* TauntAction = InputSettings->TauntAction.LoadSynchronous();
+	const UInputMappingContext* ToyContext = InputSettings->ToyContext.LoadSynchronous();
+	const bool bFMapped = ToyContext && TauntAction &&
+	    ToyContext->GetMappings().ContainsByPredicate(
+	        [TauntAction](const FEnhancedActionKeyMapping& Mapping) { return Mapping.Key == EKeys::F && Mapping.Action == TauntAction; });
+	TestTrue(TEXT("F is mapped to Taunt in IMC_Toy"), bFMapped);
 	TestTrue(TEXT("Cooldown comes from rule data"), TB::Rules().Toys.TauntCooldownSeconds > 0);
 	return true;
 }
