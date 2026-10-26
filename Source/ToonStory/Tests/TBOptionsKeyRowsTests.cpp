@@ -53,6 +53,20 @@ namespace
 		return Row ? Row->GetKeyText() : FString();
 	}
 
+	// テスト中は本人の保存ファイルに書かず、保存が呼ばれた回数だけ数える。
+	struct FKeySaveGuard
+	{
+		int32 Count = 0;
+		FKeySaveGuard()
+		{
+			UTBOptionsMenu::KeySaveOverride = [this] { ++Count; };
+		}
+		~FKeySaveGuard()
+		{
+			UTBOptionsMenu::KeySaveOverride = nullptr;
+		}
+	};
+
 	// 13行の今のキーを控え、破棄時に書き戻す。
 	bool RememberAllKeys(FTBKeyRemapper& Remapper)
 	{
@@ -190,6 +204,7 @@ bool FTBKeyCaptureTest::RunTest(const FString& Parameters)
 	auto* Menu = CreateWidget<UTBOptionsMenu>(PC);
 	if (!TestNotNull(TEXT("Options menu"), Menu)) return false;
 	FTBKeyRemapper Remapper(*this, User);
+	FKeySaveGuard Saves;
 	if (!RememberAllKeys(Remapper)) return false;
 
 	// 行を押すと待ちに入り、板に行の名前とEscの案内が出る。
@@ -204,6 +219,7 @@ bool FTBKeyCaptureTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("The plate closes after a remap"), Menu->IsCapturing());
 	TestEqual(TEXT("Jump is C"), TB::KeyLabel(PC, TB::Keys::Jump), FString(TEXT("C")));
 	TestEqual(TEXT("The row shows C"), RowText(Menu, TB::Keys::Jump), FString(TEXT("C")));
+	TestEqual(TEXT("A confirmed change is saved once"), Saves.Count, 1);
 
 	// 使えないキーでは待ちが続き、赤い文が出る。次のキーで決まる。
 	FindKeyRow(Menu, TB::Keys::HumanCrouch)->Pressed();
@@ -214,6 +230,7 @@ bool FTBKeyCaptureTest::RunTest(const FString& Parameters)
 	Menu->ReceiveCapturedKey(EKeys::K);
 	TestFalse(TEXT("A usable key ends the wait"), Menu->IsCapturing());
 	TestEqual(TEXT("Human_Crouch is K"), RowText(Menu, TB::Keys::HumanCrouch), FString(TEXT("K")));
+	TestEqual(TEXT("The unusable key did not save"), Saves.Count, 2);
 
 	// 待ちの間は、ほかの行を押しても何も起きない。
 	JumpRow->Pressed();
@@ -236,6 +253,7 @@ bool FTBKeyCaptureSwapTest::RunTest(const FString& Parameters)
 	auto* Menu = CreateWidget<UTBOptionsMenu>(PC);
 	if (!TestNotNull(TEXT("Options menu"), Menu)) return false;
 	FTBKeyRemapper Remapper(*this, User);
+	FKeySaveGuard Saves;
 	if (!RememberAllKeys(Remapper)) return false;
 
 	// ジャンプにRを渡すと、ロビーの準備と重なる。入れ替えを聞く。
@@ -307,6 +325,7 @@ bool FTBKeyCaptureCancelTest::RunTest(const FString& Parameters)
 	if (!TestNotNull(TEXT("Options menu"), Menu)) return false;
 	ON_SCOPE_EXIT { Menu->Dismiss(); };
 	FTBKeyRemapper Remapper(*this, User);
+	FKeySaveGuard Saves;
 	if (!RememberAllKeys(Remapper)) return false;
 
 	FindKeyRow(Menu, TB::Keys::Jump)->Pressed();
@@ -325,6 +344,61 @@ bool FTBKeyCaptureCancelTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// 行の「戻す」。かぶりがなければすぐ戻して保存、1行とかぶれば入れ替えを聞き、複数ならお知らせ。
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBKeyResetRowTest, "ToonStory.Input.KeyResetRow",
+                                 EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+bool FTBKeyResetRowTest::RunTest(const FString& Parameters)
+{
+	auto* PC = KeyUiController();
+	auto* User = KeyUiUser(PC);
+	if (!TestNotNull(TEXT("Player controller"), PC) || !TestNotNull(TEXT("User settings"), User)) return false;
+	auto* Menu = CreateWidget<UTBOptionsMenu>(PC);
+	if (!TestNotNull(TEXT("Options menu"), Menu)) return false;
+	FKeySaveGuard Saves;
+	FTBKeyRemapper Remapper(*this, User);
+	if (!RememberAllKeys(Remapper)) return false;
+
+	// かぶりなし。Cにしたジャンプをすぐ戻す。
+	Remapper.Remap(TB::Keys::Jump, EKeys::C);
+	FindKeyRow(Menu, TB::Keys::Jump)->Reset();
+	TestFalse(TEXT("No plate when nothing conflicts"), Menu->IsCapturing());
+	TestEqual(TEXT("Jump is back to Space"), TB::KeyLabel(PC, TB::Keys::Jump), FString(TEXT("Space")));
+	TestEqual(TEXT("The reset is saved"), Saves.Count, 1);
+
+	// 1行とかぶる。ジャンプがRになり、ロビー準備（既定R）が元の座を失う…ロビー準備をSpaceにして、ジャンプを戻す。
+	Remapper.Remap(TB::Keys::Jump, EKeys::R);
+	Remapper.Remap(TB::Keys::LobbyReady, EKeys::SpaceBar);
+	FindKeyRow(Menu, TB::Keys::LobbyReady)->Reset();
+	TestTrue(TEXT("A single conflict asks for a swap"), Menu->IsAwaitingSwap());
+	TestEqual(TEXT("The question names the other row"), Menu->GetKeyPromptText(),
+	          FString(TEXT("「R」は「共通：ジャンプ」が使っています。入れ替えて戻しますか？")));
+	TestEqual(TEXT("Nothing changed before the answer"), Saves.Count, 1);
+	Menu->ConfirmKeySwap();
+	TestFalse(TEXT("The plate closes"), Menu->IsCapturing());
+	TestEqual(TEXT("Lobby_Ready is R"), TB::KeyLabel(PC, TB::Keys::LobbyReady), FString(TEXT("R")));
+	TestEqual(TEXT("Jump is Space"), TB::KeyLabel(PC, TB::Keys::Jump), FString(TEXT("Space")));
+	TestEqual(TEXT("The swap is saved"), Saves.Count, 2);
+
+	// 「やめる」なら何も変わらず、保存もしない。
+	Remapper.Remap(TB::Keys::Jump, EKeys::R);
+	Remapper.Remap(TB::Keys::LobbyReady, EKeys::SpaceBar);
+	FindKeyRow(Menu, TB::Keys::LobbyReady)->Reset();
+	Menu->ReceiveCapturedKey(EKeys::Escape);
+	TestFalse(TEXT("Esc closes the question"), Menu->IsCapturing());
+	TestEqual(TEXT("Nothing changed"), TB::KeyLabel(PC, TB::Keys::LobbyReady), FString(TEXT("Space")));
+	TestEqual(TEXT("Nothing was saved"), Saves.Count, 2);
+
+	// 2行以上とかぶるときはお知らせ。閉じたらキー待ちには戻らず終わる。
+	Remapper.Remap(TB::Keys::MoveForward, EKeys::R);
+	FindKeyRow(Menu, TB::Keys::LobbyReady)->Reset();
+	TestTrue(TEXT("Several conflicts show a notice"), Menu->IsCapturing() && !Menu->IsAwaitingSwap());
+	TestTrue(TEXT("The notice names the rows"), Menu->GetKeyPromptText().StartsWith(TEXT("複数の操作と重なるので戻せません")));
+	Menu->ReceiveCapturedKey(EKeys::Escape);
+	TestFalse(TEXT("Closing the notice ends it"), Menu->IsCapturing());
+	TestEqual(TEXT("Nothing was saved by the notice"), Saves.Count, 2);
+	return true;
+}
+
 // 実際のキーイベントの経路（NativeOnPreviewKeyDown）を通す。リピート、Tab、パッドのB、後ろの画面の無効化。
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBKeyCaptureEventsTest, "ToonStory.Input.KeyCaptureEvents",
                                  EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
@@ -338,6 +412,7 @@ bool FTBKeyCaptureEventsTest::RunTest(const FString& Parameters)
 	if (!TestNotNull(TEXT("Options menu"), Menu)) return false;
 	ON_SCOPE_EXIT { Menu->Dismiss(); };
 	FTBKeyRemapper Remapper(*this, User);
+	FKeySaveGuard Saves;
 	if (!RememberAllKeys(Remapper)) return false;
 	auto Down = [Menu](const FKey& Key, bool bRepeat)
 	{
