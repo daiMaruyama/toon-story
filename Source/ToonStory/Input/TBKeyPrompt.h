@@ -27,6 +27,8 @@ namespace TB
 	TOONSTORY_API FString WaitingText(FName Row);
 	/** Remapの結果から、次に画面がすることと板の文を決める。Keyは押されたキー。 */
 	TOONSTORY_API FKeyPrompt PromptForRemap(const FRemapResult& Result, const FKey& Key);
+	/** ResetToDefaultの結果から、次に画面がすることと板の文を決める。DefaultKeyは戻す先の既定のキー。 */
+	TOONSTORY_API FKeyPrompt PromptForReset(const FRemapResult& Result, const FKey& DefaultKey);
 	/** SwapRemapの結果から、次に画面がすることと板の文を決める。 */
 	TOONSTORY_API FKeyPrompt PromptForSwap(const FRemapResult& Result);
 }

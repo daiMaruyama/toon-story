@@ -62,6 +62,25 @@ TB::FKeyPrompt TB::PromptForRemap(const FRemapResult& Result, const FKey& Key)
 	}
 }
 
+TB::FKeyPrompt TB::PromptForReset(const FRemapResult& Result, const FKey& DefaultKey)
+{
+	if (Result.Result != ERemapResult::Conflict)
+	{
+		return PromptForRemap(Result, DefaultKey);
+	}
+	if (Result.Conflicting.Num() == 1)
+	{
+		return Make(EKeyPromptKind::AskSwap, FString::Printf(TEXT("「%s」は「%s」が使っています。入れ替えて戻しますか？"),
+		                                                     *FormatKey(DefaultKey), *KeyRowName(Result.Conflicting[0])));
+	}
+	FString Names;
+	for (const FName& Other : Result.Conflicting)
+	{
+		Names += FString::Printf(TEXT("「%s」"), *KeyRowName(Other));
+	}
+	return Make(EKeyPromptKind::Notice, TEXT("複数の操作と重なるので戻せません\n") + Names);
+}
+
 TB::FKeyPrompt TB::PromptForSwap(const FRemapResult& Result)
 {
 	switch (Result.Result)

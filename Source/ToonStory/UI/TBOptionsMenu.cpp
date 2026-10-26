@@ -17,6 +17,10 @@
 #include "Core/TBGameUserSettings.h"
 #include "Engine/GameInstance.h"
 #include "GameFramework/PlayerController.h"
+#include "EnhancedInputSubsystems.h"
+#include "Engine/LocalPlayer.h"
+#include "UserSettings/EnhancedInputUserSettings.h"
+#include "Input/TBKeyLabels.h"
 #include "Input/TBKeyPrompt.h"
 #include "Input/TBKeyRemap.h"
 #include "InputCoreTypes.h"
@@ -198,6 +202,7 @@ UTBKeyRow* UTBOptionsMenu::AddKeyRow(int32 PageIndex, const FString& Label, FNam
 	auto* Row = CreateWidget<UTBKeyRow>(this);
 	Row->Build(Label, MappingName, PaperFont, PaperTexture);
 	Row->Pressed = [this, MappingName] { BeginKeyCapture(MappingName); };
+	Row->Reset = [this, MappingName] { BeginKeyReset(MappingName); };
 	Pages[PageIndex]->AddChildToVerticalBox(Row)->SetPadding(FMargin(0, 0, 0, 2));
 	KeyRows.Add(Row);
 	return Row;
@@ -281,6 +286,10 @@ void UTBOptionsMenu::ResetPage()
 	{
 		Settings->ResetControls();
 		Settings->SaveSettings();
+		if (TB::ResetAll(GetOwningPlayer()).Result == TB::ERemapResult::OK)
+		{
+			SaveKeys();
+		}
 	}
 	PlayClick();
 	RefreshRows();
@@ -372,6 +381,52 @@ void UTBOptionsMenu::BeginKeyCapture(FName MappingName)
 	SetKeyboardFocus();
 }
 
+TFunction<void()> UTBOptionsMenu::KeySaveOverride;
+
+void UTBOptionsMenu::SaveKeys() const
+{
+	if (KeySaveOverride)
+	{
+		KeySaveOverride();
+		return;
+	}
+	const ULocalPlayer* LocalPlayer = GetOwningLocalPlayer();
+	auto* Input = LocalPlayer ? ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(LocalPlayer) : nullptr;
+	if (auto* User = Input ? Input->GetUserSettings() : nullptr)
+	{
+		User->SaveSettings();
+	}
+}
+
+void UTBOptionsMenu::BeginKeyReset(FName MappingName)
+{
+	if (IsConfirming() || IsCapturing())
+	{
+		return;
+	}
+	TB::FKeyboardKey Row;
+	if (!TB::FindKeyboardKey(GetOwningPlayer(), MappingName, Row))
+	{
+		return;
+	}
+	const TB::FKeyPrompt Prompt = TB::PromptForReset(TB::ResetToDefault(GetOwningPlayer(), MappingName), Row.DefaultKey);
+	PlayClick();
+	if (Prompt.Kind == TB::EKeyPromptKind::Done)
+	{
+		SaveKeys();
+		RefreshRows();
+		return;
+	}
+	// 戻せなかったとき。かぶりが1行なら入れ替えを聞き、それ以外はお知らせ。
+	CaptureRow = MappingName;
+	PendingKey = Row.DefaultKey;
+	bResetting = true;
+	SetBackgroundEnabled(false);
+	SetKeyboardFocus();
+	ApplyKeyPrompt(Prompt.Kind == TB::EKeyPromptKind::AskSwap ? Prompt : TB::FKeyPrompt{TB::EKeyPromptKind::Notice, Prompt.Text},
+	               Row.DefaultKey);
+}
+
 void UTBOptionsMenu::ReceiveCapturedKey(const FKey& Key)
 {
 	if (KeyCapture == EKeyCapture::None)
@@ -424,6 +479,7 @@ void UTBOptionsMenu::ApplyKeyPrompt(const TB::FKeyPrompt& Prompt, const FKey& Ke
 	switch (Prompt.Kind)
 	{
 	case TB::EKeyPromptKind::Done:
+		SaveKeys();
 		CancelKeyCapture(false);
 		RefreshRows();
 		break;
@@ -450,6 +506,7 @@ void UTBOptionsMenu::CancelKeyCapture(bool bBack)
 		return;
 	}
 	KeyCapture = EKeyCapture::None;
+	bResetting = false;
 	KeyOverlay->SetVisibility(ESlateVisibility::Collapsed);
 	SetBackgroundEnabled(true);
 	PlayClick(bBack);
@@ -468,6 +525,11 @@ void UTBOptionsMenu::ReturnToWaiting()
 {
 	if (KeyCapture == EKeyCapture::None)
 	{
+		return;
+	}
+	if (bResetting)
+	{
+		CancelKeyCapture();
 		return;
 	}
 	PlayClick(true);

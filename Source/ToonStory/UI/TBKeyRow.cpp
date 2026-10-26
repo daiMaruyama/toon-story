@@ -37,7 +37,12 @@ void UTBKeyRow::Build(const FString& Label, FName InMappingName, UFont* Font, UT
 	Place(Text(Label, 20), 0, 10, 230, 36);
 	KeyText = Text(TEXT(""), 19);
 	KeyText->SetJustification(ETextJustify::Center);
-	Place(KeyText, 240, 10, 456, 36);
+	Place(KeyText, 240, 10, 360, 36);
+	auto* ResetButton = WidgetTree->ConstructWidget<UButton>();
+	ResetButton->SetStyle(TBPaper::ButtonStyle(Paper));
+	ResetButton->SetContent(Text(TEXT("戻す"), 19));
+	Place(ResetButton, 612, 3, 84, 44);
+	ResetButton->OnClicked.AddDynamic(this, &ThisClass::ResetClicked);
 	ChangeButton = WidgetTree->ConstructWidget<UButton>();
 	ChangeButton->SetStyle(TBPaper::ButtonStyle(Paper));
 	ChangeButton->SetContent(Text(TEXT("変える"), 19));
@@ -61,6 +66,14 @@ void UTBKeyRow::FocusButton()
 FString UTBKeyRow::GetKeyText() const
 {
 	return KeyText ? KeyText->GetText().ToString() : FString();
+}
+
+void UTBKeyRow::ResetClicked()
+{
+	if (Reset)
+	{
+		Reset();
+	}
 }
 
 void UTBKeyRow::Clicked()

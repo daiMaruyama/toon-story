@@ -28,10 +28,14 @@ public:
 	void FocusButton();
 	// 「変える」を押したとき。
 	TFunction<void()> Pressed;
+	// 「戻す」を押したとき。
+	TFunction<void()> Reset;
 
 private:
 	UFUNCTION()
 	void Clicked();
+	UFUNCTION()
+	void ResetClicked();
 	FName MappingName;
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> KeyText;

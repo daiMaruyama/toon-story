@@ -57,6 +57,10 @@ public:
 	void BeginKeyCapture(FName MappingName);
 	void ReceiveCapturedKey(const FKey& Key);
 	void ConfirmKeySwap();
+	// 行を既定のキーに戻す。かぶるときは入れ替えを聞く（確認の板はキー待ちと同じ）。
+	void BeginKeyReset(FName MappingName);
+	// キー割り当ての保存。nullptr 以外ならそれを呼ぶ（テストが本人の保存ファイルを書き換えないための差し替え）。
+	static TFunction<void()> KeySaveOverride;
 	bool IsCapturing() const
 	{
 		return KeyCapture != EKeyCapture::None;
@@ -106,6 +110,7 @@ private:
 	void CancelKeyCapture(bool bBack = true);
 	// お知らせを閉じて、キーを待つ状態に戻る。
 	void ReturnToWaiting();
+	void SaveKeys() const;
 	void SetBackgroundEnabled(bool bEnabled);
 	void SetKeyOverlay(EKeyCapture State, const FString& Text, const FString& Error = FString());
 	UFUNCTION()
@@ -136,6 +141,8 @@ private:
 	FKey PendingKey;
 	// 状態を変えたキー。そのキーを押したままのリピートと、離したときのKeyUpは、ここで止める。
 	FKey HeldTriggerKey;
+	// 「戻す」の確認中。お知らせを閉じたら待ちには戻らず、そのまま終える。
+	bool bResetting = false;
 	// ウィンドウの大きさが変わると、エンジンはそれを「確認済み」にしてしまう。戻す先は自分で覚えておく。
 	FIntPoint PreviousResolution = FIntPoint::ZeroValue;
 	EWindowMode::Type PreviousWindowMode = EWindowMode::Windowed;
