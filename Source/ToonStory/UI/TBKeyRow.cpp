@@ -50,6 +50,14 @@ void UTBKeyRow::Refresh()
 	KeyText->SetText(FText::FromString(TB::KeyLabel(GetOwningPlayer(), MappingName)));
 }
 
+void UTBKeyRow::FocusButton()
+{
+	if (ChangeButton)
+	{
+		ChangeButton->SetKeyboardFocus();
+	}
+}
+
 FString UTBKeyRow::GetKeyText() const
 {
 	return KeyText ? KeyText->GetText().ToString() : FString();

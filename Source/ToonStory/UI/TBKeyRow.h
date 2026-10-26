@@ -10,7 +10,7 @@ class UFont;
 class UTextBlock;
 class UTexture2D;
 
-/** オプション画面のキー設定の1行。表示名と、今のキー名を出す。押す操作は次の回で足す。 */
+/** オプション画面のキー設定の1行。表示名と、今のキー名を出し、「変える」でPressedを呼ぶ。 */
 UCLASS()
 class TOONSTORY_API UTBKeyRow : public UUserWidget
 {
@@ -24,7 +24,9 @@ public:
 		return MappingName;
 	}
 	FString GetKeyText() const;
-	// 「変える」を押したとき。今は何も設定しない。
+	// 取り消し・確定のあと、押した行の「変える」にフォーカスを戻す。
+	void FocusButton();
+	// 「変える」を押したとき。
 	TFunction<void()> Pressed;
 
 private:

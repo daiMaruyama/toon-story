@@ -17,6 +17,8 @@
 #include "Core/TBGameUserSettings.h"
 #include "Engine/GameInstance.h"
 #include "GameFramework/PlayerController.h"
+#include "Input/TBKeyPrompt.h"
+#include "Input/TBKeyRemap.h"
 #include "InputCoreTypes.h"
 #include "TBKeyRow.h"
 #include "TBOptionRow.h"
@@ -103,10 +105,10 @@ void UTBOptionsMenu::Build(UTBGameUserSettings& Settings)
 		if (Index == TBOptionsPage::Controls)
 		{
 			// キーの行が多いので、スクロールで包む。右にスクロールバーの分を空ける。
-			auto* Scroll = WidgetTree->ConstructWidget<UScrollBox>();
-			Scroll->AddChild(Box);
-			Place(Canvas, Scroll, 240, 150, 824, 500);
-			PageRoots.Add(Scroll);
+			ControlsScroll = WidgetTree->ConstructWidget<UScrollBox>();
+			ControlsScroll->AddChild(Box);
+			Place(Canvas, ControlsScroll, 240, 150, 824, 500);
+			PageRoots.Add(ControlsScroll);
 		}
 		else
 		{
@@ -114,7 +116,7 @@ void UTBOptionsMenu::Build(UTBGameUserSettings& Settings)
 			PageRoots.Add(Box);
 		}
 	}
-	auto* ResetButton = AddButton(Canvas, TEXT("初期設定に戻す"), 240, 672, 360, true);
+	ResetButton = AddButton(Canvas, TEXT("初期設定に戻す"), 240, 672, 360, true);
 	ResetButton->OnClicked.AddDynamic(this, &ThisClass::ResetPage);
 	CloseButton = AddButton(Canvas, TEXT("閉じる [Esc]"), 680, 672, 360);
 	CloseButton->OnClicked.AddDynamic(this, &ThisClass::Close);
@@ -139,6 +141,31 @@ void UTBOptionsMenu::Build(UTBGameUserSettings& Settings)
 	AddButton(Confirm, TEXT("元に戻す"), 650, 430, 210, true)->OnClicked.AddDynamic(this, &ThisClass::RevertVideoMode);
 	ConfirmOverlay = Confirm;
 	ConfirmOverlay->SetVisibility(ESlateVisibility::Collapsed);
+
+	// キーの付け替えの板。暗い幕を押せる（Visible）にして、後ろの行やボタンを押せなくする。
+	auto* KeyLayer = WidgetTree->ConstructWidget<UCanvasPanel>();
+	Place(Canvas, KeyLayer, 0, 0, 1280, 800);
+	auto* KeyDim = WidgetTree->ConstructWidget<UImage>();
+	KeyDim->SetColorAndOpacity(FLinearColor(0.015f, .025f, .02f, .6f));
+	KeyDim->SetVisibility(ESlateVisibility::Visible);
+	Place(KeyLayer, KeyDim, 0, 0, 1280, 800);
+	auto* KeyCard = WidgetTree->ConstructWidget<UBorder>();
+	KeyCard->SetBrush(TBPaper::Brush(PaperTexture));
+	Place(KeyLayer, KeyCard, 380, 260, 520, 280);
+	KeyPromptText = Label(TEXT(""), 22, TBPaper::Ink);
+	KeyPromptText->SetAutoWrapText(true);
+	Place(KeyLayer, KeyPromptText, 420, 290, 440, 110);
+	KeyErrorText = Label(TEXT(""), 18, FLinearColor(.75f, .1f, .08f));
+	KeyErrorText->SetAutoWrapText(true);
+	Place(KeyLayer, KeyErrorText, 420, 400, 440, 40);
+	KeySwapButton = AddButton(KeyLayer, TEXT("入れ替える"), 420, 460, 210);
+	KeySwapButton->OnClicked.AddDynamic(this, &ThisClass::SwapKey);
+	KeyCancelButton = AddButton(KeyLayer, TEXT("やめる"), 650, 460, 210, true);
+	KeyCancelButton->OnClicked.AddDynamic(this, &ThisClass::CancelKey);
+	KeyCloseButton = AddButton(KeyLayer, TEXT("とじる"), 535, 460, 210);
+	KeyCloseButton->OnClicked.AddDynamic(this, &ThisClass::CancelKey);
+	KeyOverlay = KeyLayer;
+	KeyOverlay->SetVisibility(ESlateVisibility::Collapsed);
 }
 
 UTBOptionRow* UTBOptionsMenu::AddRow(int32 PageIndex, const FString& Label, bool bBar)
@@ -170,6 +197,7 @@ UTBKeyRow* UTBOptionsMenu::AddKeyRow(int32 PageIndex, const FString& Label, FNam
 {
 	auto* Row = CreateWidget<UTBKeyRow>(this);
 	Row->Build(Label, MappingName, PaperFont, PaperTexture);
+	Row->Pressed = [this, MappingName] { BeginKeyCapture(MappingName); };
 	Pages[PageIndex]->AddChildToVerticalBox(Row)->SetPadding(FMargin(0, 0, 0, 2));
 	KeyRows.Add(Row);
 	return Row;
@@ -192,23 +220,30 @@ void UTBOptionsMenu::ShowPage(int32 Index)
 		PageRoots[Other]->SetVisibility(Other == Page ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
 		Tabs[Other]->SetStyle(TBPaper::ButtonStyle(PaperTexture, Other != Page));
 	}
+	if (Page == TBOptionsPage::Controls && ControlsScroll)
+	{
+		ControlsScroll->ScrollToStart();
+	}
 	RefreshRows();
 }
 
 void UTBOptionsMenu::ShowAudio()
 {
+	if (IsCapturing()) return;
 	PlayClick();
 	ShowPage(0);
 }
 
 void UTBOptionsMenu::ShowDisplay()
 {
+	if (IsCapturing()) return;
 	PlayClick();
 	ShowPage(1);
 }
 
 void UTBOptionsMenu::ShowControls()
 {
+	if (IsCapturing()) return;
 	PlayClick();
 	ShowPage(2);
 }
@@ -228,7 +263,7 @@ void UTBOptionsMenu::RefreshRows()
 void UTBOptionsMenu::ResetPage()
 {
 	auto* Settings = UTBGameUserSettings::Get();
-	if (!Settings || IsConfirming())
+	if (!Settings || IsConfirming() || IsCapturing())
 	{
 		return;
 	}
@@ -254,7 +289,7 @@ void UTBOptionsMenu::ResetPage()
 void UTBOptionsMenu::ChangeVideoMode(TFunctionRef<void(UTBGameUserSettings&)> Change)
 {
 	auto* Settings = UTBGameUserSettings::Get();
-	if (!Settings)
+	if (!Settings || IsCapturing())
 	{
 		return;
 	}
@@ -322,8 +357,235 @@ void UTBOptionsMenu::NativeTick(const FGeometry& Geometry, float DeltaTime)
 	    FString::Printf(TEXT("この表示でよろしいですか？\nあと %d 秒で元に戻ります。"), FMath::CeilToInt(Left))));
 }
 
+void UTBOptionsMenu::BeginKeyCapture(FName MappingName)
+{
+	if (IsConfirming() || IsCapturing())
+	{
+		return;
+	}
+	CaptureRow = MappingName;
+	PendingKey = EKeys::Invalid;
+	PlayClick();
+	SetKeyOverlay(EKeyCapture::Waiting, TB::WaitingText(MappingName));
+	// 後ろを押せなくしてから、待っている間のキーを受けるメニューにフォーカスを移す。
+	SetBackgroundEnabled(false);
+	SetKeyboardFocus();
+}
+
+void UTBOptionsMenu::ReceiveCapturedKey(const FKey& Key)
+{
+	if (KeyCapture == EKeyCapture::None)
+	{
+		return;
+	}
+	// このキーを押したままのリピートとKeyUpは、メニューの先読みで止める（マウスのボタンにKeyUpは来ない）。
+	if (!Key.IsMouseButton())
+	{
+		HeldTriggerKey = Key;
+	}
+	// Escとパッドの下のボタン（B）。お知らせは閉じてキー待ちに戻り、それ以外は取り消す。
+	if (Key == EKeys::Escape || Key == EKeys::Gamepad_FaceButton_Right)
+	{
+		if (KeyCapture == EKeyCapture::Notice)
+		{
+			ReturnToWaiting();
+		}
+		else
+		{
+			CancelKeyCapture();
+		}
+		return;
+	}
+	if (KeyCapture != EKeyCapture::Waiting)
+	{
+		return;
+	}
+	ApplyKeyPrompt(TB::PromptForRemap(TB::Remap(GetOwningPlayer(), CaptureRow, Key), Key), Key);
+}
+
+void UTBOptionsMenu::ConfirmKeySwap()
+{
+	if (KeyCapture != EKeyCapture::AskSwap)
+	{
+		return;
+	}
+	const TB::FKeyPrompt Prompt = TB::PromptForSwap(TB::SwapRemap(GetOwningPlayer(), CaptureRow, PendingKey));
+	if (Prompt.Kind == TB::EKeyPromptKind::Redo)
+	{
+		// 相手がいなくなっていた。普通の付け替えをやり直す。
+		ApplyKeyPrompt(TB::PromptForRemap(TB::Remap(GetOwningPlayer(), CaptureRow, PendingKey), PendingKey), PendingKey);
+		return;
+	}
+	ApplyKeyPrompt(Prompt, PendingKey);
+}
+
+void UTBOptionsMenu::ApplyKeyPrompt(const TB::FKeyPrompt& Prompt, const FKey& Key)
+{
+	switch (Prompt.Kind)
+	{
+	case TB::EKeyPromptKind::Done:
+		CancelKeyCapture(false);
+		RefreshRows();
+		break;
+	case TB::EKeyPromptKind::Retry:
+		SetKeyOverlay(EKeyCapture::Waiting, TB::WaitingText(CaptureRow), Prompt.Text);
+		break;
+	case TB::EKeyPromptKind::AskSwap:
+		PendingKey = Key;
+		SetKeyOverlay(EKeyCapture::AskSwap, Prompt.Text);
+		// 押し間違いで入れ替わらないよう、初めは「やめる」にフォーカスを置く。
+		KeyCancelButton->SetKeyboardFocus();
+		break;
+	default:
+		SetKeyOverlay(EKeyCapture::Notice, Prompt.Text);
+		KeyCloseButton->SetKeyboardFocus();
+		break;
+	}
+}
+
+void UTBOptionsMenu::CancelKeyCapture(bool bBack)
+{
+	if (KeyCapture == EKeyCapture::None)
+	{
+		return;
+	}
+	KeyCapture = EKeyCapture::None;
+	KeyOverlay->SetVisibility(ESlateVisibility::Collapsed);
+	SetBackgroundEnabled(true);
+	PlayClick(bBack);
+	// 押した行の「変える」にフォーカスを戻す。
+	if (auto* Row = KeyRows.FindByPredicate([this](const UTBKeyRow* Other) { return Other->GetMappingName() == CaptureRow; }))
+	{
+		(*Row)->FocusButton();
+	}
+	else
+	{
+		SetKeyboardFocus();
+	}
+}
+
+void UTBOptionsMenu::ReturnToWaiting()
+{
+	if (KeyCapture == EKeyCapture::None)
+	{
+		return;
+	}
+	PlayClick(true);
+	SetKeyOverlay(EKeyCapture::Waiting, TB::WaitingText(CaptureRow));
+	SetKeyboardFocus();
+}
+
+void UTBOptionsMenu::SetBackgroundEnabled(bool bEnabled)
+{
+	for (UWidget* Root : PageRoots)
+	{
+		Root->SetIsEnabled(bEnabled);
+	}
+	for (UButton* Tab : Tabs)
+	{
+		Tab->SetIsEnabled(bEnabled);
+	}
+	ResetButton->SetIsEnabled(bEnabled);
+	CloseButton->SetIsEnabled(bEnabled);
+}
+
+bool UTBOptionsMenu::IsBackgroundEnabled() const
+{
+	return CloseButton && CloseButton->GetIsEnabled();
+}
+
+void UTBOptionsMenu::SetKeyOverlay(EKeyCapture State, const FString& Text, const FString& Error)
+{
+	KeyCapture = State;
+	KeyPromptText->SetText(FText::FromString(Text));
+	KeyErrorText->SetText(FText::FromString(Error));
+	const bool bCancelable = State == EKeyCapture::Waiting || State == EKeyCapture::AskSwap;
+	KeySwapButton->SetVisibility(State == EKeyCapture::AskSwap ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+	KeyCancelButton->SetVisibility(bCancelable ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+	KeyCloseButton->SetVisibility(State == EKeyCapture::Notice ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+	KeyOverlay->SetVisibility(ESlateVisibility::Visible);
+}
+
+FString UTBOptionsMenu::GetKeyPromptText() const
+{
+	return KeyPromptText ? KeyPromptText->GetText().ToString() : FString();
+}
+
+FString UTBOptionsMenu::GetKeyErrorText() const
+{
+	return KeyErrorText ? KeyErrorText->GetText().ToString() : FString();
+}
+
+void UTBOptionsMenu::SwapKey()
+{
+	ConfirmKeySwap();
+}
+
+void UTBOptionsMenu::CancelKey()
+{
+	// お知らせは閉じてキー待ちに戻る。待ちと入れ替えの確認では、取り消す。
+	if (KeyCapture == EKeyCapture::Notice)
+	{
+		ReturnToWaiting();
+		return;
+	}
+	CancelKeyCapture();
+}
+
+FReply UTBOptionsMenu::NativeOnPreviewMouseButtonDown(const FGeometry& Geometry, const FPointerEvent& MouseEvent)
+{
+	// 待っている間は、マウスのボタンも次のキーとして受け、ゲームや後ろの画面へ渡さない。
+	// 「やめる」ボタンの上のクリックだけは割り当てに使わず、ボタンに渡す。
+	if (KeyCapture == EKeyCapture::Waiting &&
+	    !KeyCancelButton->GetCachedGeometry().IsUnderLocation(MouseEvent.GetScreenSpacePosition()))
+	{
+		ReceiveCapturedKey(MouseEvent.GetEffectingButton());
+		return FReply::Handled();
+	}
+	return Super::NativeOnPreviewMouseButtonDown(Geometry, MouseEvent);
+}
+
+FReply UTBOptionsMenu::NativeOnKeyUp(const FGeometry& Geometry, const FKeyEvent& KeyEvent)
+{
+	if (HeldTriggerKey.IsValid() && KeyEvent.GetKey() == HeldTriggerKey)
+	{
+		HeldTriggerKey = EKeys::Invalid;
+		return FReply::Handled();
+	}
+	// 待ちと確認の間に離したキーは、ゲーム側へ渡さない。
+	return IsCapturing() ? FReply::Handled() : Super::NativeOnKeyUp(Geometry, KeyEvent);
+}
+
 FReply UTBOptionsMenu::NativeOnPreviewKeyDown(const FGeometry& Geometry, const FKeyEvent& KeyEvent)
 {
+	const FKey Key = KeyEvent.GetKey();
+	if (HeldTriggerKey.IsValid() && Key == HeldTriggerKey)
+	{
+		// 状態を変えたキーを押したままのリピートは止める。押し直したら（リピートでない）新しい押下として扱う。
+		if (KeyEvent.IsRepeat())
+		{
+			return FReply::Handled();
+		}
+		HeldTriggerKey = EKeys::Invalid;
+	}
+	if (IsCapturing())
+	{
+		// 確認とお知らせでは、ボタンを選ぶ・押すキー（左右、Enter、Space、パッドのAと十字）だけ通す。Tabは通さない。
+		// 押したままのリピートは通さない。
+		const bool bPassToButtons = KeyCapture != EKeyCapture::Waiting && !KeyEvent.IsRepeat() &&
+		                            (Key == EKeys::Enter || Key == EKeys::SpaceBar || Key == EKeys::Left || Key == EKeys::Right ||
+		                             Key == EKeys::Gamepad_FaceButton_Bottom || Key == EKeys::Gamepad_DPad_Left ||
+		                             Key == EKeys::Gamepad_DPad_Right);
+		if (bPassToButtons)
+		{
+			return Super::NativeOnPreviewKeyDown(Geometry, KeyEvent);
+		}
+		if (!KeyEvent.IsRepeat())
+		{
+			ReceiveCapturedKey(Key);
+		}
+		return FReply::Handled();
+	}
 	if (KeyEvent.GetKey() == EKeys::Escape)
 	{
 		if (IsConfirming())
@@ -350,6 +612,10 @@ void UTBOptionsMenu::PlayClick(bool bBack) const
 
 void UTBOptionsMenu::Close()
 {
+	if (IsCapturing())
+	{
+		return;
+	}
 	PlayClick(true);
 	Dismiss();
 }

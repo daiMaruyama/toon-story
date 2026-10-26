@@ -4,11 +4,18 @@
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
 #include "GenericPlatform/GenericWindow.h"
+#include "InputCoreTypes.h"
 #include "TBOptionsMenu.generated.h"
+
+namespace TB
+{
+	struct FKeyPrompt;
+}
 
 class APlayerController;
 class UButton;
 class UFont;
+class UScrollBox;
 class UTBGameUserSettings;
 class UTBKeyRow;
 class UTBOptionRow;
@@ -43,18 +50,68 @@ public:
 	}
 	// 解像度と画面モードは、変えたあと確認がなければ元に戻す。
 	void ChangeVideoMode(TFunctionRef<void(UTBGameUserSettings&)> Change);
+	// タブの切り替え。行は引き直される。
+	void ShowPage(int32 Index);
+
+	// キーの付け替え。「変える」で待ちに入り、次のキー（マウスのボタンも）を受け取る。テストからも使う。
+	void BeginKeyCapture(FName MappingName);
+	void ReceiveCapturedKey(const FKey& Key);
+	void ConfirmKeySwap();
+	bool IsCapturing() const
+	{
+		return KeyCapture != EKeyCapture::None;
+	}
+	bool IsAwaitingSwap() const
+	{
+		return KeyCapture == EKeyCapture::AskSwap;
+	}
+	FString GetKeyPromptText() const;
+	FString GetKeyErrorText() const;
+	// テストからキーイベントを流す。実際のキー入力と同じ経路を通る。
+	FReply SendKeyDownForTest(const FKeyEvent& KeyEvent)
+	{
+		return NativeOnPreviewKeyDown(FGeometry(), KeyEvent);
+	}
+	FReply SendKeyUpForTest(const FKeyEvent& KeyEvent)
+	{
+		return NativeOnKeyUp(FGeometry(), KeyEvent);
+	}
+	int32 GetPage() const
+	{
+		return Page;
+	}
+	// 待ちや確認の間、後ろのページ・タブ・リセット・閉じるは押せない。
+	bool IsBackgroundEnabled() const;
 
 protected:
 	virtual void NativeOnInitialized() override;
 	virtual void NativeDestruct() override;
 	virtual FReply NativeOnPreviewKeyDown(const FGeometry& Geometry, const FKeyEvent& KeyEvent) override;
+	virtual FReply NativeOnKeyUp(const FGeometry& Geometry, const FKeyEvent& KeyEvent) override;
+	virtual FReply NativeOnPreviewMouseButtonDown(const FGeometry& Geometry, const FPointerEvent& MouseEvent) override;
 	virtual void NativeTick(const FGeometry& Geometry, float DeltaTime) override;
 
 private:
+	enum class EKeyCapture : uint8
+	{
+		None,
+		Waiting,  // 次のキーを待っている
+		AskSwap,  // かぶった相手と入れ替えるかを聞いている
+		Notice,   // 事情をお知らせしている
+	};
 	void Build(UTBGameUserSettings& Settings);
 	UTextBlock* MakeLabel(const FString& Text, int32 FontSize, FLinearColor Color);
-	void ShowPage(int32 Index);
 	void RefreshRows();
+	void ApplyKeyPrompt(const TB::FKeyPrompt& Prompt, const FKey& Key);
+	void CancelKeyCapture(bool bBack = true);
+	// お知らせを閉じて、キーを待つ状態に戻る。
+	void ReturnToWaiting();
+	void SetBackgroundEnabled(bool bEnabled);
+	void SetKeyOverlay(EKeyCapture State, const FString& Text, const FString& Error = FString());
+	UFUNCTION()
+	void SwapKey();
+	UFUNCTION()
+	void CancelKey();
 	void PlayClick(bool bBack = false) const;
 	bool IsConfirming() const;
 	// 変える前の解像度と画面モードに戻す。
@@ -74,6 +131,11 @@ private:
 	TFunction<void()> Closed;
 	int32 Page = 0;
 	double ConfirmUntil = 0;
+	EKeyCapture KeyCapture = EKeyCapture::None;
+	FName CaptureRow;
+	FKey PendingKey;
+	// 状態を変えたキー。そのキーを押したままのリピートと、離したときのKeyUpは、ここで止める。
+	FKey HeldTriggerKey;
 	// ウィンドウの大きさが変わると、エンジンはそれを「確認済み」にしてしまう。戻す先は自分で覚えておく。
 	FIntPoint PreviousResolution = FIntPoint::ZeroValue;
 	EWindowMode::Type PreviousWindowMode = EWindowMode::Windowed;
@@ -89,11 +151,28 @@ private:
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UTBOptionRow>> Rows;
 	UPROPERTY(Transient)
+	TObjectPtr<UScrollBox> ControlsScroll;
+	// キーの付け替えの板。待ち、入れ替えの確認、お知らせで文とボタンが変わる。
+	UPROPERTY(Transient)
+	TObjectPtr<UWidget> KeyOverlay;
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> KeyPromptText;
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> KeyErrorText;
+	UPROPERTY(Transient)
+	TObjectPtr<UButton> KeySwapButton;
+	UPROPERTY(Transient)
+	TObjectPtr<UButton> KeyCancelButton;
+	UPROPERTY(Transient)
+	TObjectPtr<UButton> KeyCloseButton;
+	UPROPERTY(Transient)
 	TObjectPtr<UWidget> ConfirmOverlay;
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> ConfirmText;
 	UPROPERTY(Transient)
 	TObjectPtr<UButton> KeepButton;
+	UPROPERTY(Transient)
+	TObjectPtr<UButton> ResetButton;
 	UPROPERTY(Transient)
 	TObjectPtr<UButton> CloseButton;
 	UPROPERTY(Transient)
