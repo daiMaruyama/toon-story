@@ -823,11 +823,22 @@ void ATBCharacter::SetupPlayerInputComponent(UInputComponent* Input)
 			Enhanced->BindAction(SprintAction, ETriggerEvent::Completed, this, &ATBCharacter::SprintReleased);
 			Enhanced->BindAction(SprintAction, ETriggerEvent::Canceled, this, &ATBCharacter::SprintReleased);
 		}
+		// インタラクトは両方の陣営のIMCにある。置くは人間、挑発は人形のIMCにだけある。
+		if (const UInputAction* InteractAction = Settings->InteractAction.LoadSynchronous())
+		{
+			Enhanced->BindAction(InteractAction, ETriggerEvent::Started, this, &ATBCharacter::RequestInteract);
+			Enhanced->BindAction(InteractAction, ETriggerEvent::Completed, this, &ATBCharacter::ReleaseInteract);
+			Enhanced->BindAction(InteractAction, ETriggerEvent::Canceled, this, &ATBCharacter::ReleaseInteract);
+		}
+		if (const UInputAction* DropAction = Settings->DropAction.LoadSynchronous())
+		{
+			Enhanced->BindAction(DropAction, ETriggerEvent::Started, this, &ATBCharacter::RequestDrop);
+		}
+		if (const UInputAction* TauntAction = Settings->TauntAction.LoadSynchronous())
+		{
+			Enhanced->BindAction(TauntAction, ETriggerEvent::Started, this, &ATBCharacter::RequestTaunt);
+		}
 	}
-	Input->BindAction("Interact", IE_Pressed, this, &ATBCharacter::RequestInteract);
-	Input->BindAction("Interact", IE_Released, this, &ATBCharacter::ReleaseInteract);
-	Input->BindAction("Drop", IE_Pressed, this, &ATBCharacter::RequestDrop);
-	Input->BindAction("Taunt", IE_Pressed, this, &ATBCharacter::RequestTaunt);
 }
 
 void ATBCharacter::ApplyInterruption()
