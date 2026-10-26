@@ -35,4 +35,8 @@ public:
 	TSoftObjectPtr<UInputAction> MoveAction;
 	UPROPERTY(Config, EditAnywhere, Category = "入力", meta = (DisplayName = "ジャンプ"))
 	TSoftObjectPtr<UInputAction> JumpAction;
+	UPROPERTY(Config, EditAnywhere, Category = "入力", meta = (DisplayName = "しゃがむ"))
+	TSoftObjectPtr<UInputAction> CrouchAction;
+	UPROPERTY(Config, EditAnywhere, Category = "入力", meta = (DisplayName = "ダッシュ"))
+	TSoftObjectPtr<UInputAction> SprintAction;
 };

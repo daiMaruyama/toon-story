@@ -810,11 +810,20 @@ void ATBCharacter::SetupPlayerInputComponent(UInputComponent* Input)
 			Enhanced->BindAction(JumpAction, ETriggerEvent::Completed, this, &ATBCharacter::JumpReleased);
 			Enhanced->BindAction(JumpAction, ETriggerEvent::Canceled, this, &ATBCharacter::JumpReleased);
 		}
+		// しゃがみは人間、ダッシュは人形のIMCにだけある。どちらが効くかは付いているIMCで決まる。
+		if (const UInputAction* CrouchAction = Settings->CrouchAction.LoadSynchronous())
+		{
+			Enhanced->BindAction(CrouchAction, ETriggerEvent::Started, this, &ATBCharacter::CrouchPressed);
+			Enhanced->BindAction(CrouchAction, ETriggerEvent::Completed, this, &ATBCharacter::CrouchReleased);
+			Enhanced->BindAction(CrouchAction, ETriggerEvent::Canceled, this, &ATBCharacter::CrouchReleased);
+		}
+		if (const UInputAction* SprintAction = Settings->SprintAction.LoadSynchronous())
+		{
+			Enhanced->BindAction(SprintAction, ETriggerEvent::Started, this, &ATBCharacter::SprintPressed);
+			Enhanced->BindAction(SprintAction, ETriggerEvent::Completed, this, &ATBCharacter::SprintReleased);
+			Enhanced->BindAction(SprintAction, ETriggerEvent::Canceled, this, &ATBCharacter::SprintReleased);
+		}
 	}
-	Input->BindKey(EKeys::LeftControl, IE_Pressed, this, &ATBCharacter::CrouchPressed);
-	Input->BindKey(EKeys::LeftControl, IE_Released, this, &ATBCharacter::CrouchReleased);
-	Input->BindKey(EKeys::LeftShift, IE_Pressed, this, &ATBCharacter::SprintPressed);
-	Input->BindKey(EKeys::LeftShift, IE_Released, this, &ATBCharacter::SprintReleased);
 	Input->BindAction("Interact", IE_Pressed, this, &ATBCharacter::RequestInteract);
 	Input->BindAction("Interact", IE_Released, this, &ATBCharacter::ReleaseInteract);
 	Input->BindAction("Drop", IE_Pressed, this, &ATBCharacter::RequestDrop);
