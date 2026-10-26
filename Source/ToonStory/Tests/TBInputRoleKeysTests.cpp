@@ -29,7 +29,7 @@ namespace
 	constexpr int32 SwitchHeldSprintFrame = 38;
 	constexpr int32 CheckHeldSprintFrame = 42;
 
-	void SendKey(ATBController* PC, const FKey& Key, EInputEvent Event)
+	void SendRoleKey(ATBController* PC, const FKey& Key, EInputEvent Event)
 	{
 		FInputKeyEventArgs Args(nullptr, FInputDeviceId::CreateFromInternalId(0), Key, Event == IE_Released ? 0.0 : 1.0, 0.016f, 1, 0);
 		Args.Event = Event;
@@ -72,14 +72,14 @@ namespace
 			switch (Frame)
 			{
 			case PressHumanFrame:
-				SendKey(PC.Get(), EKeys::LeftControl, IE_Pressed);
-				SendKey(PC.Get(), EKeys::LeftShift, IE_Pressed);
+				SendRoleKey(PC.Get(), EKeys::LeftControl, IE_Pressed);
+				SendRoleKey(PC.Get(), EKeys::LeftShift, IE_Pressed);
 				break;
 			case CheckHumanFrame:
 				Test->TestTrue(TEXT("Human: left Ctrl requests crouch"), Movement->bWantsToCrouch);
 				Test->TestFalse(TEXT("Human: left Shift does not request sprint"), Movement->bWantsToSprint);
-				SendKey(PC.Get(), EKeys::LeftControl, IE_Released);
-				SendKey(PC.Get(), EKeys::LeftShift, IE_Released);
+				SendRoleKey(PC.Get(), EKeys::LeftControl, IE_Released);
+				SendRoleKey(PC.Get(), EKeys::LeftShift, IE_Released);
 				break;
 			case ReleaseCheckHumanFrame:
 				Test->TestFalse(TEXT("Human: releasing left Ctrl ends crouch"), Movement->bWantsToCrouch);
@@ -89,15 +89,15 @@ namespace
 				PC->SyncInputContexts();
 				break;
 			case PressToyFrame:
-				SendKey(PC.Get(), EKeys::LeftControl, IE_Pressed);
-				SendKey(PC.Get(), EKeys::LeftShift, IE_Pressed);
+				SendRoleKey(PC.Get(), EKeys::LeftControl, IE_Pressed);
+				SendRoleKey(PC.Get(), EKeys::LeftShift, IE_Pressed);
 				break;
 			case CheckToyFrame:
 				Test->TestTrue(TEXT("Toy: left Shift requests sprint"), Movement->bWantsToSprint);
 				// CrouchPressedのIsHumanゲートでも通るので、IMCが無いことの確認としては弱い。
 				Test->TestFalse(TEXT("Toy: left Ctrl does not request crouch"), Movement->bWantsToCrouch);
-				SendKey(PC.Get(), EKeys::LeftControl, IE_Released);
-				SendKey(PC.Get(), EKeys::LeftShift, IE_Released);
+				SendRoleKey(PC.Get(), EKeys::LeftControl, IE_Released);
+				SendRoleKey(PC.Get(), EKeys::LeftShift, IE_Released);
 				break;
 			case ReleaseCheckToyFrame:
 				Test->TestFalse(TEXT("Toy: releasing left Shift ends sprint"), Movement->bWantsToSprint);
@@ -107,7 +107,7 @@ namespace
 				PC->SyncInputContexts();
 				break;
 			case PressHeldCrouchFrame:
-				SendKey(PC.Get(), EKeys::LeftControl, IE_Pressed);
+				SendRoleKey(PC.Get(), EKeys::LeftControl, IE_Pressed);
 				break;
 			case SwitchHeldCrouchFrame:
 				Test->TestTrue(TEXT("Held: Human crouch is requested before the switch"), Movement->bWantsToCrouch);
@@ -117,10 +117,10 @@ namespace
 			case CheckHeldCrouchFrame:
 				// 左Ctrlは押したまま。IMCが外れてCompletedが来れば戻る。
 				Test->TestFalse(TEXT("Held: crouch ends when the role changes to Toy"), Movement->bWantsToCrouch);
-				SendKey(PC.Get(), EKeys::LeftControl, IE_Released);
+				SendRoleKey(PC.Get(), EKeys::LeftControl, IE_Released);
 				break;
 			case PressHeldSprintFrame:
-				SendKey(PC.Get(), EKeys::LeftShift, IE_Pressed);
+				SendRoleKey(PC.Get(), EKeys::LeftShift, IE_Pressed);
 				break;
 			case SwitchHeldSprintFrame:
 				Test->TestTrue(TEXT("Held: Toy sprint is requested before the switch"), Movement->bWantsToSprint);
@@ -144,8 +144,8 @@ namespace
 		void Finish()
 		{
 			if (!PC.IsValid()) return;
-			SendKey(PC.Get(), EKeys::LeftControl, IE_Released);
-			SendKey(PC.Get(), EKeys::LeftShift, IE_Released);
+			SendRoleKey(PC.Get(), EKeys::LeftControl, IE_Released);
+			SendRoleKey(PC.Get(), EKeys::LeftShift, IE_Released);
 			if (auto* Body = Cast<ATBCharacter>(PC->GetPawn()); Body && bStarted)
 			{
 				Body->TBPS()->Team = OriginalTeam;
