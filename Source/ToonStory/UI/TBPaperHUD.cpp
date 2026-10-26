@@ -6,6 +6,7 @@
 #include "Core/TBPlayerState.h"
 #include "Core/TBGameState.h"
 #include "Core/TBController.h"
+#include "Core/TBKeyLabels.h"
 #include "Core/TBSession.h"
 #include "Core/TBGameHelpers.h"
 #include "Character/TBCharacter.h"
@@ -138,11 +139,15 @@ void ATBHUD::DrawLobby()
 		     : !EveryoneReady ? TEXT("全員の準備ができたら、はじめよう。")
 		     : State->bTravelPending ? TEXT("ステージへ移動中…") : TEXT("準備がそろいました！"),
 		     48, Bottom - 30, .9f, Ink);
-		Button(TEXT("Ready"), Local && Local->bReady ? TEXT("準備をやめる [R]") : TEXT("準備OK [R]"), 48, Bottom, 240,
-		       Local != nullptr && !State->bTravelPending, Local && Local->bReady);
+		const FString ReadyKey = TB::KeyLabel(PC, TB::Keys::LobbyReady);
+		const FString StartKey = TB::KeyLabel(PC, TB::Keys::LobbyStart);
+		Button(TEXT("Ready"),
+		       Local && Local->bReady ? FString::Printf(TEXT("準備をやめる [%s]"), *ReadyKey) : FString::Printf(TEXT("準備OK [%s]"), *ReadyKey),
+		       48, Bottom, 240, Local != nullptr && !State->bTravelPending, Local && Local->bReady);
 		Text(FString::Printf(TEXT("%d / %d人 準備OK"), ReadyCount, PlayerCount), 308, Bottom + 8, 1.05f, Ink);
 		Button(TEXT("OpenSettings"), TEXT("設定を開く"), 622, Bottom, 216);
-		Button(TEXT("Start"), PC->HasAuthority() ? TEXT("あそびはじめる [F5]") : TEXT("ホストを待っています"),
+		Button(TEXT("Start"),
+		       PC->HasAuthority() ? FString::Printf(TEXT("あそびはじめる [%s]"), *StartKey) : FString(TEXT("ホストを待っています")),
 		       858, Bottom, 294, CanStart, CanStart);
 		return;
 	}
@@ -230,10 +235,13 @@ void ATBHUD::DrawLobby()
 	Button(TEXT("Child"), TEXT("にんげん"), 28, 542, 190, true, Local && Local->Preference == ETBTeam::Human);
 	Button(TEXT("Toy"), TEXT("おもちゃ"), 230, 542, 190, true, Local && Local->Preference == ETBTeam::Toy);
 	Button(TEXT("Either"), TEXT("どちらでも"), 432, 542, 180, true, Local && Local->Preference == ETBTeam::None);
-	Button(TEXT("Ready"), Local && Local->bReady ? TEXT("準備をやめる [R]") : TEXT("準備OK [R]"), 632, 542, 240,
-	       Local != nullptr, Local && Local->bReady);
-	Button(TEXT("Start"), Host ? TEXT("あそびはじめる [F5]") : TEXT("ホストを待っています"), 890, 542, 282, CanStart,
-	       CanStart);
+	const FString ReadyKey = TB::KeyLabel(PC, TB::Keys::LobbyReady);
+	const FString StartKey = TB::KeyLabel(PC, TB::Keys::LobbyStart);
+	Button(TEXT("Ready"),
+	       Local && Local->bReady ? FString::Printf(TEXT("準備をやめる [%s]"), *ReadyKey) : FString::Printf(TEXT("準備OK [%s]"), *ReadyKey),
+	       632, 542, 240, Local != nullptr, Local && Local->bReady);
+	Button(TEXT("Start"), Host ? FString::Printf(TEXT("あそびはじめる [%s]"), *StartKey) : FString(TEXT("ホストを待っています")),
+	       890, 542, 282, CanStart, CanStart);
 	if (!EveryoneReady || !EnoughPlayers)
 	{
 		Text(!EnoughPlayers
@@ -305,9 +313,7 @@ void ATBHUD::DrawMatch(const ATBGameState& MatchState, ATBController& Controller
 	DrawText(FString::Printf(TEXT("箱のなか  %d / %d"), MatchState.BoxedCount, MatchState.Settings.Toys + MatchState.Settings.NPCToys), Accent,
 	         W - 270 * S, 68 * S, PaperFont, .95f * S);
 	PaperPanel(Panel, 24 * S, H - 62 * S, (Child ? 900 : 700) * S, 38 * S);
-	DrawText(Child ? TEXT("WASD 移動 ／ Ctrl しゃがむ ／ Space ジャンプ ／ E つかむ・収納 ／ Q おろす")
-	               : TEXT("WASD 移動 ／ Shift ダッシュ ／ Space ジャンプ ／ E 救助 ／ F 音を鳴らす"),
-	         Ink, 40 * S, H - 51 * S, PaperFont, .95f * S);
+	DrawText(TB::MatchHintText(PC, Child), Ink, 40 * S, H - 51 * S, PaperFont, .95f * S);
 	if (Player && Player->bFrozen)
 	{
 		DrawRect(FLinearColor(.28f, .045f, .035f, .9f), W * .5f - 165 * S, H * .7f, 330 * S, 44 * S);
@@ -345,15 +351,16 @@ void ATBHUD::DrawMatch(const ATBGameState& MatchState, ATBController& Controller
 		    Storing
 		        ? FMath::Clamp(float(MatchState.GetServerWorldTimeSeconds() - Character->StoreStarted), 0.f, Duration)
 		        : 0.f;
+		const FString InteractKey = TB::KeyLabel(PC, TB::Keys::HumanInteract);
 		const FString Prompt = Storing
-		                           ? FString::Printf(TEXT("E 長押し  しまっています… %.1f / %.0f秒"), Elapsed, Duration)
-		                           : (NearBox ? FString::Printf(TEXT("Eを%.0f秒長押しして箱にしまう"), Duration)
+		                           ? FString::Printf(TEXT("%s 長押し  しまっています… %.1f / %.0f秒"), *InteractKey, Elapsed, Duration)
+		                           : (NearBox ? FString::Printf(TEXT("%sを%.0f秒長押しして箱にしまう"), *InteractKey, Duration)
 		                                      : TEXT("おもちゃを運搬中。箱の正面へ。"));
 		PaperPanel(Panel, W * .5f - 235 * S, H * .76f, 470 * S, 64 * S);
 		DrawText(Prompt, Ink, W * .5f - 220 * S, H * .76f + 9 * S, PaperFont, 1.f * S);
 		DrawRect(FLinearColor(.1f, .14f, .16f, 1), W * .5f - 220 * S, H * .76f + 37 * S, 440 * S, 7 * S);
 		DrawRect(Accent, W * .5f - 220 * S, H * .76f + 37 * S, 440 * S * Elapsed / Duration, 7 * S);
-		DrawText(TEXT("Eを離すと中止 ／ Qでおろす"), Ink, W * .5f - 220 * S, H * .76f + 49 * S, PaperFont, .75f * S);
+		DrawText(FString::Printf(TEXT("%sを離すと中止 ／ %sでおろす"), *InteractKey, *TB::KeyLabel(PC, TB::Keys::HumanDrop)), Ink, W * .5f - 220 * S, H * .76f + 49 * S, PaperFont, .75f * S);
 	}
 	if (Controller.bStuckHint)
 	{
