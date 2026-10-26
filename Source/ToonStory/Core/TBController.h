@@ -37,6 +37,7 @@ public:
 	virtual void PlayerTick(float DeltaTime) override;
 	virtual void TickActor(float DeltaTime, ELevelTick TickType, FActorTickFunction& ThisTickFunction) override;
 	virtual void SetupInputComponent() override;
+	virtual void ReceivedPlayer() override;
 	bool IsLeaveMenuOpen() const
 	{
 		return bLeaveMenuOpen;

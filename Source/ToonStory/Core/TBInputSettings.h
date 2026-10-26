@@ -7,6 +7,7 @@
 
 class UInputAction;
 class UInputMappingContext;
+class ULocalPlayer;
 
 /** 入力の参照だけを持つ。IMCは空なら何も付けない */
 UCLASS(Config = Game, DefaultConfig, meta = (DisplayName = "Toon Story Input"))
@@ -55,13 +56,9 @@ public:
 	UPROPERTY(Config, EditAnywhere, Category = "入力", meta = (DisplayName = "メニュー"))
 	TSoftObjectPtr<UInputAction> MenuAction;
 
-	/**
-	 * 結びはIAを弱参照で持つので、外れたIMCにしかないIAがGCされると結びが切れる。ここで読み込んで持っておく。
-	 * 全IMCをUEnhancedInputUserSettingsに登録したら不要になる。
-	 */
-	void HoldActions();
+	/** 設定の4つのIMCを読み込んで返す（未設定は除く） */
+	TArray<const UInputMappingContext*> GetAllContexts() const;
 
-private:
-	UPROPERTY(Transient)
-	TArray<TObjectPtr<UInputAction>> HeldActions;
+	/** 4つのIMCをUserSettingsに登録する。登録したIMCは強参照で持たれ、IAもIMCから持たれる。何度呼んでも安全。 */
+	static void RegisterContexts(const ULocalPlayer* LocalPlayer);
 };

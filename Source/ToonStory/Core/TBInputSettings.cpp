@@ -1,17 +1,35 @@
 // Copyright (c) 2026 Mamodou. All Rights Reserved.
 
 #include "Core/TBInputSettings.h"
-#include "InputAction.h"
+#include "Engine/LocalPlayer.h"
+#include "EnhancedInputSubsystems.h"
+#include "InputMappingContext.h"
+#include "UserSettings/EnhancedInputUserSettings.h"
 
-void UTBInputSettings::HoldActions()
+TArray<const UInputMappingContext*> UTBInputSettings::GetAllContexts() const
 {
-	for (const TSoftObjectPtr<UInputAction>* Soft : {&LookAction, &MoveAction, &JumpAction, &CrouchAction, &SprintAction,
-	                                                 &InteractAction, &DropAction, &TauntAction, &ReadyAction,
-	                                                 &StartAction, &MenuAction})
+	TArray<const UInputMappingContext*> Result;
+	for (const TSoftObjectPtr<UInputMappingContext>* Soft : {&CommonContext, &HumanContext, &ToyContext, &LobbyContext})
 	{
-		if (UInputAction* Action = Soft->LoadSynchronous())
+		if (const UInputMappingContext* Context = Soft->IsNull() ? nullptr : Soft->LoadSynchronous())
 		{
-			HeldActions.AddUnique(Action);
+			Result.Add(Context);
 		}
+	}
+	return Result;
+}
+
+void UTBInputSettings::RegisterContexts(const ULocalPlayer* LocalPlayer)
+{
+	auto* Input = LocalPlayer ? ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(LocalPlayer) : nullptr;
+	auto* User = Input ? Input->GetUserSettings() : nullptr;
+	if (!User)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[ToonStoryInput] UserSettings is not available; contexts were not registered."));
+		return;
+	}
+	for (const UInputMappingContext* Context : GetDefault<UTBInputSettings>()->GetAllContexts())
+	{
+		User->RegisterInputMappingContext(Context);
 	}
 }

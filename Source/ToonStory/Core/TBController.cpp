@@ -278,6 +278,16 @@ void ATBController::ClearInputContexts()
 	AppliedContexts.Reset();
 }
 
+// UserSettingsはSuper::ReceivedPlayerで作られる。直後の最初のGCより前に、キー設定用にIMCを登録する。
+void ATBController::ReceivedPlayer()
+{
+	Super::ReceivedPlayer();
+	if (IsLocalController())
+	{
+		UTBInputSettings::RegisterContexts(GetLocalPlayer());
+	}
+}
+
 void ATBController::SetupInputComponent()
 {
 	Super::SetupInputComponent();
@@ -286,8 +296,7 @@ void ATBController::SetupInputComponent()
 	{
 		return;
 	}
-	auto* Settings = GetMutableDefault<UTBInputSettings>();
-	Settings->HoldActions();
+	const auto* Settings = GetDefault<UTBInputSettings>();
 	if (const UInputAction* Menu = Settings->MenuAction.LoadSynchronous())
 	{
 		Enhanced->BindAction(Menu, ETriggerEvent::Started, this, &ATBController::ToggleLeaveMenu);
