@@ -49,50 +49,78 @@ FString TB::FormatKey(const FKey& Key)
 	{
 		return TEXT("Space");
 	}
-	if (Key == EKeys::LeftShift || Key == EKeys::RightShift)
+	if (Key == EKeys::LeftShift)
 	{
 		return TEXT("Shift");
 	}
-	if (Key == EKeys::LeftControl || Key == EKeys::RightControl)
+	if (Key == EKeys::RightShift)
+	{
+		return TEXT("右Shift");
+	}
+	if (Key == EKeys::LeftControl)
 	{
 		return TEXT("Ctrl");
+	}
+	if (Key == EKeys::RightControl)
+	{
+		return TEXT("右Ctrl");
+	}
+	if (Key == EKeys::LeftAlt)
+	{
+		return TEXT("Alt");
+	}
+	if (Key == EKeys::RightAlt)
+	{
+		return TEXT("右Alt");
 	}
 	return Key.GetDisplayName(false).ToString();
 }
 
-// 行の割り当てのうち、有効でパッドでないキーでスロットが一番小さいものを選ぶ。
 // FindCurrentMappingForSlotとFindMappingsInRowは、行を作る副作用や警告があるので使わない。
-FString TB::KeyLabel(const APlayerController* PC, FName MappingName)
+// キーボード側かどうかは今のキーではなく既定のキーで決める（外した枠もキーボード側のまま）。
+bool TB::FindKeyboardKey(const APlayerController* PC, FName MappingName, FKeyboardKey& Out)
 {
 	const ULocalPlayer* LocalPlayer = PC ? PC->GetLocalPlayer() : nullptr;
 	const auto* Input = LocalPlayer ? ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(LocalPlayer) : nullptr;
 	const auto* User = Input ? Input->GetUserSettings() : nullptr;
 	const auto* Profile = User ? User->GetActiveKeyProfile() : nullptr;
 	const FKeyMappingRow* Row = Profile ? Profile->GetPlayerMappingRows().Find(MappingName) : nullptr;
-	if (Row)
+	if (!Row)
 	{
-		const FPlayerKeyMapping* Best = nullptr;
-		bool bHasKeyboardSlot = false;
-		for (const FPlayerKeyMapping& Mapping : Row->Mappings)
+		return false;
+	}
+	const FPlayerKeyMapping* Best = nullptr;
+	const FPlayerKeyMapping* Empty = nullptr;
+	for (const FPlayerKeyMapping& Mapping : Row->Mappings)
+	{
+		if (Mapping.GetDefaultKey().IsGamepadKey())
 		{
-			if (Mapping.GetCurrentKey().IsGamepadKey())
-			{
-				continue;
-			}
-			bHasKeyboardSlot = true;
-			if (Mapping.GetCurrentKey().IsValid() && (!Best || Mapping.GetSlot() < Best->GetSlot()))
-			{
-				Best = &Mapping;
-			}
+			continue;
 		}
-		if (Best)
+		const FPlayerKeyMapping*& Slot = Mapping.GetCurrentKey().IsValid() ? Best : Empty;
+		if (!Slot || Mapping.GetSlot() < Slot->GetSlot())
 		{
-			return FormatKey(Best->GetCurrentKey());
+			Slot = &Mapping;
 		}
-		if (bHasKeyboardSlot)
-		{
-			return FormatKey(EKeys::Invalid);
-		}
+	}
+	const FPlayerKeyMapping* Found = Best ? Best : Empty;
+	if (!Found)
+	{
+		return false;
+	}
+	Out.Key = Found->GetCurrentKey();
+	Out.DefaultKey = Found->GetDefaultKey();
+	Out.Slot = static_cast<int32>(Found->GetSlot());
+	Out.DeviceId = Found->GetHardwareDeviceId().HardwareDeviceIdentifier;
+	return true;
+}
+
+FString TB::KeyLabel(const APlayerController* PC, FName MappingName)
+{
+	FKeyboardKey Row;
+	if (FindKeyboardKey(PC, MappingName, Row))
+	{
+		return FormatKey(Row.Key);
 	}
 	const FKey Default = DefaultKeyboardKey(MappingName);
 	return Default.IsValid() ? FormatKey(Default) : FString(TEXT("?"));

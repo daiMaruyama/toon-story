@@ -49,10 +49,20 @@ namespace TB
 	TOONSTORY_API FString ExpandKeyTokens(const APlayerController* PC, const FString& Text);
 	/** 画面用の短いキー名。Invalidは「未割り当て」。 */
 	TOONSTORY_API FString FormatKey(const FKey& Key);
+	/** 行のキーボード側の割り当て。付け替えで、同じスロットと機器IDをMapPlayerKeyに渡す。 */
+	struct FKeyboardKey
+	{
+		FKey Key;
+		FKey DefaultKey;
+		int32 Slot = 0; // EPlayerMappableKeySlotの値
+		FName DeviceId;
+	};
 	/**
-	 * ローカルプレイヤーの今の割り当てから、行のキーボード側でスロットが一番小さい有効なキーの名前を返す。
-	 * UserSettingsや行が引けないときはIMCの既定のキーを返し、どこにも無いときだけ「?」。
+	 * 行のキーボード側（既定のキーがパッドでないもの）の割り当てを返す。有効なキーのうちスロットが一番小さいもの。
+	 * 有効なものが無ければ、外した枠のうち一番小さいスロット。行が引けないときはfalse。
 	 */
+	TOONSTORY_API bool FindKeyboardKey(const APlayerController* PC, FName MappingName, FKeyboardKey& Out);
+	/** 画面に出す、FindKeyboardKeyのキー名。引けないときはIMCの既定のキーを返し、どこにも無いときだけ「?」。 */
 	TOONSTORY_API FString KeyLabel(const APlayerController* PC, FName MappingName);
 	/** 移動の4つをまとめた表示。4つとも1文字ならWASDのようにつなげ、そうでなければ/で区切る。全部引けなければ「?」。 */
 	TOONSTORY_API FString MoveKeysLabel(const APlayerController* PC);
