@@ -45,6 +45,23 @@ namespace TB::Notices
 
 namespace TB
 {
+	/** キー設定の表の1行。表示名は画面に出す日本語。 */
+	struct FKeyRowInfo
+	{
+		FName Name;
+		FString Label;
+	};
+
+	/** キー設定の見出しと、その下の行。 */
+	struct FKeySection
+	{
+		FString Heading;
+		TArray<FKeyRowInfo> Rows;
+	};
+
+	/** 画面の並び。共通、にんげん、おもちゃ、ロビー。TB::Keys::Allの13名がちょうど1回ずつ出る。 */
+	TOONSTORY_API const TArray<FKeySection>& KeySections();
+
 	/** }の手前で一番近い{から始まる名前を、そのクライアントのキー名に置き換える。TB::Keys::Allにない名前は残してWarningを出す。 */
 	TOONSTORY_API FString ExpandKeyTokens(const APlayerController* PC, const FString& Text);
 	/** 画面用の短いキー名。Invalidは「未割り当て」。 */

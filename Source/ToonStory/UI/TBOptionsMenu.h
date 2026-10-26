@@ -10,6 +10,7 @@ class APlayerController;
 class UButton;
 class UFont;
 class UTBGameUserSettings;
+class UTBKeyRow;
 class UTBOptionRow;
 class UTextBlock;
 class UTexture2D;
@@ -33,6 +34,13 @@ public:
 	// ページを作る側（TBOptionsPages）が使う。PageIndex は TBOptionsPage の値。
 	UTBOptionRow* AddRow(int32 PageIndex, const FString& Label, bool bBar);
 	void AddNote(int32 PageIndex, const FString& Text);
+	// キー設定の見出しと行。行は割り当てを毎回引き直す。
+	void AddHeading(int32 PageIndex, const FString& Text);
+	UTBKeyRow* AddKeyRow(int32 PageIndex, const FString& Label, FName MappingName);
+	const TArray<TObjectPtr<UTBKeyRow>>& GetKeyRows() const
+	{
+		return KeyRows;
+	}
 	// 解像度と画面モードは、変えたあと確認がなければ元に戻す。
 	void ChangeVideoMode(TFunctionRef<void(UTBGameUserSettings&)> Change);
 
@@ -69,8 +77,13 @@ private:
 	// ウィンドウの大きさが変わると、エンジンはそれを「確認済み」にしてしまう。戻す先は自分で覚えておく。
 	FIntPoint PreviousResolution = FIntPoint::ZeroValue;
 	EWindowMode::Type PreviousWindowMode = EWindowMode::Windowed;
+	// 行を入れる箱。操作ページはキーの行が多いので、箱をスクロールで包む（PageRootsが表に出す側）。
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UVerticalBox>> Pages;
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UWidget>> PageRoots;
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UTBKeyRow>> KeyRows;
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UButton>> Tabs;
 	UPROPERTY(Transient)

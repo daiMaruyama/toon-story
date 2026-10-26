@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Mamodou. All Rights Reserved.
 
 #include "Core/TBGameUserSettings.h"
+#include "Input/TBKeyLabels.h"
 #include "TBOptionRow.h"
 #include "TBOptionsMenu.h"
 #include "TBOptionsPages.h"
@@ -8,6 +9,7 @@
 void TBOptionsPages::BuildControls(UTBOptionsMenu& Menu, UTBGameUserSettings& Settings)
 {
 	auto* S = &Settings;
+	Menu.AddNote(TBOptionsPage::Controls, TEXT("キーボードとマウスの割り当てです"));
 	auto* Sensitivity = Menu.AddRow(TBOptionsPage::Controls, TEXT("マウス感度"), true);
 	Sensitivity->Value = [S] { return FString::Printf(TEXT("%.1f"), S->GetMouseSensitivity()); };
 	Sensitivity->Fill = [S]
@@ -37,4 +39,14 @@ void TBOptionsPages::BuildControls(UTBOptionsMenu& Menu, UTBGameUserSettings& Se
 		S->SetMouseYInverted(Steps > 0);
 		S->SaveSettings();
 	};
+
+	// キー設定。今は読み取り専用で、行ごとに今のキー名を出す。
+	for (const TB::FKeySection& Section : TB::KeySections())
+	{
+		Menu.AddHeading(TBOptionsPage::Controls, Section.Heading);
+		for (const TB::FKeyRowInfo& Row : Section.Rows)
+		{
+			Menu.AddKeyRow(TBOptionsPage::Controls, Row.Label, Row.Name);
+		}
+	}
 }

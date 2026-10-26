@@ -39,6 +39,28 @@ const TArray<FName>& TB::Keys::All()
 	return Names;
 }
 
+const TArray<TB::FKeySection>& TB::KeySections()
+{
+	static const TArray<FKeySection> Sections = {
+	    {TEXT("共通"),
+	     {{Keys::MoveForward, TEXT("前へ")},
+	      {Keys::MoveBack, TEXT("後ろへ")},
+	      {Keys::MoveLeft, TEXT("左へ")},
+	      {Keys::MoveRight, TEXT("右へ")},
+	      {Keys::Jump, TEXT("ジャンプ")}}},
+	    {TEXT("にんげん"),
+	     {{Keys::HumanCrouch, TEXT("しゃがむ")},
+	      {Keys::HumanInteract, TEXT("つかむ・収納")},
+	      {Keys::HumanDrop, TEXT("おろす")}}},
+	    {TEXT("おもちゃ"),
+	     {{Keys::ToySprint, TEXT("ダッシュ")},
+	      {Keys::ToyInteract, TEXT("救助")},
+	      {Keys::ToyTaunt, TEXT("音を鳴らす")}}},
+	    {TEXT("ロビー"), {{Keys::LobbyReady, TEXT("準備")}, {Keys::LobbyStart, TEXT("開始")}}},
+	};
+	return Sections;
+}
+
 FString TB::FormatKey(const FKey& Key)
 {
 	if (!Key.IsValid())

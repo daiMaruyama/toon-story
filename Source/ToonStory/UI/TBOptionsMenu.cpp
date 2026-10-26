@@ -9,6 +9,7 @@
 #include "Components/CanvasPanelSlot.h"
 #include "Components/Image.h"
 #include "Components/ScaleBox.h"
+#include "Components/ScrollBox.h"
 #include "Components/SizeBox.h"
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
@@ -17,6 +18,7 @@
 #include "Engine/GameInstance.h"
 #include "GameFramework/PlayerController.h"
 #include "InputCoreTypes.h"
+#include "TBKeyRow.h"
 #include "TBOptionRow.h"
 #include "TBOptionsPages.h"
 #include "TBPaperStyle.h"
@@ -97,8 +99,20 @@ void UTBOptionsMenu::Build(UTBGameUserSettings& Settings)
 	for (int32 Index = 0; Index < Tabs.Num(); ++Index)
 	{
 		auto* Box = WidgetTree->ConstructWidget<UVerticalBox>();
-		Place(Canvas, Box, 240, 150, 800, 500);
 		Pages.Add(Box);
+		if (Index == TBOptionsPage::Controls)
+		{
+			// キーの行が多いので、スクロールで包む。右にスクロールバーの分を空ける。
+			auto* Scroll = WidgetTree->ConstructWidget<UScrollBox>();
+			Scroll->AddChild(Box);
+			Place(Canvas, Scroll, 240, 150, 824, 500);
+			PageRoots.Add(Scroll);
+		}
+		else
+		{
+			Place(Canvas, Box, 240, 150, 800, 500);
+			PageRoots.Add(Box);
+		}
 	}
 	auto* ResetButton = AddButton(Canvas, TEXT("初期設定に戻す"), 240, 672, 360, true);
 	ResetButton->OnClicked.AddDynamic(this, &ThisClass::ResetPage);
@@ -147,6 +161,20 @@ void UTBOptionsMenu::AddNote(int32 PageIndex, const FString& Text)
 	Pages[PageIndex]->AddChildToVerticalBox(MakeLabel(Text, 15, TBPaper::Muted));
 }
 
+void UTBOptionsMenu::AddHeading(int32 PageIndex, const FString& Text)
+{
+	Pages[PageIndex]->AddChildToVerticalBox(MakeLabel(Text, 22, TBPaper::Accent))->SetPadding(FMargin(0, 14, 0, 4));
+}
+
+UTBKeyRow* UTBOptionsMenu::AddKeyRow(int32 PageIndex, const FString& Label, FName MappingName)
+{
+	auto* Row = CreateWidget<UTBKeyRow>(this);
+	Row->Build(Label, MappingName, PaperFont, PaperTexture);
+	Pages[PageIndex]->AddChildToVerticalBox(Row)->SetPadding(FMargin(0, 0, 0, 2));
+	KeyRows.Add(Row);
+	return Row;
+}
+
 UTextBlock* UTBOptionsMenu::MakeLabel(const FString& Text, int32 FontSize, FLinearColor Color)
 {
 	auto* Block = WidgetTree->ConstructWidget<UTextBlock>();
@@ -159,9 +187,9 @@ UTextBlock* UTBOptionsMenu::MakeLabel(const FString& Text, int32 FontSize, FLine
 void UTBOptionsMenu::ShowPage(int32 Index)
 {
 	Page = FMath::Clamp(Index, 0, Pages.Num() - 1);
-	for (int32 Other = 0; Other < Pages.Num(); ++Other)
+	for (int32 Other = 0; Other < PageRoots.Num(); ++Other)
 	{
-		Pages[Other]->SetVisibility(Other == Page ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+		PageRoots[Other]->SetVisibility(Other == Page ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
 		Tabs[Other]->SetStyle(TBPaper::ButtonStyle(PaperTexture, Other != Page));
 	}
 	RefreshRows();
@@ -188,6 +216,10 @@ void UTBOptionsMenu::ShowControls()
 void UTBOptionsMenu::RefreshRows()
 {
 	for (UTBOptionRow* Row : Rows)
+	{
+		Row->Refresh();
+	}
+	for (UTBKeyRow* Row : KeyRows)
 	{
 		Row->Refresh();
 	}
