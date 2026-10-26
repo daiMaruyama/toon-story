@@ -27,8 +27,26 @@ namespace TB::Keys
 	TOONSTORY_API const TArray<FName>& All();
 }
 
+/**
+ * サーバーが送る通知。キー名は{Mappable名}の印で入れ、受け取ったクライアントがExpandKeyTokensで自分の割り当てに置き換える。
+ * 印はPrintf系でだけ使う（FString::FormatやFText::Formatは{}を引数として先に読む）。
+ */
+namespace TB::Notices
+{
+	inline constexpr const TCHAR* ItemsAutoCollect = TEXT("Items collect automatically while touching. {Toy_Interact} is for rescue.");
+	inline constexpr const TCHAR* ReadyRequired = TEXT("Every player must press {Lobby_Ready} to be ready.");
+
+	/** 上の全部 */
+	inline TArray<const TCHAR*> All()
+	{
+		return {ItemsAutoCollect, ReadyRequired};
+	}
+}
+
 namespace TB
 {
+	/** }の手前で一番近い{から始まる名前を、そのクライアントのキー名に置き換える。TB::Keys::Allにない名前は残してWarningを出す。 */
+	TOONSTORY_API FString ExpandKeyTokens(const APlayerController* PC, const FString& Text);
 	/** 画面用の短いキー名。Invalidは「未割り当て」。 */
 	TOONSTORY_API FString FormatKey(const FKey& Key);
 	/**

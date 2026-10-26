@@ -10,6 +10,7 @@
 #include "Core/TBSession.h"
 #include "Core/TBGameHelpers.h"
 #include "Core/TBInputSettings.h"
+#include "Core/TBKeyLabels.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "InputAction.h"
@@ -437,7 +438,8 @@ void ATBController::ServerPreference_Implementation(ETBTeam Team)
 
 void ATBController::ClientNotice_Implementation(const FString& Message, bool bError)
 {
-	Notice = Message;
+	// キー名は{Mappable名}の印で届く。自分の割り当てに置き換える。
+	Notice = TB::ExpandKeyTokens(this, Message);
 	NoticeExpires = GetWorld()->GetTimeSeconds() + 5;
 	if (bError) ClientPlaySoundEvent(ETBSoundEvent::UIError, FVector::ZeroVector);
 }

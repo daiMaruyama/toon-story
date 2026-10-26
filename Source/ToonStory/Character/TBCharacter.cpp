@@ -9,6 +9,7 @@
 #include "Core/TBController.h"
 #include "Core/TBGameUserSettings.h"
 #include "Core/TBInputSettings.h"
+#include "Core/TBKeyLabels.h"
 #include "EnhancedInputComponent.h"
 #include "InputAction.h"
 #include "Character/TBMovement.h"
@@ -648,7 +649,7 @@ void ATBCharacter::ServerInteract_Implementation()
 		}
 		else
 		{
-			TB::Notice(this, TEXT("Items collect automatically while touching. E is for rescue."));
+			TB::Notice(this, TB::Notices::ItemsAutoCollect);
 		}
 	}
 }

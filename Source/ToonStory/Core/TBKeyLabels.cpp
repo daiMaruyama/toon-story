@@ -11,6 +11,9 @@
 
 namespace
 {
+	// 印の中身がこれより長ければ、印とみなさない。
+	constexpr int32 MaxTokenLength = 64;
+
 	// UserSettingsがまだ引けないとき（接続直後など）のために、IMCに書いた既定のキー（パッドでないもの）を返す。
 	FKey DefaultKeyboardKey(FName MappingName)
 	{
@@ -108,6 +111,54 @@ FString TB::MoveKeysLabel(const APlayerController* PC)
 	}
 	// どれも引けないときは「????」ではなく「?」にする。
 	return bAllUnknown ? FString(TEXT("?")) : FString::Join(Labels, bAllSingle ? TEXT("") : TEXT("/"));
+}
+
+FString TB::ExpandKeyTokens(const APlayerController* PC, const FString& Text)
+{
+	FString Result;
+	int32 Pos = 0;
+	while (Pos < Text.Len())
+	{
+		const int32 Close = Text.Find(TEXT("}"), ESearchCase::CaseSensitive, ESearchDir::FromStart, Pos);
+		if (Close == INDEX_NONE)
+		{
+			break;
+		}
+		// }の手前で一番近い{を名前の始まりにする。{{A}は{とAの印。
+		int32 Open = INDEX_NONE;
+		for (int32 Index = Close - 1; Index >= Pos; --Index)
+		{
+			if (Text[Index] == TEXT('{'))
+			{
+				Open = Index;
+				break;
+			}
+		}
+		if (Open == INDEX_NONE)
+		{
+			Result += Text.Mid(Pos, Close + 1 - Pos);
+			Pos = Close + 1;
+			continue;
+		}
+		// 名前テーブルを増やさないよう、既にある名前だけを引く。長すぎる中身は印とみなさない。
+		const int32 NameLength = Close - Open - 1;
+		const bool bCandidate = NameLength > 0 && NameLength <= MaxTokenLength;
+		const FString NameText = bCandidate ? Text.Mid(Open + 1, NameLength) : FString();
+		const FName Name = bCandidate ? FName(*NameText, FNAME_Find) : FName();
+		Result += Text.Mid(Pos, Open - Pos);
+		if (Keys::All().Contains(Name))
+		{
+			Result += KeyLabel(PC, Name);
+		}
+		else
+		{
+			// 知らない名前は{}ごと残す。スペルミスに気づけるよう、開発中はWarningを出す。
+			UE_CLOG(bCandidate, LogTemp, Warning, TEXT("[ToonStoryInput] Unknown key token {%s} was left as is."), *NameText);
+			Result += Text.Mid(Open, Close - Open + 1);
+		}
+		Pos = Close + 1;
+	}
+	return Result + Text.Mid(Pos);
 }
 
 FString TB::MatchHintText(const APlayerController* PC, bool bHuman)
