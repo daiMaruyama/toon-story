@@ -10,7 +10,9 @@
 #include "Core/TBSession.h"
 #include "Core/TBGameHelpers.h"
 #include "Core/TBInputSettings.h"
+#include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
+#include "InputAction.h"
 #include "InputMappingContext.h"
 #include "Components/InputComponent.h"
 #include "Engine/GameInstance.h"
@@ -233,8 +235,12 @@ void ATBController::SyncInputContexts()
 	const auto& RoleContext = Team == ETBTeam::Human ? Settings->HumanContext
 	                        : Team == ETBTeam::Toy   ? Settings->ToyContext
 	                                                 : TSoftObjectPtr<UInputMappingContext>();
+	// ロビーのキーはロビーの間だけ。GameStateが無いときは付けない。
+	const auto* State = TB::GS(GetWorld());
+	const auto& LobbyContext = State && State->Phase == ETBPhase::Lobby ? Settings->LobbyContext
+	                                                                     : TSoftObjectPtr<UInputMappingContext>();
 	TArray<TWeakObjectPtr<const UInputMappingContext>> Wanted;
-	for (const auto* Soft : {&Settings->CommonContext, &RoleContext})
+	for (const auto* Soft : {&Settings->CommonContext, &LobbyContext, &RoleContext})
 	{
 		if (const auto* Context = Soft->IsNull() ? nullptr : Soft->LoadSynchronous())
 		{
@@ -275,9 +281,25 @@ void ATBController::ClearInputContexts()
 void ATBController::SetupInputComponent()
 {
 	Super::SetupInputComponent();
-	InputComponent->BindKey(EKeys::Escape, IE_Pressed, this, &ATBController::ToggleLeaveMenu);
-	InputComponent->BindAction("Ready", IE_Pressed, this, &ATBController::TBReady);
-	InputComponent->BindAction("Start", IE_Pressed, this, &ATBController::TBStart);
+	auto* Enhanced = Cast<UEnhancedInputComponent>(InputComponent);
+	if (!Enhanced)
+	{
+		return;
+	}
+	auto* Settings = GetMutableDefault<UTBInputSettings>();
+	Settings->HoldActions();
+	if (const UInputAction* Menu = Settings->MenuAction.LoadSynchronous())
+	{
+		Enhanced->BindAction(Menu, ETriggerEvent::Started, this, &ATBController::ToggleLeaveMenu);
+	}
+	if (const UInputAction* Ready = Settings->ReadyAction.LoadSynchronous())
+	{
+		Enhanced->BindAction(Ready, ETriggerEvent::Started, this, &ATBController::TBReady);
+	}
+	if (const UInputAction* Start = Settings->StartAction.LoadSynchronous())
+	{
+		Enhanced->BindAction(Start, ETriggerEvent::Started, this, &ATBController::TBStart);
+	}
 }
 
 void ATBController::ToggleLeaveMenu()

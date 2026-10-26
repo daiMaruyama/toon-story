@@ -28,6 +28,9 @@ public:
 	TSoftObjectPtr<UInputMappingContext> HumanContext;
 	UPROPERTY(Config, EditAnywhere, Category = "入力", meta = (DisplayName = "人形"))
 	TSoftObjectPtr<UInputMappingContext> ToyContext;
+	/** ロビーの間だけ付ける。準備完了と開始のキーがある */
+	UPROPERTY(Config, EditAnywhere, Category = "入力", meta = (DisplayName = "ロビー"))
+	TSoftObjectPtr<UInputMappingContext> LobbyContext;
 	/** キャラが結ぶInput Action。IMCのマッピングと同じアセットを指す */
 	UPROPERTY(Config, EditAnywhere, Category = "入力", meta = (DisplayName = "視点"))
 	TSoftObjectPtr<UInputAction> LookAction;
@@ -45,4 +48,20 @@ public:
 	TSoftObjectPtr<UInputAction> DropAction;
 	UPROPERTY(Config, EditAnywhere, Category = "入力", meta = (DisplayName = "挑発"))
 	TSoftObjectPtr<UInputAction> TauntAction;
+	UPROPERTY(Config, EditAnywhere, Category = "入力", meta = (DisplayName = "準備完了"))
+	TSoftObjectPtr<UInputAction> ReadyAction;
+	UPROPERTY(Config, EditAnywhere, Category = "入力", meta = (DisplayName = "開始"))
+	TSoftObjectPtr<UInputAction> StartAction;
+	UPROPERTY(Config, EditAnywhere, Category = "入力", meta = (DisplayName = "メニュー"))
+	TSoftObjectPtr<UInputAction> MenuAction;
+
+	/**
+	 * 結びはIAを弱参照で持つので、外れたIMCにしかないIAがGCされると結びが切れる。ここで読み込んで持っておく。
+	 * 全IMCをUEnhancedInputUserSettingsに登録したら不要になる。
+	 */
+	void HoldActions();
+
+private:
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UInputAction>> HeldActions;
 };

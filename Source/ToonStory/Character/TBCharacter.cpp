@@ -794,7 +794,8 @@ void ATBCharacter::SetupPlayerInputComponent(UInputComponent* Input)
 	Super::SetupPlayerInputComponent(Input);
 	if (auto* Enhanced = Cast<UEnhancedInputComponent>(Input))
 	{
-		const auto* Settings = GetDefault<UTBInputSettings>();
+		auto* Settings = GetMutableDefault<UTBInputSettings>();
+		Settings->HoldActions();
 		if (const UInputAction* LookAction = Settings->LookAction.LoadSynchronous())
 		{
 			Enhanced->BindAction(LookAction, ETriggerEvent::Triggered, this, &ATBCharacter::Look);
