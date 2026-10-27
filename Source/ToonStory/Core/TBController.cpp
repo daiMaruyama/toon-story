@@ -62,6 +62,7 @@ void ATBController::PreClientTravel(const FString& PendingURL, ETravelType Trave
 	bPreparationTravelMask = true;
 	bPreparationTravelFailed = false;
 	bPreparationBlack = true;
+	NextEntranceFootstep = 0;
 	TBScreen::HoldBlack(this, true);
 	ReleaseVoicePlayback(GetWorld(), false, false);
 	SetViewTarget(this);
