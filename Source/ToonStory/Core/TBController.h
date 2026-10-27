@@ -7,6 +7,8 @@
 #include "Audio/TBAudioTypes.h"
 #include "TBController.generated.h"
 
+class UInputMappingContext;
+
 /** 入力とコンソールコマンドを、試合管理や接続処理へ渡す。 */
 UCLASS()
 class TOONSTORY_API ATBController : public APlayerController
@@ -14,6 +16,7 @@ class TOONSTORY_API ATBController : public APlayerController
 	GENERATED_BODY()
 public:
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type Reason) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual void ClientWasKicked_Implementation(const FText& KickReason) override;
 	UFUNCTION(Server, Reliable)
@@ -34,11 +37,14 @@ public:
 	virtual void PlayerTick(float DeltaTime) override;
 	virtual void TickActor(float DeltaTime, ELevelTick TickType, FActorTickFunction& ThisTickFunction) override;
 	virtual void SetupInputComponent() override;
+	virtual void ReceivedPlayer() override;
 	bool IsLeaveMenuOpen() const
 	{
 		return bLeaveMenuOpen;
 	}
 	void ToggleLeaveMenu();
+	/** 陣営に合わせてInput Mapping Contextを付け替える。設定が空なら何もしない */
+	void SyncInputContexts();
 	UFUNCTION(Exec)
 	void TBHost();
 	UFUNCTION(Exec)
@@ -84,6 +90,8 @@ public:
 	void ServerSetViewAspect(float Aspect);
 
 private:
+	void ClearInputContexts();
+	TArray<TWeakObjectPtr<const UInputMappingContext>> AppliedContexts;
 	void UpdateViewAspect();
 	void TickRecovery();
 	TWeakObjectPtr<APawn> RecoveryPawn;

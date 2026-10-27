@@ -9,6 +9,7 @@
 #include "Core/TBPlayerState.h"
 #include "Core/TBGameState.h"
 #include "Core/TBController.h"
+#include "Input/TBKeyLabels.h"
 #include "Core/TBSession.h"
 #include "Core/TBGameHelpers.h"
 #include "Character/TBCharacter.h"
@@ -380,7 +381,7 @@ void ATBGameMode::StartRound(APlayerController* PlayerController)
 		{
 			if (HostController)
 			{
-				HostController->ClientNotice(TEXT("Every player must press R to be ready."));
+				HostController->ClientNotice(TB::Notices::ReadyRequired);
 			}
 			return;
 		}

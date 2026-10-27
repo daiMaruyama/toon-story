@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Mamodou. All Rights Reserved.
 
 #include "Core/TBTitleGameMode.h"
+#include "Input/TBInputSettings.h"
 #include "Core/TBSession.h"
 #include "UI/TBTitleMenu.h"
 #include "Engine/GameInstance.h"
@@ -38,6 +39,16 @@ void ATBTitleController::BeginPlay()
 	bShowMouseCursor = true;
 	SetIgnoreMoveInput(true);
 	SetIgnoreLookInput(true);
+}
+
+// タイトルのキー設定でも使うので。
+void ATBTitleController::ReceivedPlayer()
+{
+	Super::ReceivedPlayer();
+	if (IsLocalController())
+	{
+		UTBInputSettings::RegisterContexts(GetLocalPlayer());
+	}
 }
 
 void ATBTitleController::EndPlay(const EEndPlayReason::Type Reason)

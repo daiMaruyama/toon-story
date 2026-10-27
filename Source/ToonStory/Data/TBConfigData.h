@@ -25,6 +25,13 @@ namespace TBSettings
 		const float Next = Steps > 0 ? FMath::FloorToFloat(Position + .001f) + Steps : FMath::CeilToFloat(Position - .001f) + Steps;
 		return Origin + Next * Size;
 	}
+
+	// Origin から Step ごとの目盛りのうち、いちばん近いもの。スライダーで選んだ値をそろえる。
+	inline float Snap(float Value, float Origin, float Step)
+	{
+		const float Size = FMath::Max(Step, KINDA_SMALL_NUMBER);
+		return Origin + FMath::RoundToFloat((Value - Origin) / Size) * Size;
+	}
 }
 
 /** プレイヤーが変えられる数値1つ分の、初期値・範囲・刻み */
@@ -55,6 +62,10 @@ struct FTBNumberSetting
 	float StepFrom(float Value, int32 Steps) const
 	{
 		return Clamp(TBSettings::StepFrom(Value, Min, Step, Steps));
+	}
+	float Snap(float Value) const
+	{
+		return Clamp(TBSettings::Snap(FMath::IsFinite(Value) ? Value : Default, Min, Step));
 	}
 };
 
@@ -155,6 +166,10 @@ struct FTBDisplayConfig
 	    切ると暗がりが暗くなる（自分が見えにくくなるだけ）かわりに、動作が軽くなる */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "画面", meta = (DisplayName = "レイトレーシングの初期値"))
 	bool bDefaultRayTracing = true;
+	/** 解像度や画面モードを変えたあと、「このままにする」を押さなければ元に戻すまでの時間 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "画面",
+	          meta = (DisplayName = "解像度を変えたときの確認時間", Units = "s", ClampMin = "3", ClampMax = "60"))
+	float VideoModeConfirmSeconds = 15.f;
 };
 
 USTRUCT(BlueprintType)

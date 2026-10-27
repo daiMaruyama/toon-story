@@ -25,6 +25,7 @@ class TOONSTORY_API ATBTitleController : public APlayerController
 public:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type Reason) override;
+	virtual void ReceivedPlayer() override;
 	UFUNCTION(Exec) void TBHost();
 	UFUNCTION(Exec) void TBFind();
 	UFUNCTION(Exec) void TBJoin(int32 Index);

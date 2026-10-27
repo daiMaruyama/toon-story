@@ -9,6 +9,7 @@
 #include "Components/CanvasPanelSlot.h"
 #include "Components/Image.h"
 #include "Components/ScaleBox.h"
+#include "Components/ScrollBox.h"
 #include "Components/SizeBox.h"
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
@@ -16,57 +17,17 @@
 #include "Core/TBGameUserSettings.h"
 #include "Engine/GameInstance.h"
 #include "GameFramework/PlayerController.h"
+#include "EnhancedInputSubsystems.h"
+#include "Engine/LocalPlayer.h"
+#include "UserSettings/EnhancedInputUserSettings.h"
+#include "Input/TBKeyLabels.h"
+#include "Input/TBKeyPrompt.h"
+#include "Input/TBKeyRemap.h"
 #include "InputCoreTypes.h"
-#include "Kismet/KismetSystemLibrary.h"
+#include "TBKeyRow.h"
 #include "TBOptionRow.h"
+#include "TBOptionsPages.h"
 #include "TBPaperStyle.h"
-
-namespace
-{
-	const EWindowMode::Type WindowModes[] = {EWindowMode::Windowed, EWindowMode::WindowedFullscreen, EWindowMode::Fullscreen};
-	const TCHAR* WindowModeNames[] = {TEXT("ウィンドウ"), TEXT("ボーダーレス"), TEXT("フルスクリーン")};
-	const TCHAR* QualityNames[] = {TEXT("低"), TEXT("中"), TEXT("高"), TEXT("最高")};
-
-	FString OnOff(bool bOn)
-	{
-		return bOn ? TEXT("オン") : TEXT("オフ");
-	}
-
-	// 範囲の中の位置（0〜1）。バーの長さに使う。
-	float Fraction(float Value, float Min, float Max)
-	{
-		return Max > Min ? (Value - Min) / (Max - Min) : 1.f;
-	}
-
-	int32 WindowModeIndex(const UTBGameUserSettings& Settings)
-	{
-		for (int32 Index = 0; Index < UE_ARRAY_COUNT(WindowModes); ++Index)
-		{
-			if (WindowModes[Index] == Settings.GetFullscreenMode())
-			{
-				return Index;
-			}
-		}
-		return 1;
-	}
-
-	// 今の画面モードで選べる解像度（小さい順）。ボーダーレスは画面全体なので選ばせない。
-	TArray<FIntPoint> Resolutions(const UTBGameUserSettings& Settings)
-	{
-		TArray<FIntPoint> Result;
-		if (Settings.GetFullscreenMode() == EWindowMode::Fullscreen)
-		{
-			UKismetSystemLibrary::GetSupportedFullscreenResolutions(Result);
-		}
-		else if (Settings.GetFullscreenMode() == EWindowMode::Windowed)
-		{
-			UKismetSystemLibrary::GetConvenientWindowedResolutions(Result);
-		}
-		Result.AddUnique(Settings.GetScreenResolution());
-		Result.Sort([](const FIntPoint& A, const FIntPoint& B) { return A.X != B.X ? A.X < B.X : A.Y < B.Y; });
-		return Result;
-	}
-}
 
 UTBOptionsMenu* UTBOptionsMenu::Open(APlayerController* Player, TFunction<void()> OnClosed)
 {
@@ -122,14 +83,7 @@ void UTBOptionsMenu::Build(UTBGameUserSettings& Settings)
 		Slot->SetPosition(FVector2D(X, Y));
 		Slot->SetSize(FVector2D(W, H));
 	};
-	auto Label = [&](const FString& Text, int32 FontSize, FLinearColor Color)
-	{
-		auto* Block = WidgetTree->ConstructWidget<UTextBlock>();
-		Block->SetText(FText::FromString(Text));
-		Block->SetFont(FSlateFontInfo(PaperFont, FontSize));
-		Block->SetColorAndOpacity(Color);
-		return Block;
-	};
+	auto Label = [this](const FString& Text, int32 FontSize, FLinearColor Color) { return MakeLabel(Text, FontSize, Color); };
 	auto AddButton = [&](UCanvasPanel* Panel, const FString& Text, float X, float Y, float W, bool Secondary = false)
 	{
 		auto* Button = WidgetTree->ConstructWidget<UButton>();
@@ -151,229 +105,29 @@ void UTBOptionsMenu::Build(UTBGameUserSettings& Settings)
 	for (int32 Index = 0; Index < Tabs.Num(); ++Index)
 	{
 		auto* Box = WidgetTree->ConstructWidget<UVerticalBox>();
-		Place(Canvas, Box, 240, 150, 800, 500);
 		Pages.Add(Box);
+		if (Index == TBOptionsPage::Controls)
+		{
+			// キーの行が多いので、スクロールで包む。右にスクロールバーの分を空ける。
+			ControlsScroll = WidgetTree->ConstructWidget<UScrollBox>();
+			ControlsScroll->AddChild(Box);
+			Place(Canvas, ControlsScroll, 240, 150, 824, 500);
+			PageRoots.Add(ControlsScroll);
+		}
+		else
+		{
+			Place(Canvas, Box, 240, 150, 800, 500);
+			PageRoots.Add(Box);
+		}
 	}
-	auto* ResetButton = AddButton(Canvas, TEXT("初期設定に戻す"), 240, 672, 360, true);
+	ResetButton = AddButton(Canvas, TEXT("初期設定に戻す"), 240, 672, 360, true);
 	ResetButton->OnClicked.AddDynamic(this, &ThisClass::ResetPage);
 	CloseButton = AddButton(Canvas, TEXT("閉じる [Esc]"), 680, 672, 360);
 	CloseButton->OnClicked.AddDynamic(this, &ThisClass::Close);
 
-	// 音。足音は効果音に含める（足音だけを上げると索敵が有利になるため）。
-	auto* S = &Settings;
-	const TCHAR* VolumeNames[] = {TEXT("全体"), TEXT("BGM"), TEXT("効果音"), TEXT("ボイスチャット")};
-	for (int32 Index = 0; Index < UE_ARRAY_COUNT(VolumeNames); ++Index)
-	{
-		const auto Kind = ETBVolume(Index);
-		auto* Row = AddRow(0, VolumeNames[Index], true);
-		Row->Step = [this, S, Kind](int32 Steps)
-		{
-			S->StepVolume(Kind, Steps);
-			S->CommitVolumes(GetOwningPlayer() ? GetOwningPlayer()->GetGameInstance() : nullptr);
-		};
-		Row->Value = [S, Kind] { return FString::Printf(TEXT("%d%%"), FMath::RoundToInt(S->GetVolume(Kind) * 100)); };
-		Row->Fill = [S, Kind] { return S->GetVolume(Kind); };
-		Row->CanStep = [S, Kind](int32 Steps)
-		{
-			const auto& Range = TB::ConfigData().Audio.Get(Kind);
-			const float Volume = S->GetVolume(Kind);
-			return Steps < 0 ? Volume > Range.Clamp(0.f) + KINDA_SMALL_NUMBER : Volume < Range.Clamp(1.f) - KINDA_SMALL_NUMBER;
-		};
-	}
-
-	// 画面。エディタで遊んでいるときは、エディタのウィンドウを変えてしまうので解像度と画面モードは触らない。
-	const bool bCanChangeWindow = !GIsEditor;
-	auto* Mode = AddRow(1, TEXT("画面モード"), false);
-	Mode->Value = [S] { return FString(WindowModeNames[WindowModeIndex(*S)]); };
-	Mode->CanStep = [S, bCanChangeWindow](int32 Steps)
-	{
-		const int32 Next = WindowModeIndex(*S) + Steps;
-		return bCanChangeWindow && Next >= 0 && Next < UE_ARRAY_COUNT(WindowModes);
-	};
-	Mode->Step = [this](int32 Steps)
-	{
-		ChangeVideoMode([Steps](UTBGameUserSettings& Changing)
-		{
-			const auto Next = WindowModes[FMath::Clamp(WindowModeIndex(Changing) + Steps, 0, UE_ARRAY_COUNT(WindowModes) - 1)];
-			const FIntPoint Desktop = Changing.GetDesktopResolution();
-			Changing.SetFullscreenMode(Next);
-			if (Next == EWindowMode::WindowedFullscreen)
-			{
-				Changing.SetScreenResolution(Desktop);
-			}
-			else if (Next == EWindowMode::Windowed && Changing.GetScreenResolution().X >= Desktop.X)
-			{
-				// 画面と同じ大きさのウィンドウは端がはみ出すので、一回り小さくする。
-				for (const FIntPoint& Candidate : Resolutions(Changing))
-				{
-					if (Candidate.X < Desktop.X && Candidate.Y < Desktop.Y)
-					{
-						Changing.SetScreenResolution(Candidate);
-					}
-				}
-			}
-		});
-	};
-	auto* Resolution = AddRow(1, TEXT("解像度"), false);
-	Resolution->Value = [S]
-	{
-		const FIntPoint Size = S->GetFullscreenMode() == EWindowMode::WindowedFullscreen ? S->GetDesktopResolution()
-		                                                                                : S->GetScreenResolution();
-		return FString::Printf(TEXT("%d × %d"), Size.X, Size.Y);
-	};
-	Resolution->CanStep = [S, bCanChangeWindow](int32 Steps)
-	{
-		if (!bCanChangeWindow || S->GetFullscreenMode() == EWindowMode::WindowedFullscreen)
-		{
-			return false;
-		}
-		const auto List = Resolutions(*S);
-		const int32 Next = List.IndexOfByKey(S->GetScreenResolution()) + Steps;
-		return Next >= 0 && Next < List.Num();
-	};
-	Resolution->Step = [this](int32 Steps)
-	{
-		ChangeVideoMode([Steps](UTBGameUserSettings& Changing)
-		{
-			const auto List = Resolutions(Changing);
-			Changing.SetScreenResolution(List[FMath::Clamp(List.IndexOfByKey(Changing.GetScreenResolution()) + Steps, 0, List.Num() - 1)]);
-		});
-	};
-	auto* VSync = AddRow(1, TEXT("VSync"), false);
-	VSync->Value = [S] { return OnOff(S->IsVSyncEnabled()); };
-	VSync->CanStep = [S](int32 Steps) { return (Steps > 0) != S->IsVSyncEnabled(); };
-	VSync->Step = [S](int32 Steps)
-	{
-		S->SetVSyncEnabled(Steps > 0);
-		S->CommitDisplay();
-	};
-	auto* FrameRate = AddRow(1, TEXT("fps の上限"), false);
-	FrameRate->Value = [S]
-	{
-		const int32 Limit = FMath::RoundToInt(S->GetFrameRateLimit());
-		return Limit > 0 ? FString::FromInt(Limit) : FString(TEXT("上限なし"));
-	};
-	FrameRate->CanStep = [S](int32 Steps)
-	{
-		const int32 Index = S->GetFrameRateLimitIndex();
-		return Index == INDEX_NONE || (Index + Steps >= 0 && Index + Steps < TB::ConfigData().Display.FrameRateLimits.Num());
-	};
-	FrameRate->Step = [S](int32 Steps)
-	{
-		S->StepFrameRateLimit(Steps);
-		S->CommitDisplay();
-	};
-	auto* Quality = AddRow(1, TEXT("画質"), false);
-	Quality->Value = [S]
-	{
-		const int32 Level = S->GetQualityPreset();
-		return Level >= 0 ? FString(QualityNames[FMath::Min(Level, 3)]) : FString(TEXT("カスタム"));
-	};
-	// 段階がばらばら（カスタム）なら、最高から数える（「<」で高、「>」で最高）。
-	Quality->CanStep = [S](int32 Steps)
-	{
-		const int32 Level = S->GetQualityPreset();
-		return Level < 0 || (Level + Steps >= 0 && Level + Steps <= 3);
-	};
-	Quality->Step = [S](int32 Steps)
-	{
-		const int32 Level = S->GetQualityPreset();
-		S->SetQualityPreset((Level < 0 ? 3 : Level) + Steps);
-		S->CommitDisplay();
-	};
-	auto* ResolutionScale = AddRow(1, TEXT("描画解像度"), true);
-	ResolutionScale->Value = [S] { return FString::Printf(TEXT("%d%%"), FMath::RoundToInt(S->GetResolutionScalePercent())); };
-	ResolutionScale->Fill = [S]
-	{
-		const auto& Range = TB::ConfigData().Display.ResolutionScale;
-		return Fraction(S->GetResolutionScalePercent(), Range.Min, FMath::Min(Range.Max, 100.f));
-	};
-	ResolutionScale->CanStep = [S](int32 Steps)
-	{
-		const auto& Range = TB::ConfigData().Display.ResolutionScale;
-		const float Value = S->GetResolutionScalePercent();
-		return Steps < 0 ? Value > Range.Min + .01f : Value < FMath::Min(Range.Max, 100.f) - .01f;
-	};
-	ResolutionScale->Step = [S](int32 Steps)
-	{
-		S->StepResolutionScale(Steps);
-		S->CommitDisplay();
-	};
-	auto* Brightness = AddRow(1, TEXT("明るさ"), true);
-	Brightness->Value = [S]
-	{
-		const auto& Range = TB::ConfigData().Display.Brightness;
-		const int32 Offset = FMath::RoundToInt((S->GetBrightness() - Range.Default) / FMath::Max(Range.Step, KINDA_SMALL_NUMBER));
-		return Offset == 0 ? FString(TEXT("ふつう")) : FString::Printf(TEXT("%+d"), Offset);
-	};
-	Brightness->Fill = [S]
-	{
-		const auto& Range = TB::ConfigData().Display.Brightness;
-		return Fraction(S->GetBrightness(), Range.Min, Range.Max);
-	};
-	Brightness->CanStep = [S](int32 Steps)
-	{
-		const auto& Range = TB::ConfigData().Display.Brightness;
-		const float Value = S->GetBrightness();
-		return Steps < 0 ? Value > Range.Min + .001f : Value < Range.Max - .001f;
-	};
-	Brightness->Step = [S](int32 Steps)
-	{
-		S->StepBrightness(Steps);
-		S->CommitDisplay();
-	};
-	auto* MotionBlur = AddRow(1, TEXT("モーションブラー"), false);
-	MotionBlur->Value = [S] { return OnOff(S->IsMotionBlurEnabled()); };
-	MotionBlur->CanStep = [S](int32 Steps) { return (Steps > 0) != S->IsMotionBlurEnabled(); };
-	MotionBlur->Step = [S](int32 Steps)
-	{
-		S->SetMotionBlurEnabled(Steps > 0);
-		S->CommitDisplay();
-	};
-	auto* RayTracing = AddRow(1, TEXT("レイトレーシング"), false);
-	RayTracing->Value = [S]
-	{
-		return UTBGameUserSettings::IsRayTracingSupported() ? OnOff(S->IsRayTracingOn()) : FString(TEXT("この PC では使えません"));
-	};
-	RayTracing->CanStep = [S](int32 Steps)
-	{
-		return UTBGameUserSettings::IsRayTracingSupported() && (Steps > 0) != S->IsRayTracingOn();
-	};
-	RayTracing->Step = [S](int32 Steps)
-	{
-		S->SetRayTracingOn(Steps > 0);
-		S->CommitDisplay();
-	};
-	Pages[1]->AddChildToVerticalBox(Label(TEXT("解像度と画面モードは、変えたあと「このままにする」を押さないと15秒で元に戻ります。"), 15,
-	                                      TBPaper::Muted));
-
-	// 操作
-	auto* Sensitivity = AddRow(2, TEXT("マウス感度"), true);
-	Sensitivity->Value = [S] { return FString::Printf(TEXT("%.1f"), S->GetMouseSensitivity()); };
-	Sensitivity->Fill = [S]
-	{
-		const auto& Range = TB::ConfigData().Controls.MouseSensitivity;
-		return Fraction(S->GetMouseSensitivity(), Range.Min, Range.Max);
-	};
-	Sensitivity->CanStep = [S](int32 Steps)
-	{
-		const auto& Range = TB::ConfigData().Controls.MouseSensitivity;
-		const float Value = S->GetMouseSensitivity();
-		return Steps < 0 ? Value > Range.Min + .001f : Value < Range.Max - .001f;
-	};
-	Sensitivity->Step = [S](int32 Steps)
-	{
-		S->StepMouseSensitivity(Steps);
-		S->SaveSettings();
-	};
-	auto* Invert = AddRow(2, TEXT("上下反転"), false);
-	Invert->Value = [S] { return OnOff(S->IsMouseYInverted()); };
-	Invert->CanStep = [S](int32 Steps) { return (Steps > 0) != S->IsMouseYInverted(); };
-	Invert->Step = [S](int32 Steps)
-	{
-		S->SetMouseYInverted(Steps > 0);
-		S->SaveSettings();
-	};
+	TBOptionsPages::BuildAudio(*this, Settings);
+	TBOptionsPages::BuildDisplay(*this, Settings);
+	TBOptionsPages::BuildControls(*this, Settings);
 
 	// 解像度と画面モードを変えたあとの確認。
 	auto* Confirm = WidgetTree->ConstructWidget<UCanvasPanel>();
@@ -391,6 +145,31 @@ void UTBOptionsMenu::Build(UTBGameUserSettings& Settings)
 	AddButton(Confirm, TEXT("元に戻す"), 650, 430, 210, true)->OnClicked.AddDynamic(this, &ThisClass::RevertVideoMode);
 	ConfirmOverlay = Confirm;
 	ConfirmOverlay->SetVisibility(ESlateVisibility::Collapsed);
+
+	// キーの付け替えの板。暗い幕を押せる（Visible）にして、後ろの行やボタンを押せなくする。
+	auto* KeyLayer = WidgetTree->ConstructWidget<UCanvasPanel>();
+	Place(Canvas, KeyLayer, 0, 0, 1280, 800);
+	auto* KeyDim = WidgetTree->ConstructWidget<UImage>();
+	KeyDim->SetColorAndOpacity(FLinearColor(0.015f, .025f, .02f, .6f));
+	KeyDim->SetVisibility(ESlateVisibility::Visible);
+	Place(KeyLayer, KeyDim, 0, 0, 1280, 800);
+	auto* KeyCard = WidgetTree->ConstructWidget<UBorder>();
+	KeyCard->SetBrush(TBPaper::Brush(PaperTexture));
+	Place(KeyLayer, KeyCard, 380, 260, 520, 280);
+	KeyPromptText = Label(TEXT(""), 22, TBPaper::Ink);
+	KeyPromptText->SetAutoWrapText(true);
+	Place(KeyLayer, KeyPromptText, 420, 290, 440, 110);
+	KeyErrorText = Label(TEXT(""), 18, FLinearColor(.75f, .1f, .08f));
+	KeyErrorText->SetAutoWrapText(true);
+	Place(KeyLayer, KeyErrorText, 420, 400, 440, 40);
+	KeySwapButton = AddButton(KeyLayer, TEXT("入れ替える"), 420, 460, 210);
+	KeySwapButton->OnClicked.AddDynamic(this, &ThisClass::SwapKey);
+	KeyCancelButton = AddButton(KeyLayer, TEXT("やめる"), 650, 460, 210, true);
+	KeyCancelButton->OnClicked.AddDynamic(this, &ThisClass::CancelKey);
+	KeyCloseButton = AddButton(KeyLayer, TEXT("とじる"), 535, 460, 210);
+	KeyCloseButton->OnClicked.AddDynamic(this, &ThisClass::CancelKey);
+	KeyOverlay = KeyLayer;
+	KeyOverlay->SetVisibility(ESlateVisibility::Collapsed);
 }
 
 UTBOptionRow* UTBOptionsMenu::AddRow(int32 PageIndex, const FString& Label, bool bBar)
@@ -408,31 +187,68 @@ UTBOptionRow* UTBOptionsMenu::AddRow(int32 PageIndex, const FString& Label, bool
 	return Row;
 }
 
+void UTBOptionsMenu::AddNote(int32 PageIndex, const FString& Text)
+{
+	Pages[PageIndex]->AddChildToVerticalBox(MakeLabel(Text, 15, TBPaper::Muted));
+}
+
+void UTBOptionsMenu::AddHeading(int32 PageIndex, const FString& Text)
+{
+	Pages[PageIndex]->AddChildToVerticalBox(MakeLabel(Text, 22, TBPaper::Accent))->SetPadding(FMargin(0, 14, 0, 4));
+}
+
+UTBKeyRow* UTBOptionsMenu::AddKeyRow(int32 PageIndex, const FString& Label, FName MappingName)
+{
+	auto* Row = CreateWidget<UTBKeyRow>(this);
+	Row->Build(Label, MappingName, PaperFont, PaperTexture);
+	Row->Pressed = [this, MappingName] { BeginKeyCapture(MappingName); };
+	Row->Reset = [this, MappingName] { BeginKeyReset(MappingName); };
+	Pages[PageIndex]->AddChildToVerticalBox(Row)->SetPadding(FMargin(0, 0, 0, 2));
+	KeyRows.Add(Row);
+	return Row;
+}
+
+UTextBlock* UTBOptionsMenu::MakeLabel(const FString& Text, int32 FontSize, FLinearColor Color)
+{
+	auto* Block = WidgetTree->ConstructWidget<UTextBlock>();
+	Block->SetText(FText::FromString(Text));
+	Block->SetFont(FSlateFontInfo(PaperFont, FontSize));
+	Block->SetColorAndOpacity(Color);
+	return Block;
+}
+
 void UTBOptionsMenu::ShowPage(int32 Index)
 {
 	Page = FMath::Clamp(Index, 0, Pages.Num() - 1);
-	for (int32 Other = 0; Other < Pages.Num(); ++Other)
+	for (int32 Other = 0; Other < PageRoots.Num(); ++Other)
 	{
-		Pages[Other]->SetVisibility(Other == Page ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+		PageRoots[Other]->SetVisibility(Other == Page ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
 		Tabs[Other]->SetStyle(TBPaper::ButtonStyle(PaperTexture, Other != Page));
+	}
+	if (Page == TBOptionsPage::Controls && ControlsScroll)
+	{
+		ControlsScroll->ScrollToStart();
 	}
 	RefreshRows();
 }
 
 void UTBOptionsMenu::ShowAudio()
 {
+	if (IsCapturing()) return;
 	PlayClick();
 	ShowPage(0);
 }
 
 void UTBOptionsMenu::ShowDisplay()
 {
+	if (IsCapturing()) return;
 	PlayClick();
 	ShowPage(1);
 }
 
 void UTBOptionsMenu::ShowControls()
 {
+	if (IsCapturing()) return;
 	PlayClick();
 	ShowPage(2);
 }
@@ -443,21 +259,25 @@ void UTBOptionsMenu::RefreshRows()
 	{
 		Row->Refresh();
 	}
+	for (UTBKeyRow* Row : KeyRows)
+	{
+		Row->Refresh();
+	}
 }
 
 void UTBOptionsMenu::ResetPage()
 {
 	auto* Settings = UTBGameUserSettings::Get();
-	if (!Settings || IsConfirming())
+	if (!Settings || IsConfirming() || IsCapturing())
 	{
 		return;
 	}
-	if (Page == 0)
+	if (Page == TBOptionsPage::Audio)
 	{
 		Settings->ResetVolumes();
 		Settings->CommitVolumes(GetOwningPlayer() ? GetOwningPlayer()->GetGameInstance() : nullptr);
 	}
-	else if (Page == 1)
+	else if (Page == TBOptionsPage::Display)
 	{
 		Settings->ResetDisplay();
 		Settings->CommitDisplay();
@@ -466,6 +286,10 @@ void UTBOptionsMenu::ResetPage()
 	{
 		Settings->ResetControls();
 		Settings->SaveSettings();
+		if (TB::ResetAll(GetOwningPlayer()).Result == TB::ERemapResult::OK)
+		{
+			SaveKeys();
+		}
 	}
 	PlayClick();
 	RefreshRows();
@@ -474,7 +298,7 @@ void UTBOptionsMenu::ResetPage()
 void UTBOptionsMenu::ChangeVideoMode(TFunctionRef<void(UTBGameUserSettings&)> Change)
 {
 	auto* Settings = UTBGameUserSettings::Get();
-	if (!Settings)
+	if (!Settings || IsCapturing())
 	{
 		return;
 	}
@@ -482,7 +306,7 @@ void UTBOptionsMenu::ChangeVideoMode(TFunctionRef<void(UTBGameUserSettings&)> Ch
 	PreviousWindowMode = Settings->GetFullscreenMode();
 	Change(*Settings);
 	Settings->ApplyResolutionSettings(false);
-	ConfirmUntil = FPlatformTime::Seconds() + 15;
+	ConfirmUntil = FPlatformTime::Seconds() + TB::ConfigData().Display.VideoModeConfirmSeconds;
 	ConfirmOverlay->SetVisibility(ESlateVisibility::Visible);
 	KeepButton->SetKeyboardFocus();
 }
@@ -542,8 +366,288 @@ void UTBOptionsMenu::NativeTick(const FGeometry& Geometry, float DeltaTime)
 	    FString::Printf(TEXT("この表示でよろしいですか？\nあと %d 秒で元に戻ります。"), FMath::CeilToInt(Left))));
 }
 
+void UTBOptionsMenu::BeginKeyCapture(FName MappingName)
+{
+	if (IsConfirming() || IsCapturing())
+	{
+		return;
+	}
+	CaptureRow = MappingName;
+	PendingKey = EKeys::Invalid;
+	PlayClick();
+	SetKeyOverlay(EKeyCapture::Waiting, TB::WaitingText(MappingName));
+	// 後ろを押せなくしてから、待っている間のキーを受けるメニューにフォーカスを移す。
+	SetBackgroundEnabled(false);
+	SetKeyboardFocus();
+}
+
+TFunction<void()> UTBOptionsMenu::KeySaveOverride;
+
+void UTBOptionsMenu::SaveKeys() const
+{
+	if (KeySaveOverride)
+	{
+		KeySaveOverride();
+		return;
+	}
+	const ULocalPlayer* LocalPlayer = GetOwningLocalPlayer();
+	auto* Input = LocalPlayer ? ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(LocalPlayer) : nullptr;
+	if (auto* User = Input ? Input->GetUserSettings() : nullptr)
+	{
+		User->SaveSettings();
+	}
+}
+
+void UTBOptionsMenu::BeginKeyReset(FName MappingName)
+{
+	if (IsConfirming() || IsCapturing())
+	{
+		return;
+	}
+	TB::FKeyboardKey Row;
+	if (!TB::FindKeyboardKey(GetOwningPlayer(), MappingName, Row))
+	{
+		return;
+	}
+	const TB::FKeyPrompt Prompt = TB::PromptForReset(TB::ResetToDefault(GetOwningPlayer(), MappingName), Row.DefaultKey);
+	PlayClick();
+	if (Prompt.Kind == TB::EKeyPromptKind::Done)
+	{
+		SaveKeys();
+		RefreshRows();
+		return;
+	}
+	// 戻せなかったとき。かぶりが1行なら入れ替えを聞き、それ以外はお知らせ。
+	CaptureRow = MappingName;
+	PendingKey = Row.DefaultKey;
+	bResetting = true;
+	SetBackgroundEnabled(false);
+	SetKeyboardFocus();
+	ApplyKeyPrompt(Prompt.Kind == TB::EKeyPromptKind::AskSwap ? Prompt : TB::FKeyPrompt{TB::EKeyPromptKind::Notice, Prompt.Text},
+	               Row.DefaultKey);
+}
+
+void UTBOptionsMenu::ReceiveCapturedKey(const FKey& Key)
+{
+	if (KeyCapture == EKeyCapture::None)
+	{
+		return;
+	}
+	// このキーを押したままのリピートとKeyUpは、メニューの先読みで止める（マウスのボタンにKeyUpは来ない）。
+	if (!Key.IsMouseButton())
+	{
+		HeldTriggerKey = Key;
+	}
+	// Escとパッドの下のボタン（B）。お知らせは閉じてキー待ちに戻り、それ以外は取り消す。
+	if (Key == EKeys::Escape || Key == EKeys::Gamepad_FaceButton_Right)
+	{
+		if (KeyCapture == EKeyCapture::Notice)
+		{
+			ReturnToWaiting();
+		}
+		else
+		{
+			CancelKeyCapture();
+		}
+		return;
+	}
+	if (KeyCapture != EKeyCapture::Waiting)
+	{
+		return;
+	}
+	ApplyKeyPrompt(TB::PromptForRemap(TB::Remap(GetOwningPlayer(), CaptureRow, Key), Key), Key);
+}
+
+void UTBOptionsMenu::ConfirmKeySwap()
+{
+	if (KeyCapture != EKeyCapture::AskSwap)
+	{
+		return;
+	}
+	const TB::FKeyPrompt Prompt = TB::PromptForSwap(TB::SwapRemap(GetOwningPlayer(), CaptureRow, PendingKey));
+	if (Prompt.Kind == TB::EKeyPromptKind::Redo)
+	{
+		// 相手がいなくなっていた。普通の付け替えをやり直す。
+		ApplyKeyPrompt(TB::PromptForRemap(TB::Remap(GetOwningPlayer(), CaptureRow, PendingKey), PendingKey), PendingKey);
+		return;
+	}
+	ApplyKeyPrompt(Prompt, PendingKey);
+}
+
+void UTBOptionsMenu::ApplyKeyPrompt(const TB::FKeyPrompt& Prompt, const FKey& Key)
+{
+	switch (Prompt.Kind)
+	{
+	case TB::EKeyPromptKind::Done:
+		SaveKeys();
+		CancelKeyCapture(false);
+		RefreshRows();
+		break;
+	case TB::EKeyPromptKind::Retry:
+		SetKeyOverlay(EKeyCapture::Waiting, TB::WaitingText(CaptureRow), Prompt.Text);
+		break;
+	case TB::EKeyPromptKind::AskSwap:
+		PendingKey = Key;
+		SetKeyOverlay(EKeyCapture::AskSwap, Prompt.Text);
+		// 押し間違いで入れ替わらないよう、初めは「やめる」にフォーカスを置く。
+		KeyCancelButton->SetKeyboardFocus();
+		break;
+	default:
+		SetKeyOverlay(EKeyCapture::Notice, Prompt.Text);
+		KeyCloseButton->SetKeyboardFocus();
+		break;
+	}
+}
+
+void UTBOptionsMenu::CancelKeyCapture(bool bBack)
+{
+	if (KeyCapture == EKeyCapture::None)
+	{
+		return;
+	}
+	KeyCapture = EKeyCapture::None;
+	bResetting = false;
+	KeyOverlay->SetVisibility(ESlateVisibility::Collapsed);
+	SetBackgroundEnabled(true);
+	PlayClick(bBack);
+	// 押した行の「変える」にフォーカスを戻す。
+	if (auto* Row = KeyRows.FindByPredicate([this](const UTBKeyRow* Other) { return Other->GetMappingName() == CaptureRow; }))
+	{
+		(*Row)->FocusButton();
+	}
+	else
+	{
+		SetKeyboardFocus();
+	}
+}
+
+void UTBOptionsMenu::ReturnToWaiting()
+{
+	if (KeyCapture == EKeyCapture::None)
+	{
+		return;
+	}
+	if (bResetting)
+	{
+		CancelKeyCapture();
+		return;
+	}
+	PlayClick(true);
+	SetKeyOverlay(EKeyCapture::Waiting, TB::WaitingText(CaptureRow));
+	SetKeyboardFocus();
+}
+
+void UTBOptionsMenu::SetBackgroundEnabled(bool bEnabled)
+{
+	for (UWidget* Root : PageRoots)
+	{
+		Root->SetIsEnabled(bEnabled);
+	}
+	for (UButton* Tab : Tabs)
+	{
+		Tab->SetIsEnabled(bEnabled);
+	}
+	ResetButton->SetIsEnabled(bEnabled);
+	CloseButton->SetIsEnabled(bEnabled);
+}
+
+bool UTBOptionsMenu::IsBackgroundEnabled() const
+{
+	return CloseButton && CloseButton->GetIsEnabled();
+}
+
+void UTBOptionsMenu::SetKeyOverlay(EKeyCapture State, const FString& Text, const FString& Error)
+{
+	KeyCapture = State;
+	KeyPromptText->SetText(FText::FromString(Text));
+	KeyErrorText->SetText(FText::FromString(Error));
+	const bool bCancelable = State == EKeyCapture::Waiting || State == EKeyCapture::AskSwap;
+	KeySwapButton->SetVisibility(State == EKeyCapture::AskSwap ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+	KeyCancelButton->SetVisibility(bCancelable ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+	KeyCloseButton->SetVisibility(State == EKeyCapture::Notice ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+	KeyOverlay->SetVisibility(ESlateVisibility::Visible);
+}
+
+FString UTBOptionsMenu::GetKeyPromptText() const
+{
+	return KeyPromptText ? KeyPromptText->GetText().ToString() : FString();
+}
+
+FString UTBOptionsMenu::GetKeyErrorText() const
+{
+	return KeyErrorText ? KeyErrorText->GetText().ToString() : FString();
+}
+
+void UTBOptionsMenu::SwapKey()
+{
+	ConfirmKeySwap();
+}
+
+void UTBOptionsMenu::CancelKey()
+{
+	// お知らせは閉じてキー待ちに戻る。待ちと入れ替えの確認では、取り消す。
+	if (KeyCapture == EKeyCapture::Notice)
+	{
+		ReturnToWaiting();
+		return;
+	}
+	CancelKeyCapture();
+}
+
+FReply UTBOptionsMenu::NativeOnPreviewMouseButtonDown(const FGeometry& Geometry, const FPointerEvent& MouseEvent)
+{
+	// 待っている間は、マウスのボタンも次のキーとして受け、ゲームや後ろの画面へ渡さない。
+	// 「やめる」ボタンの上のクリックだけは割り当てに使わず、ボタンに渡す。
+	if (KeyCapture == EKeyCapture::Waiting &&
+	    !KeyCancelButton->GetCachedGeometry().IsUnderLocation(MouseEvent.GetScreenSpacePosition()))
+	{
+		ReceiveCapturedKey(MouseEvent.GetEffectingButton());
+		return FReply::Handled();
+	}
+	return Super::NativeOnPreviewMouseButtonDown(Geometry, MouseEvent);
+}
+
+FReply UTBOptionsMenu::NativeOnKeyUp(const FGeometry& Geometry, const FKeyEvent& KeyEvent)
+{
+	if (HeldTriggerKey.IsValid() && KeyEvent.GetKey() == HeldTriggerKey)
+	{
+		HeldTriggerKey = EKeys::Invalid;
+		return FReply::Handled();
+	}
+	// 待ちと確認の間に離したキーは、ゲーム側へ渡さない。
+	return IsCapturing() ? FReply::Handled() : Super::NativeOnKeyUp(Geometry, KeyEvent);
+}
+
 FReply UTBOptionsMenu::NativeOnPreviewKeyDown(const FGeometry& Geometry, const FKeyEvent& KeyEvent)
 {
+	const FKey Key = KeyEvent.GetKey();
+	if (HeldTriggerKey.IsValid() && Key == HeldTriggerKey)
+	{
+		// 状態を変えたキーを押したままのリピートは止める。押し直したら（リピートでない）新しい押下として扱う。
+		if (KeyEvent.IsRepeat())
+		{
+			return FReply::Handled();
+		}
+		HeldTriggerKey = EKeys::Invalid;
+	}
+	if (IsCapturing())
+	{
+		// 確認とお知らせでは、ボタンを選ぶ・押すキー（左右、Enter、Space、パッドのAと十字）だけ通す。Tabは通さない。
+		// 押したままのリピートは通さない。
+		const bool bPassToButtons = KeyCapture != EKeyCapture::Waiting && !KeyEvent.IsRepeat() &&
+		                            (Key == EKeys::Enter || Key == EKeys::SpaceBar || Key == EKeys::Left || Key == EKeys::Right ||
+		                             Key == EKeys::Gamepad_FaceButton_Bottom || Key == EKeys::Gamepad_DPad_Left ||
+		                             Key == EKeys::Gamepad_DPad_Right);
+		if (bPassToButtons)
+		{
+			return Super::NativeOnPreviewKeyDown(Geometry, KeyEvent);
+		}
+		if (!KeyEvent.IsRepeat())
+		{
+			ReceiveCapturedKey(Key);
+		}
+		return FReply::Handled();
+	}
 	if (KeyEvent.GetKey() == EKeys::Escape)
 	{
 		if (IsConfirming())
@@ -570,6 +674,10 @@ void UTBOptionsMenu::PlayClick(bool bBack) const
 
 void UTBOptionsMenu::Close()
 {
+	if (IsCapturing())
+	{
+		return;
+	}
 	PlayClick(true);
 	Dismiss();
 }

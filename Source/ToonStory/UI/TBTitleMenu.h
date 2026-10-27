@@ -41,6 +41,11 @@ private:
 	UFUNCTION()
 	void Help();
 	UFUNCTION() void CloseHelp();
+	// キー名は割り当てで変わるので、開くたびに作り直す。
+	void RefreshHelpText();
+	UPROPERTY(Transient) TObjectPtr<UTextBlock> HelpToyText;
+	UPROPERTY(Transient) TObjectPtr<UTextBlock> HelpHumanText;
+	UPROPERTY(Transient) TObjectPtr<UTextBlock> HelpControlsText;
 	UPROPERTY(Transient) TObjectPtr<UWidget> TitleContent;
 	UPROPERTY(Transient) TObjectPtr<UWidget> HelpOverlay;
 	UPROPERTY(Transient) TObjectPtr<UButton> HelpButton;

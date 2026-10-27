@@ -9,6 +9,8 @@
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
 #include "Misc/ScopeExit.h"
+#include "UI/TBOptionRow.h"
+#include "UI/TBOptionsPages.h"
 #include <limits>
 #if WITH_EDITOR
 #include "Misc/DataValidation.h"
@@ -33,6 +35,7 @@ bool FTBConfigDataTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Resolution scale is never above 100%"), Display.ResolutionScale.Max <= 100.f);
 	TestEqual(TEXT("Brightness default is the standard gamma"), Display.Brightness.Default, 2.2f);
 	TestEqual(TEXT("Mouse sensitivity default"), GetDefault<UTBConfigData>()->Controls.MouseSensitivity.Default, 1.f);
+	TestEqual(TEXT("Video mode confirm seconds"), Display.VideoModeConfirmSeconds, 15.f);
 
 	// プロジェクト設定でアセットを選んでいれば、初期値ではなくそのアセットを使う。
 	const auto& Selected = GetDefault<UTBDataSettings>()->ConfigData;
@@ -115,6 +118,33 @@ bool FTBConfigDataTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Invert flips only the vertical look"), Settings->GetLookScale().X > 0 && Settings->GetLookScale().Y < 0);
 	Settings->ResetControls();
 	TestEqual(TEXT("Reset controls"), Settings->GetLookScale(), FVector2D(1, 1));
+
+	// スライダーで選んだ値は、データの刻みにそろえて範囲に収める。
+	Settings->SetMouseSensitivity(1.26f);
+	TestEqual(TEXT("Slider value snaps to the data step"), Settings->GetMouseSensitivity(), 1.3f);
+	Settings->SetMouseSensitivity(99.f);
+	TestEqual(TEXT("Slider value stops at the max"), Settings->GetMouseSensitivity(), GetDefault<UTBConfigData>()->Controls.MouseSensitivity.Max);
+	Settings->SetBrightness(-5.f);
+	TestEqual(TEXT("Slider brightness stops at the min"), Settings->GetBrightness(), Display.Brightness.Min);
+	Settings->SetResolutionScalePercent(97.f);
+	TestEqual(TEXT("Slider resolution scale snaps"), Settings->GetResolutionScalePercent(), 95.f);
+	Settings->SetResolutionScalePercent(150.f);
+	TestEqual(TEXT("Slider resolution scale stops at 100%"), Settings->GetResolutionScalePercent(), 100.f);
+	Settings->ResetControls();
+	Settings->ResetDisplay();
+
+	// スライダーの位置（0〜1）は値の範囲に広げて渡し、手を離したときだけ保存する。
+	auto* Row = NewObject<UTBOptionRow>();
+	float Slid = -1.f;
+	bool bCommitted = false;
+	TBOptionsPages::BindSlider(*Row, 50.f, 100.f, 5.f, [&Slid](float Value) { Slid = Value; }, nullptr,
+	                           [&bCommitted] { bCommitted = true; });
+	TestEqual(TEXT("Slider marks follow the data step"), Row->SliderStep, .1f);
+	Row->Slide(.5f);
+	TestEqual(TEXT("Slider position maps to the value range"), Slid, 75.f);
+	TestFalse(TEXT("Moving the slider does not save"), bCommitted);
+	Row->Released();
+	TestTrue(TEXT("Releasing the slider saves"), bCommitted);
 
 	// エンジンはこのクラスを使う。選んだ音量は実際の音に届く。終わったら音量を戻す。
 	TestNotNull(TEXT("Engine uses the game's user settings"), UTBGameUserSettings::Get());

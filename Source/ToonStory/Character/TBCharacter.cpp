@@ -8,6 +8,10 @@
 #include "Core/TBGameMode.h"
 #include "Core/TBController.h"
 #include "Core/TBGameUserSettings.h"
+#include "Input/TBInputSettings.h"
+#include "Input/TBKeyLabels.h"
+#include "EnhancedInputComponent.h"
+#include "InputAction.h"
 #include "Character/TBMovement.h"
 #include "Character/TBVoiceComponent.h"
 #include "Audio/TBCharacterAudioComponent.h"
@@ -645,7 +649,7 @@ void ATBCharacter::ServerInteract_Implementation()
 		}
 		else
 		{
-			TB::Notice(this, TEXT("Items collect automatically while touching. E is for rescue."));
+			TB::Notice(this, TB::Notices::ItemsAutoCollect);
 		}
 	}
 }
@@ -709,6 +713,20 @@ void ATBCharacter::Forward(float InputValue)
 	{
 		AddMovementInput(FRotator(0, GetControlRotation().Yaw, 0).Vector(), InputValue);
 	}
+}
+
+void ATBCharacter::Move(const FInputActionValue& Value)
+{
+	const FVector2D Axis = Value.Get<FVector2D>();
+	Forward(Axis.Y);
+	Right(Axis.X);
+}
+
+void ATBCharacter::Look(const FInputActionValue& Value)
+{
+	const FVector2D Axis = Value.Get<FVector2D>();
+	Yaw(Axis.X);
+	Pitch(Axis.Y);
 }
 
 void ATBCharacter::Right(float InputValue)
@@ -775,20 +793,53 @@ void ATBCharacter::SprintReleased()
 void ATBCharacter::SetupPlayerInputComponent(UInputComponent* Input)
 {
 	Super::SetupPlayerInputComponent(Input);
-	Input->BindAxis("Forward", this, &ATBCharacter::Forward);
-	Input->BindAxis("Right", this, &ATBCharacter::Right);
-	Input->BindAxis("Yaw", this, &ATBCharacter::Yaw);
-	Input->BindAxis("Pitch", this, &ATBCharacter::Pitch);
-	Input->BindAction("Jump", IE_Pressed, this, &ATBCharacter::JumpPressed);
-	Input->BindAction("Jump", IE_Released, this, &ATBCharacter::JumpReleased);
-	Input->BindKey(EKeys::LeftControl, IE_Pressed, this, &ATBCharacter::CrouchPressed);
-	Input->BindKey(EKeys::LeftControl, IE_Released, this, &ATBCharacter::CrouchReleased);
-	Input->BindKey(EKeys::LeftShift, IE_Pressed, this, &ATBCharacter::SprintPressed);
-	Input->BindKey(EKeys::LeftShift, IE_Released, this, &ATBCharacter::SprintReleased);
-	Input->BindAction("Interact", IE_Pressed, this, &ATBCharacter::RequestInteract);
-	Input->BindAction("Interact", IE_Released, this, &ATBCharacter::ReleaseInteract);
-	Input->BindAction("Drop", IE_Pressed, this, &ATBCharacter::RequestDrop);
-	Input->BindAction("Taunt", IE_Pressed, this, &ATBCharacter::RequestTaunt);
+	if (auto* Enhanced = Cast<UEnhancedInputComponent>(Input))
+	{
+		const auto* Settings = GetDefault<UTBInputSettings>();
+		if (const UInputAction* LookAction = Settings->LookAction.LoadSynchronous())
+		{
+			Enhanced->BindAction(LookAction, ETriggerEvent::Triggered, this, &ATBCharacter::Look);
+		}
+		if (const UInputAction* MoveAction = Settings->MoveAction.LoadSynchronous())
+		{
+			Enhanced->BindAction(MoveAction, ETriggerEvent::Triggered, this, &ATBCharacter::Move);
+		}
+		if (const UInputAction* JumpAction = Settings->JumpAction.LoadSynchronous())
+		{
+			Enhanced->BindAction(JumpAction, ETriggerEvent::Started, this, &ATBCharacter::JumpPressed);
+			// 離したときやIMCが外れたときはCompletedが来る。Canceledは今はほぼ来ないが、Holdなどのトリガーを足したときの予防。
+			Enhanced->BindAction(JumpAction, ETriggerEvent::Completed, this, &ATBCharacter::JumpReleased);
+			Enhanced->BindAction(JumpAction, ETriggerEvent::Canceled, this, &ATBCharacter::JumpReleased);
+		}
+		// しゃがみは人間、ダッシュは人形のIMCにだけある。どちらが効くかは付いているIMCで決まる。
+		if (const UInputAction* CrouchAction = Settings->CrouchAction.LoadSynchronous())
+		{
+			Enhanced->BindAction(CrouchAction, ETriggerEvent::Started, this, &ATBCharacter::CrouchPressed);
+			Enhanced->BindAction(CrouchAction, ETriggerEvent::Completed, this, &ATBCharacter::CrouchReleased);
+			Enhanced->BindAction(CrouchAction, ETriggerEvent::Canceled, this, &ATBCharacter::CrouchReleased);
+		}
+		if (const UInputAction* SprintAction = Settings->SprintAction.LoadSynchronous())
+		{
+			Enhanced->BindAction(SprintAction, ETriggerEvent::Started, this, &ATBCharacter::SprintPressed);
+			Enhanced->BindAction(SprintAction, ETriggerEvent::Completed, this, &ATBCharacter::SprintReleased);
+			Enhanced->BindAction(SprintAction, ETriggerEvent::Canceled, this, &ATBCharacter::SprintReleased);
+		}
+		// インタラクトは両方の陣営のIMCにある。置くは人間、挑発は人形のIMCにだけある。
+		if (const UInputAction* InteractAction = Settings->InteractAction.LoadSynchronous())
+		{
+			Enhanced->BindAction(InteractAction, ETriggerEvent::Started, this, &ATBCharacter::RequestInteract);
+			Enhanced->BindAction(InteractAction, ETriggerEvent::Completed, this, &ATBCharacter::ReleaseInteract);
+			Enhanced->BindAction(InteractAction, ETriggerEvent::Canceled, this, &ATBCharacter::ReleaseInteract);
+		}
+		if (const UInputAction* DropAction = Settings->DropAction.LoadSynchronous())
+		{
+			Enhanced->BindAction(DropAction, ETriggerEvent::Started, this, &ATBCharacter::RequestDrop);
+		}
+		if (const UInputAction* TauntAction = Settings->TauntAction.LoadSynchronous())
+		{
+			Enhanced->BindAction(TauntAction, ETriggerEvent::Started, this, &ATBCharacter::RequestTaunt);
+		}
+	}
 }
 
 void ATBCharacter::ApplyInterruption()

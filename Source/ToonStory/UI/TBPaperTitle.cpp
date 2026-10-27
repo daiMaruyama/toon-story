@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Mamodou. All Rights Reserved.
 
 #include "UI/TBTitleMenu.h"
+#include "Input/TBKeyLabels.h"
 #include "Core/TBSession.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/Border.h"
@@ -156,14 +157,18 @@ void UTBTitleMenu::BuildPaperLayout()
 	Place(Label(TEXT("あそびかた"), 32, TBPaper::Accent), 220, 90, 840, 55);
 	Place(Label(TEXT("おもちゃとにんげんに分かれて、かくれんぼ！"), 20, TBPaper::Ink), 220, 155, 840, 45);
 	Place(Label(TEXT("おもちゃ"), 24, TBPaper::Accent), 220, 215, 390, 45);
-	Place(Label(TEXT("電池を集めよう。にんげんに見られると動けなくなるよ。\n仲間が箱に捕まったら、箱のそばでEを長押しして救助！"), 19, TBPaper::Ink), 220, 265, 390, 165);
+	HelpToyText = Label(TEXT(""), 19, TBPaper::Ink);
+	Place(HelpToyText, 220, 265, 390, 165);
 	Place(Label(TEXT("にんげん"), 24, TBPaper::Accent), 660, 215, 390, 45);
-	Place(Label(TEXT("おもちゃに近づいてEでつかもう。\n箱の正面まで運び、Eを長押しして箱にしまおう。Qでおろせるよ。"), 19, TBPaper::Ink), 660, 265, 390, 165);
+	HelpHumanText = Label(TEXT(""), 19, TBPaper::Ink);
+	Place(HelpHumanText, 660, 265, 390, 165);
 	Place(Label(TEXT("基本操作"), 23, TBPaper::Accent), 220, 445, 840, 40);
-	Place(Label(TEXT("WASD：移動 ／ マウス：見回す ／ Space：ジャンプ\nShift：ダッシュ（おもちゃ） ／ Ctrl：しゃがむ（にんげん）\nE：つかむ・収納・救助 ／ Q：おろす ／ F：音（おもちゃ） ／ Esc：メニュー"), 18, TBPaper::Ink), 220, 495, 840, 120);
+	HelpControlsText = Label(TEXT(""), 18, TBPaper::Ink);
+	Place(HelpControlsText, 220, 495, 840, 120);
 	CloseHelpButton = AddButton(TEXT("CloseHelp"), TEXT("閉じる [Esc]"), 465, 640, 350);
 	CloseHelpButton->OnClicked.AddDynamic(this, &ThisClass::CloseHelp);
 	HelpOverlay->SetVisibility(ESlateVisibility::Collapsed);
+	RefreshHelpText();
 }
 
 void UTBTitleMenu::Quit()
@@ -180,8 +185,25 @@ UWidget* UTBTitleMenu::RoomLabel(FString Item)
 	return Label;
 }
 
+void UTBTitleMenu::RefreshHelpText()
+{
+	const auto* PC = GetOwningPlayer();
+	const FString Move = TB::MoveKeysLabel(PC), Jump = TB::KeyLabel(PC, TB::Keys::Jump);
+	const FString Interact = TB::KeyLabel(PC, TB::Keys::HumanInteract), ToyInteract = TB::KeyLabel(PC, TB::Keys::ToyInteract);
+	const FString Drop = TB::KeyLabel(PC, TB::Keys::HumanDrop);
+	HelpToyText->SetText(FText::FromString(FString::Printf(
+	    TEXT("電池を集めよう。にんげんに見られると動けなくなるよ。\n仲間が箱に捕まったら、箱のそばで%sを長押しして救助！"), *ToyInteract)));
+	HelpHumanText->SetText(FText::FromString(FString::Printf(
+	    TEXT("おもちゃに近づいて%sでつかもう。\n箱の正面まで運び、%sを長押しして箱にしまおう。%sでおろせるよ。"), *Interact, *Interact, *Drop)));
+	HelpControlsText->SetText(FText::FromString(FString::Printf(
+	    TEXT("%s：移動 ／ マウス：見回す ／ %s：ジャンプ\n%s：ダッシュ（おもちゃ） ／ %s：しゃがむ（にんげん）\n%s：つかむ・収納（にんげん） ／ %s：救助（おもちゃ）\n%s：おろす ／ %s：音（おもちゃ） ／ Esc：メニュー"),
+	    *Move, *Jump, *TB::KeyLabel(PC, TB::Keys::ToySprint), *TB::KeyLabel(PC, TB::Keys::HumanCrouch), *Interact, *ToyInteract,
+	    *Drop, *TB::KeyLabel(PC, TB::Keys::ToyTaunt))));
+}
+
 void UTBTitleMenu::Help()
 {
+	RefreshHelpText();
 	TitleContent->SetIsEnabled(false);
 	HelpOverlay->SetVisibility(ESlateVisibility::Visible);
 	CloseHelpButton->SetKeyboardFocus();

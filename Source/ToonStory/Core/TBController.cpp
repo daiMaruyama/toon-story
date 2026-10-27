@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Mamodou. All Rights Reserved.
 
 #include "TBController.h"
+#include "Algo/AllOf.h"
 #include "Audio/TBAudioEvents.h"
 #include "Audio/TBAudioSubsystem.h"
 #include "Core/TBPlayerState.h"
@@ -8,6 +9,12 @@
 #include "Core/TBGameMode.h"
 #include "Core/TBSession.h"
 #include "Core/TBGameHelpers.h"
+#include "Input/TBInputSettings.h"
+#include "Input/TBKeyLabels.h"
+#include "EnhancedInputComponent.h"
+#include "EnhancedInputSubsystems.h"
+#include "InputAction.h"
+#include "InputMappingContext.h"
 #include "Components/InputComponent.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
@@ -76,6 +83,7 @@ void ATBController::PlayerTick(float DeltaTime)
 	UpdateMenuInput(ShowMenu);
 	UpdateScreenTransition();
 	UpdateViewAspect();
+	SyncInputContexts();
 	if (NoticeExpires > 0 && GetWorld()->GetTimeSeconds() > NoticeExpires)
 	{
 		Notice.Reset();
@@ -213,12 +221,95 @@ void ATBController::BeginPlay()
 	}
 }
 
+void ATBController::EndPlay(const EEndPlayReason::Type Reason)
+{
+	ClearInputContexts();
+	Super::EndPlay(Reason);
+}
+
+// 陣営はPlayerStateのTeamで決まる。ホストでは通知なしに書き換わるので、Pawnの持ち替えではなくTeamを毎フレーム見る。
+void ATBController::SyncInputContexts()
+{
+	const auto* Settings = GetDefault<UTBInputSettings>();
+	const auto* Info = GetPlayerState<ATBPlayerState>();
+	const ETBTeam Team = Info ? Info->Team : ETBTeam::None;
+	const auto& RoleContext = Team == ETBTeam::Human ? Settings->HumanContext
+	                        : Team == ETBTeam::Toy   ? Settings->ToyContext
+	                                                 : TSoftObjectPtr<UInputMappingContext>();
+	// ロビーのキーはロビーの間だけ。GameStateが無いときは付けない。
+	const auto* State = TB::GS(GetWorld());
+	const auto& LobbyContext = State && State->Phase == ETBPhase::Lobby ? Settings->LobbyContext
+	                                                                     : TSoftObjectPtr<UInputMappingContext>();
+	TArray<TWeakObjectPtr<const UInputMappingContext>> Wanted;
+	for (const auto* Soft : {&Settings->CommonContext, &LobbyContext, &RoleContext})
+	{
+		if (const auto* Context = Soft->IsNull() ? nullptr : Soft->LoadSynchronous())
+		{
+			Wanted.Add(Context);
+		}
+	}
+	auto* Input = IsLocalController() ? ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer()) : nullptr;
+	// 記録が同じでも、エンジン側で外されていたら付け直す。
+	if (Wanted == AppliedContexts &&
+	    (!Input || Algo::AllOf(AppliedContexts, [Input](const auto& Context) { return Context.IsValid() && Input->HasMappingContext(Context.Get()); })))
+	{
+		return;
+	}
+	ClearInputContexts();
+	if (!Input)
+	{
+		return;
+	}
+	for (int32 Index = 0; Index < Wanted.Num(); ++Index)
+	{
+		Input->AddMappingContext(Wanted[Index].Get(), Index);
+		AppliedContexts.Add(Wanted[Index]);
+	}
+}
+
+void ATBController::ClearInputContexts()
+{
+	if (auto* Input = AppliedContexts.IsEmpty() ? nullptr : ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer()))
+	{
+		for (const auto& Context : AppliedContexts)
+		{
+			if (Context.IsValid()) Input->RemoveMappingContext(Context.Get());
+		}
+	}
+	AppliedContexts.Reset();
+}
+
+// UserSettingsはSuper::ReceivedPlayerで作られる。直後の最初のGCより前に、キー設定用にIMCを登録する。
+void ATBController::ReceivedPlayer()
+{
+	Super::ReceivedPlayer();
+	if (IsLocalController())
+	{
+		UTBInputSettings::RegisterContexts(GetLocalPlayer());
+	}
+}
+
 void ATBController::SetupInputComponent()
 {
 	Super::SetupInputComponent();
-	InputComponent->BindKey(EKeys::Escape, IE_Pressed, this, &ATBController::ToggleLeaveMenu);
-	InputComponent->BindAction("Ready", IE_Pressed, this, &ATBController::TBReady);
-	InputComponent->BindAction("Start", IE_Pressed, this, &ATBController::TBStart);
+	auto* Enhanced = Cast<UEnhancedInputComponent>(InputComponent);
+	if (!Enhanced)
+	{
+		return;
+	}
+	const auto* Settings = GetDefault<UTBInputSettings>();
+	if (const UInputAction* Menu = Settings->MenuAction.LoadSynchronous())
+	{
+		Enhanced->BindAction(Menu, ETriggerEvent::Started, this, &ATBController::ToggleLeaveMenu);
+	}
+	if (const UInputAction* Ready = Settings->ReadyAction.LoadSynchronous())
+	{
+		Enhanced->BindAction(Ready, ETriggerEvent::Started, this, &ATBController::TBReady);
+	}
+	if (const UInputAction* Start = Settings->StartAction.LoadSynchronous())
+	{
+		Enhanced->BindAction(Start, ETriggerEvent::Started, this, &ATBController::TBStart);
+	}
 }
 
 void ATBController::ToggleLeaveMenu()
@@ -347,7 +438,8 @@ void ATBController::ServerPreference_Implementation(ETBTeam Team)
 
 void ATBController::ClientNotice_Implementation(const FString& Message, bool bError)
 {
-	Notice = Message;
+	// キー名は{Mappable名}の印で届く。自分の割り当てに置き換える。
+	Notice = TB::ExpandKeyTokens(this, Message);
 	NoticeExpires = GetWorld()->GetTimeSeconds() + 5;
 	if (bError) ClientPlaySoundEvent(ETBSoundEvent::UIError, FVector::ZeroVector);
 }
