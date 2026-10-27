@@ -6,6 +6,14 @@
 
 namespace TBScreen
 {
+	void HoldBlack(APlayerController* PlayerController, bool Hold)
+	{
+		if (PlayerController && PlayerController->PlayerCameraManager)
+		{
+			if (Hold) PlayerController->PlayerCameraManager->SetManualCameraFade(1.f, FLinearColor::Black, false);
+			else PlayerController->PlayerCameraManager->StopCameraFade();
+		}
+	}
 	// 簡易版
 	void PlayTransition(APlayerController* PlayerController, const FLinearColor& Color)
 	{

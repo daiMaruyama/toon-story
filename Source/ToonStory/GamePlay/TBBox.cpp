@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Mamodou. All Rights Reserved.
 
 #include "TBBox.h"
+
 #include "Audio/TBBoxAudioComponent.h"
 #include "Audio/TBAudioEvents.h"
 #include "Core/TBPlayerState.h"
@@ -14,6 +15,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "Components/BoxComponent.h"
 #include "Components/CapsuleComponent.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -66,6 +68,18 @@ ATBBox::ATBBox()
 		// 見た目は TB_ToyBoxRoom 側が持つので、ここは当たり判定だけ残す。蓋が開いた時に見えないようにする。
 		Wall->SetHiddenInGame(true);
 	}
+}
+
+FBox ATBBox::StorageRoomBounds() const
+{
+	FBox Bounds(ForceInit);
+	for (const auto& Child : StorageRoom->GetAttachChildren())
+	{
+		const auto* Wall = Cast<UStaticMeshComponent>(Child.Get());
+		if (!Wall || !Wall->GetStaticMesh() || !Wall->IsQueryCollisionEnabled()) continue;
+		Bounds += Wall->GetStaticMesh()->GetBoundingBox().TransformBy(Wall->GetRelativeTransform());
+	}
+	return Bounds;
 }
 
 void ATBBox::BeginPlay()
@@ -205,7 +219,8 @@ bool ATBBox::FindDropSpot(const AActor* Ignore, const FCollisionShape& Shape, FV
 // 収納の最終確認を行い、箱内へ移してから勝敗を確認する。
 bool ATBBox::Store(ATBCharacter* Toy)
 {
-	if (!HasAuthority() || !Toy || !Toy->TBPS() || !TB::Playing(GetWorld()))
+	if (!HasAuthority() || !Toy || !Toy->TBPS() || Toy->TBPS()->Team != ETBTeam::Toy ||
+	    Toy->TBPS()->ToyState == ETBToyState::Boxed || !TB::Playing(GetWorld()) || TB::GS(GetWorld())->IsPreparing())
 	{
 		return false;
 	}
@@ -236,6 +251,12 @@ bool ATBBox::Store(ATBCharacter* Toy)
 	Toy->SetActorLocation(StoragePosition, false, nullptr, ETeleportType::TeleportPhysics);
 	Toy->SetFrozen(false);
 	Toy->SetToyState(ETBToyState::Boxed);
+	if (const auto* State = TB::GS(GetWorld()))
+	{
+		uint32 Generation = ++NextCaptureGeneration;
+		if (Generation == 0) Generation = ++NextCaptureGeneration;
+		Captivity.Add(Toy, {State->HidePreparation.Round, Generation});
+	}
 	Toy->ForceNetUpdate();
 	UTBAudioEvents::Emit(this, ETBSoundEvent::Store, Toy->TBPS(), InteractionPoint->GetComponentLocation());
 	UTBAudioEvents::Emit(this, ETBSoundEvent::BoxedTransition, Toy->TBPS(), FVector::ZeroVector);
@@ -310,6 +331,54 @@ FVector ATBBox::ReleasePosition(int32 Slot) const
 	return GetActorTransform().TransformPosition(Local);
 }
 
+uint32 ATBBox::CaptureGeneration(const ATBCharacter* Toy) const
+{
+	const auto* State = TB::GS(GetWorld());
+	const auto* Entry = Captivity.Find(const_cast<ATBCharacter*>(Toy));
+	return State && Entry && Entry->Round == State->HidePreparation.Round ? Entry->Generation : 0;
+}
+
+void ATBBox::ResetCaptivity()
+{
+	Captivity.Reset();
+}
+
+bool ATBBox::ReleasePrisoner(ATBCharacter* Toy, uint32 Generation, const TArray<FTransform>& Exits, bool bNotify)
+{
+	if (!HasAuthority() || !IsValid(Toy) || !Toy->TBPS() || Toy->TBPS()->Team != ETBTeam::Toy ||
+	    Toy->TBPS()->ToyState != ETBToyState::Boxed || !TB::Playing(GetWorld())) return false;
+	if (auto* Mode = GetWorld()->GetAuthGameMode<ATBGameMode>()) Mode->CheckWin();
+	const auto* Match = TB::GS(GetWorld());
+	if (!Match || !TB::Playing(GetWorld()) || Match->EndTime <= Match->GetServerWorldTimeSeconds()) return false;
+	if (Generation != 0)
+	{
+		const auto* State = TB::GS(GetWorld());
+		if (!State || State->IsPreparing() || CaptureGeneration(Toy) != Generation) return false;
+	}
+	const auto* Capsule = Toy->GetCapsuleComponent();
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(TBSingleRelease), false, Toy);
+	for (int32 Index = 0; Index < FMath::Min(Exits.Num(), StorageSlotCount); ++Index)
+	{
+		const auto& Exit = Exits[Index];
+		if (Exit.ContainsNaN() || !TB::SupportsCapsule(GetWorld(), Exit.GetLocation(),
+		    Capsule->GetScaledCapsuleRadius(), Capsule->GetScaledCapsuleHalfHeight(), ECC_GameTraceChannel1, Params,
+		    Toy->GetCharacterMovement()->GetWalkableFloorZ(), Generation == 0 ? 120.f : 12.f)) continue;
+		if (!Toy->TeleportTo(Exit.GetLocation(), Exit.Rotator())) continue;
+		Toy->SetFrozen(false);
+		Toy->SetToyState(ETBToyState::Free);
+		Captivity.Remove(Toy);
+		Toy->ForceNetUpdate();
+		if (bNotify)
+		{
+			UTBAudioEvents::Emit(this, ETBSoundEvent::RescueComplete, Toy->TBPS(), InteractionPoint->GetComponentLocation());
+			MulticastOpened();
+		}
+		if (auto* Mode = GetWorld()->GetAuthGameMode<ATBGameMode>()) Mode->CheckWin();
+		return true;
+	}
+	return false;
+}
+
 // 空いている箱外の位置へ救助する。塞がっている場合は次のTickで再試行する。
 void ATBBox::ReleasePrisoners()
 {
@@ -326,12 +395,12 @@ void ATBBox::ReleasePrisoners()
 		{
 			continue;
 		}
-		const FVector Exit = ReleasePosition(Slot);
+		TArray<FTransform> Exits;
+		for (int32 Candidate = Slot; Candidate < StorageSlotCount; ++Candidate)
+			Exits.Add(FTransform(GetActorRotation(), ReleasePosition(Candidate)));
 		++Slot;
-		if (Toy->TeleportTo(Exit, GetActorRotation()))
+		if (ReleasePrisoner(Toy, 0, Exits, false))
 		{
-			Toy->SetFrozen(false);
-			Toy->SetToyState(ETBToyState::Free);
 			++Released;
 		}
 	}

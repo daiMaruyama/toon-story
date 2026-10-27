@@ -8,12 +8,34 @@
 
 class ATBBox;
 
+// Replicate validity, authority decision and deadline together; zero on a client is not permission to reveal.
+USTRUCT()
+struct FTBHidePreparation
+{
+	GENERATED_BODY()
+	UPROPERTY()
+	bool bValid = false;
+	UPROPERTY()
+	bool bHiding = false;
+	UPROPERTY()
+	uint32 Round = 0;
+	UPROPERTY()
+	double StartsAt = 0;
+	UPROPERTY()
+	double EndsAt = 0;
+};
+
 /** 試合設定・残り時間・勝敗など、全員が参照する情報を持つ。 */
 UCLASS()
 class TOONSTORY_API ATBGameState : public AGameStateBase
 {
 	GENERATED_BODY()
 public:
+	UPROPERTY(Replicated)
+	FTBHidePreparation HidePreparation;
+	bool IsPreparing() const;
+	float HideRemaining() const;
+	float HideProgress() const;
 	UPROPERTY(Replicated, BlueprintReadOnly)
 	FString StageName;
 	UPROPERTY(Replicated, BlueprintReadOnly)

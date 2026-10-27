@@ -7,6 +7,8 @@
 #include "Core/TBPlayerState.h"
 #include "Core/TBGameState.h"
 #include "Core/TBGameMode.h"
+#include "Core/TBLobbySettings.h"
+#include "GamePlay/TBHumanEntrance.h"
 #include "Core/TBSession.h"
 #include "Core/TBGameHelpers.h"
 #include "Input/TBInputSettings.h"
@@ -18,11 +20,13 @@
 #include "Components/InputComponent.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
+#include "Engine/Engine.h"
 #include "EngineUtils.h"
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
 #include "UI/TBScreenTransition.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "Kismet/GameplayStatics.h"
 #include "Components/AudioComponent.h"
 #include "UObject/UObjectIterator.h"
 #include "VoipListenerSynthComponent.h"
@@ -55,6 +59,10 @@ namespace
 
 void ATBController::PreClientTravel(const FString& PendingURL, ETravelType TravelType, bool bIsSeamlessTravel)
 {
+	bPreparationTravelMask = true;
+	bPreparationTravelFailed = false;
+	bPreparationBlack = true;
+	TBScreen::HoldBlack(this, true);
 	ReleaseVoicePlayback(GetWorld(), false, false);
 	SetViewTarget(this);
 	LobbyCamera.Reset();
@@ -79,7 +87,7 @@ void ATBController::PlayerTick(float DeltaTime)
 	const bool InLobby = State && State->Phase == ETBPhase::Lobby;
 	if (!State || State->Phase != ETBPhase::Playing) bLeaveMenuOpen = false;
 	const bool ShowMenu = State && (State->Phase != ETBPhase::Playing || bLeaveMenuOpen);
-	UpdateLobbyCamera(InLobby);
+	UpdateLobbyCamera(InLobby || ShouldHidePreparationView());
 	UpdateMenuInput(ShowMenu);
 	UpdateScreenTransition();
 	UpdateViewAspect();
@@ -123,11 +131,122 @@ void ATBController::ServerSetViewAspect_Implementation(float Aspect)
 	}
 }
 
+void ATBController::ClientPreparationBegin_Implementation(uint32 Round)
+{
+	PreparationStartRound = Round;
+	bPreparationStartMask = true;
+	bPreparationBlack = true;
+	TBScreen::HoldBlack(this, true);
+}
+
+void ATBController::ClientPreparationCancelled_Implementation(uint32 Round)
+{
+	if (Round != PreparationStartRound) return;
+	bPreparationStartMask = false;
+	bPreparationTravelMask = false;
+}
+
+void ATBController::ClientPreparationTravelCancelled_Implementation()
+{
+	// Does not cancel a newer start. Only releases the old travel mask once pending really ends.
+	bPreparationTravelFailed = true;
+}
+
+void ATBController::PreparationTravelFailed(UWorld* World, ETravelFailure::Type Type, const FString& Error)
+{
+	if (World != GetWorld()) return;
+	if (HasAuthority()) ClientPreparationTravelCancelled();
+	else if (IsLocalController()) bPreparationTravelFailed = true;
+}
+
+void ATBController::ClientPreparationRole_Implementation(uint32 Round, ETBTeam Team)
+{
+	PreparationViewRound = Round;
+	PreparationViewTeam = Team;
+}
+
+bool ATBController::ShouldHidePreparationView() const
+{
+	if (GetWorld()->GetMapName().EndsWith(TEXT("Title"))) return false;
+	const auto* State = TB::GS(GetWorld());
+	const auto* Info = GetPlayerState<ATBPlayerState>();
+	if (!State) return true;
+	if (bPreparationStartMask && (State->Phase != ETBPhase::Playing || !State->HidePreparation.bValid ||
+	    State->HidePreparation.Round != PreparationStartRound || PreparationViewRound != PreparationStartRound ||
+	    !Info || Info->Team != PreparationViewTeam)) return true;
+	if (State->Phase == ETBPhase::Results || State->Phase == ETBPhase::Aborted) return false;
+	if (State->Phase == ETBPhase::Lobby)
+		return State->bTravelPending || (bPreparationTravelMask && !bPreparationTravelFailed && !TBLobbySettings::IsLobby(GetWorld()));
+	if (!Info || Info->Team == ETBTeam::None || !State->HidePreparation.bValid) return true;
+	if (State->HidePreparation.Round != PreparationViewRound || Info->Team != PreparationViewTeam) return true;
+	if (LastPhase != ETBPhase::Playing && State->HidePreparation.Round == LastCompletedPreparationRound) return true;
+	return State->HidePreparation.bHiding && Info->Team == ETBTeam::Human;
+}
+
 // 切替はサーバーで確定して届くので、自分の状態を見てから演出を出す。
 void ATBController::UpdateScreenTransition()
 {
 	const auto* State = TB::GS(GetWorld());
 	const auto* Info = GetPlayerState<ATBPlayerState>();
+	const bool WasApproach = bEntranceApproach;
+	bEntranceApproach = false;
+	const bool Hold = ShouldHidePreparationView();
+	if (Hold)
+	{
+		bPreparationBlack = true;
+		if (State && State->Phase == ETBPhase::Playing && State->HidePreparation.bValid &&
+		    State->HidePreparation.bHiding && Info && Info->Team == ETBTeam::Human &&
+		    PreparationViewTeam == Info->Team && PreparationViewRound == State->HidePreparation.Round &&
+		    (!bPreparationStartMask || PreparationStartRound == State->HidePreparation.Round))
+		{
+			if (const auto* Entrance = ATBHumanEntrance::Find(GetWorld()))
+			{
+				FVector Location; FRotator Rotation;
+				if (Entrance->CameraPose(State->HideProgress(), Location, Rotation))
+				{
+					if (!EntranceCamera.IsValid()) EntranceCamera = GetWorld()->SpawnActor<ACameraActor>();
+					if (EntranceCamera.IsValid())
+					{
+						EntranceCamera->SetActorLocationAndRotation(Location, Rotation);
+						SetViewTarget(EntranceCamera.Get());
+						bEntranceApproach = true;
+						TBScreen::HoldBlack(this, false);
+						if (GetWorld()->GetTimeSeconds() >= NextEntranceFootstep)
+						{
+							NextEntranceFootstep = GetWorld()->GetTimeSeconds() + Entrance->FootstepIntervalSeconds;
+							if (auto* Audio = GetGameInstance()->GetSubsystem<UTBAudioSubsystem>())
+								Audio->PlaySoundEvent(ETBSoundEvent::HumanFootstep);
+						}
+						return;
+					}
+				}
+			}
+		}
+		TBScreen::HoldBlack(this, true); // Reapply to a replacement camera manager after travel.
+		return;
+	}
+	if (WasApproach)
+	{
+		if (GetPawn()) SetViewTarget(GetPawn());
+		if (State && State->Phase == ETBPhase::Playing && !State->IsPreparing())
+			if (const auto* Entrance = ATBHumanEntrance::Find(GetWorld()); Entrance && Entrance->DoorSound)
+			{
+				const auto* Audio = GetGameInstance()->GetSubsystem<UTBAudioSubsystem>();
+				const float Volume = Audio ? Audio->GetMasterVolume() * Audio->GetEffectsVolume() : 1.f;
+				UGameplayStatics::PlaySound2D(this, Entrance->DoorSound, Volume);
+			}
+		if (EntranceCamera.IsValid()) EntranceCamera->Destroy();
+		EntranceCamera.Reset();
+	}
+	if (bPreparationBlack)
+	{
+		TBScreen::HoldBlack(this, false);
+		bPreparationBlack = false;
+	}
+	bPreparationTravelMask = false;
+	bPreparationStartMask = false;
+	if (State && State->Phase == ETBPhase::Playing && State->HidePreparation.bValid && !State->HidePreparation.bHiding)
+		LastCompletedPreparationRound = State->HidePreparation.Round;
 	if (!State || !Info)
 	{
 		return;
@@ -180,7 +299,8 @@ void ATBController::UpdateLobbyCamera(bool InLobby)
 	}
 	else if (bLobbyCameraActive && GetPawn())
 	{
-		SetViewTargetWithBlend(GetPawn(), .35f);
+		if (bPreparationBlack) SetViewTarget(GetPawn());
+		else SetViewTargetWithBlend(GetPawn(), .35f);
 		bLobbyCameraActive = false;
 	}
 }
@@ -210,6 +330,8 @@ void ATBController::UpdateMenuInput(bool ShowMenu)
 void ATBController::BeginPlay()
 {
 	Super::BeginPlay();
+	if (GEngine)
+		PreparationTravelFailureHandle = GEngine->OnTravelFailure().AddUObject(this, &ATBController::PreparationTravelFailed);
 	// 切断でタイトルへ戻るときや、移る途中のつなぎのステージの片付けでも外すよう、片付けの通知に一度だけ登録する。
 	static const FDelegateHandle VoiceCleanup = FWorldDelegates::OnWorldCleanup.AddStatic(&ReleaseVoicePlayback);
 	if (IsLocalController())
@@ -223,6 +345,7 @@ void ATBController::BeginPlay()
 
 void ATBController::EndPlay(const EEndPlayReason::Type Reason)
 {
+	if (GEngine) GEngine->OnTravelFailure().Remove(PreparationTravelFailureHandle);
 	ClearInputContexts();
 	Super::EndPlay(Reason);
 }

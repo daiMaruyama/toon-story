@@ -81,6 +81,8 @@ bool FTBRematchTest::RunTest(const FString& Parameters)
 		ToyInfo->bReady = true;
 		Mode->StartRound(Host);
 		TestEqual(TEXT("Round starts"), State->Phase, ETBPhase::Playing);
+		Mode->AdvancePreparationClockForTest(0);
+		TestFalse(TEXT("Server released preparation before normal round fixture"), State->IsPreparing());
 		Mode->ReturnToLobby(Host);
 		TestEqual(TEXT("Cannot reset an active match"), State->Phase, ETBPhase::Playing);
 		auto* Human = Cast<ATBCharacter>(Host->GetPawn());
@@ -209,6 +211,8 @@ bool FTBStorageHoldTest::RunTest(const FString& Parameters)
 	HostInfo->bReady = true;
 	ToyInfo->bReady = true;
 	Mode->StartRound(Host);
+	Mode->AdvancePreparationClockForTest(0);
+	TestFalse(TEXT("Server released preparation before storage fixture"), State->IsPreparing());
 	auto* Human = Cast<ATBCharacter>(Host->GetPawn());
 	auto* Toy = Cast<ATBCharacter>(Second->GetPawn());
 	auto* Box = State->Box.Get();

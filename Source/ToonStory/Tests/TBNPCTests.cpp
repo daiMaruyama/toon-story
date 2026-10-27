@@ -87,6 +87,8 @@ bool FTBNPCDummyTest::RunTest(const FString& Parameters)
  Mode->SetRules(PC, Rules);
  PC->GetPlayerState<ATBPlayerState>()->bReady = true;
  Mode->StartRound(PC);
+ Mode->AdvancePreparationClockForTest(0);
+ TestFalse(TEXT("Server released preparation before dummy capture"), State->IsPreparing());
  ATBNPCController* Human = nullptr;
  ATBCharacter* ToyBody = nullptr;
  for (TActorIterator<ATBNPCController> It(World); It; ++It)
@@ -183,6 +185,8 @@ bool FTBNPCFieldTransportTest::RunTest(const FString& Parameters)
  Mode->SetRules(PC, Rules);
  PC->GetPlayerState<ATBPlayerState>()->bReady = true;
  Mode->StartRound(PC);
+ Mode->AdvancePreparationClockForTest(0);
+ TestFalse(TEXT("Server released preparation before field transport"), State->IsPreparing());
  State->Settings.RequiredItems = 100;
  const double Deadline = FPlatformTime::Seconds() + 100;
  ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([this, State, Deadline]()
@@ -284,6 +288,8 @@ bool FTBNPCSoloStartTest::RunTest(const FString& Parameters)
   TestEqual(TEXT("One NPC spawned"), State->PlayerArray.Num(), 2);
   TestEqual(TEXT("Player assigned opposite team"), PC->GetPlayerState<ATBPlayerState>()->Team,
    HumanNPCs ? ETBTeam::Toy : ETBTeam::Human);
+  Mode->AdvancePreparationClockForTest(0);
+  TestFalse(TEXT("Server released preparation before solo normal-round completion"), State->IsPreparing());
   Mode->Finish(ETBWinner::Humans, TEXT("Solo start test"));
   Mode->ReturnToLobby(PC);
   TestEqual(TEXT("NPC removed before rematch"), State->PlayerArray.Num(), 1);
@@ -341,6 +347,8 @@ bool FTBLobbyPreferenceTest::RunTest(const FString& Parameters)
   HUD->NotifyHitBoxClick(TEXT("Start"));
   TestEqual(TEXT("Closed settings start reaches the server"), State->Phase, ETBPhase::Playing);
   TestEqual(TEXT("Host receives the selected team"), Host->Team, Team);
+  Mode->AdvancePreparationClockForTest(0);
+  TestFalse(TEXT("Server released preparation before preference normal-round completion"), State->IsPreparing());
   Mode->Finish(ETBWinner::Humans, TEXT("Preference test"));
   Mode->ReturnToLobby(PC);
  }
@@ -381,6 +389,8 @@ bool FTBNPCMatchTest::RunTest(const FString& Parameters)
 	PC->GetPlayerState<ATBPlayerState>()->bReady = true;
 	Mode->StartRound(PC);
 	if (!TestEqual(TEXT("Solo host can start with NPCs"), State->Phase, ETBPhase::Playing)) return false;
+	Mode->AdvancePreparationClockForTest(0);
+	TestFalse(TEXT("Server released preparation before NPC lifecycle"), State->IsPreparing());
 	ATBNPCController* Human = nullptr;
 	ATBNPCController* Toy = nullptr;
 	for (TActorIterator<ATBNPCController> It(World); It; ++It)
@@ -585,8 +595,8 @@ bool FTBNPCTravelTest::RunTest(const FString& Parameters)
 	{
 		auto* Current = CurrentWorld();
 		auto* Match = Current ? Current->GetGameState<ATBGameState>() : nullptr;
-		if ((!Match || Match->Phase != ETBPhase::Playing) && FPlatformTime::Seconds() < Deadline) return false;
-		*Arrived = Match && Match->Phase == ETBPhase::Playing && TBLobbySettings::StageIndex(Current) == 1;
+		if ((!Match || Match->Phase != ETBPhase::Playing || Match->IsPreparing()) && FPlatformTime::Seconds() < Deadline) return false;
+		*Arrived = Match && Match->Phase == ETBPhase::Playing && !Match->IsPreparing() && TBLobbySettings::StageIndex(Current) == 1;
 		TestTrue(TEXT("Match starts after arriving at Demo"), *Arrived);
 		if (*Arrived)
 		{

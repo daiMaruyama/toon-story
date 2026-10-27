@@ -9,6 +9,7 @@
 class ATBCharacter;
 class ATBBox;
 class UTBEventDirector;
+class ATBHumanEntrance;
 
 /** サーバー専用の試合管理。開始条件・視線凍結・勝敗を判断する。 */
 UCLASS()
@@ -47,6 +48,34 @@ public:
 	TArray<TObjectPtr<AActor>> SpawnPoints;
 
 private:
+#if WITH_DEV_AUTOMATION_TESTS
+	friend class FTBRoundStartTest;
+	friend class FTBHidePreparationTest;
+	friend class FTBHumanEntranceTest;
+	friend class FTBBoxEscapeTest;
+	friend class FTBRematchTest;
+	friend class FTBStorageHoldTest;
+	friend class FTBAuthoredLightingTest;
+	friend class FTBLobbyVisibleTest;
+	friend class FTBNPCDummyTest;
+	friend class FTBNPCFieldTransportTest;
+	friend class FTBNPCMatchTest;
+	friend class FTBNPCSoloStartTest;
+	friend class FTBLobbyPreferenceTest;
+	void AdvancePreparationClockForTest(double SecondsRemaining);
+	int32 TestFailNPCAfter = INDEX_NONE;
+	int32 TestSuccessfulNPCs = 0;
+	bool bTestNPCFailureReached = false;
+	bool bTestFailRollback = false;
+#endif
+	bool bStartingRound = false;
+	uint32 PreparationRound = 0;
+	uint32 PreparationViewAttempt = 0;
+	bool bObservedPreparationArrival = false;
+	TWeakObjectPtr<ATBHumanEntrance> RoundEntrance;
+	int32 EntranceCursor = 0;
+	bool AdvanceHidePreparation();
+	void FailRoundStart(const FString& Reason, bool bRecovered);
 	UPROPERTY(VisibleAnywhere, Category = "Events")
 	TObjectPtr<UTBEventDirector> EventDirector;
 	int32 LobbyPlayerCount() const;

@@ -39,8 +39,13 @@ constexpr int32 PatrolHistorySize = 8;
 constexpr double PatrolTimeoutSeconds = 30;
 
 constexpr float SightRangeCm = 1400.f;
-constexpr float SightHalfAngleCos = .70710678f; // cos(45 degrees): a 90-degree cone.
 constexpr float SightTargetHeightCm = 15.f;
+constexpr float SightHalfAngleCos = .70710678f; // cos(45 degrees): a 90-degree cone.
+constexpr float SightBodySampleRatio = .7f;
+constexpr float ScanMinPitchDegrees = -30.f;
+constexpr float ScanMaxPitchDegrees = 45.f;
+constexpr float ScanRadiansPerSecond = .7f;
+constexpr float HideDistanceBonusLimitCm = 1000.f;
 constexpr float ThreatRangeCm = 1800.f;
 constexpr float ThreatHalfAngleCos = .65f; // Wider cone for cautious cover selection.
 constexpr float ExposureSampleSpacingCm = 150.f;
@@ -95,6 +100,19 @@ void ATBNPCController::Tick(float DeltaSeconds)
 	auto* Body = Cast<ATBCharacter>(GetPawn());
 	if (!Body) return;
 	Body->StopJumping();
+	if (const auto* State = TB::GS(GetWorld()); State && State->IsPreparing())
+	{
+		Target.Reset(); PendingTarget.Reset(); BatteryTarget.Reset();
+		ClearFocus(EAIFocusPriority::Gameplay);
+		Body->ClearHeldInteraction();
+		if (Body->IsHuman()) StopMovement();
+		else if (State->HidePreparation.bValid && GetWorld()->GetTimeSeconds() >= NextThink)
+		{
+			NextThink = GetWorld()->GetTimeSeconds() + ThinkIntervalMaxSeconds;
+			ThinkHide(Body);
+		}
+		return;
+	}
 	if (!Body->CanAct())
 	{
 		StopMovement();
@@ -171,14 +189,22 @@ bool ATBNPCController::CanSee(const AActor* Actor) const
 	const APawn* Body = GetPawn();
 	if (!Body || !IsValid(Actor) || Actor == Body || Actor->IsHidden()) return false;
 	const FVector Eye = Body->GetPawnViewLocation();
-	const FVector Point = Actor->GetActorLocation() + FVector(0, 0, SightTargetHeightCm);
-	const FVector Delta = Point - Eye;
-	// Both teams use the same 90-degree cone and 14-metre sight range.
-	if (Delta.SizeSquared() > FMath::Square(SightRangeCm) ||
-	    FVector::DotProduct(GetControlRotation().Vector(), Delta.GetSafeNormal()) < SightHalfAngleCos) return false;
+	const auto* Observer = Cast<ATBCharacter>(Body);
+	const float Range = Observer && Observer->IsHuman() ? HumanSightRangeCm : SightRangeCm;
+	FVector Origin, Extent;
+	Actor->GetActorBounds(true, Origin, Extent);
+	if (Extent.IsNearlyZero()) Origin = Actor->GetActorLocation();
 	FCollisionQueryParams Query(SCENE_QUERY_STAT(NPCSight), true, Body);
 	Query.AddIgnoredActor(Actor);
-	return !GetWorld()->LineTraceTestByChannel(Eye, Point, ECC_Visibility, Query);
+	for (float Height : {0.f, float(Extent.Z * SightBodySampleRatio), float(-Extent.Z * SightBodySampleRatio)})
+	{
+		const FVector Point = Origin + FVector(0, 0, Height);
+		const FVector Delta = Point - Eye;
+		if (Delta.SizeSquared() <= FMath::Square(Range) &&
+		    FVector::DotProduct(GetControlRotation().Vector(), Delta.GetSafeNormal()) >= SightHalfAngleCos &&
+		    !GetWorld()->LineTraceTestByChannel(Eye, Point, ECC_Visibility, Query)) return true;
+	}
+	return false;
 }
 
 void ATBNPCController::UpdateControlRotation(float DeltaTime, bool bUpdatePawn)
@@ -189,6 +215,15 @@ void ATBNPCController::UpdateControlRotation(float DeltaTime, bool bUpdatePawn)
 	// AAIController normally flattens pitch for non-pawns, including floor-level decoys.
 	if (Body && Body->IsHuman() && Focus && (Focus->IsA<ATBDummyToy>() || Focus->IsA<ATBCharacter>()))
 		SetControlRotation((Focus->GetActorLocation() - Body->GetPawnViewLocation()).Rotation());
+	else if (Body && Body->IsHuman() && !Focus && !Body->HasCarriedToy() &&
+	         !Target.IsValid() && !PendingTarget.IsValid() && Body->CanAct())
+	{
+		// Scan by time, never by an undiscovered actor's position.
+		FRotator Rotation = GetControlRotation();
+		Rotation.Pitch = FMath::Lerp(ScanMinPitchDegrees, ScanMaxPitchDegrees,
+		    .5f + .5f * FMath::Sin(float(GetWorld()->GetTimeSeconds() * ScanRadiansPerSecond)));
+		SetControlRotation(Rotation);
+	}
 }
 
 void ATBNPCController::CarryToBox(ATBCharacter* Body, ATBBox* Box)
@@ -388,6 +423,43 @@ bool ATBNPCController::PathExposed(const TArray<FVector>& Points) const
 			if (Exposed(FMath::Lerp(Points[Index - 1], Points[Index], float(Sample) / Samples))) return true;
 	}
 	return false;
+}
+
+void ATBNPCController::ThinkHide(ATBCharacter* Body)
+{
+	auto* Nav = UNavigationSystemV1::GetCurrent(GetWorld());
+	const FVector Origin = Body->GetActorLocation();
+	auto* Data = Nav ? Nav->GetNavDataForProps(GetNavAgentPropertiesRef(), Origin) : nullptr;
+	if (!Data) { StopMovement(); return; }
+	VisibleHumans.Reset();
+	for (TActorIterator<ATBCharacter> It(GetWorld()); It; ++It)
+		if (It->IsHuman() && CanSee(*It)) VisibleHumans.Add(*It);
+	const double Now = GetWorld()->GetTimeSeconds();
+	if (Now < CoverUntil && !Exposed(CoverGoal))
+	{
+		WalkTo(CoverGoal, CloseGoalAcceptanceCm);
+		return;
+	}
+	FVector Best = Origin;
+	float BestScore = -1.f;
+	for (int32 Attempt = 0; Attempt < CoverCandidates; ++Attempt)
+	{
+		FNavLocation Point;
+		if (!Nav->GetRandomReachablePointInRadius(Origin, CoverRadiusCm, Point, Data)) continue;
+		auto* Path = UNavigationSystemV1::FindPathToLocationSynchronously(GetWorld(), Origin, Point.Location, this);
+		if (!Path || !Path->IsValid() || Path->IsPartial()) continue;
+		const float Distance = FVector::Dist2D(Origin, Point.Location);
+		if (Distance < PatrolMinDistanceCm) continue;
+		// Cover at the endpoint wins. Crossing exposed ground is allowed during the head start.
+		float Score = Distance + (Exposed(Point.Location) ? 0.f : ExposedRoutePenaltyCm);
+		for (const auto& Human : VisibleHumans)
+			if (Human.IsValid()) Score += FMath::Min(HideDistanceBonusLimitCm, float(FVector::Dist2D(Point.Location, Human->GetActorLocation())));
+		if (Score > BestScore) { BestScore = Score; Best = Point.Location; }
+	}
+	if (BestScore < 0) { StopMovement(); return; }
+	CoverGoal = Best;
+	CoverUntil = Now + CoverHoldSeconds;
+	WalkTo(Best, CloseGoalAcceptanceCm);
 }
 
 void ATBNPCController::ThinkToy(ATBCharacter* Body)

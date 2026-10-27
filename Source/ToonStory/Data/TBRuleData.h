@@ -110,6 +110,10 @@ USTRUCT(BlueprintType)
 struct FTBMatchRules
 {
 	GENERATED_BODY()
+	/** おもちゃが先に隠れる時間。開始・終了時刻をまとめて同期する */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "試合", meta = (Units = "s", ClampMin = "0.1"))
+	float HidePreparationSeconds = 10.f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "試合",
 	          meta = (DisplayName = "試合時間の初期値", Units = "s", ClampMin = "10"))
 	float DefaultDuration = 600.f;
