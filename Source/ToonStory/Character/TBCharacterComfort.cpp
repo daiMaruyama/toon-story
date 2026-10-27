@@ -1,5 +1,6 @@
 #include "TBCharacter.h"
 #include "TBToyPresentation.h"
+#include "TBCharacterGeometry.h"
 #include "Data/TBCharacterData.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -48,7 +49,7 @@ void ATBCharacter::InitializeComfortMovement()
 	GetCharacterMovement()->bUseControllerDesiredRotation = true;
 	GetCharacterMovement()->bCanWalkOffLedgesWhenCrouching = true;
 	GetCharacterMovement()->GetNavAgentPropertiesRef().bCanCrouch = true;
-	GetCharacterMovement()->SetCrouchedHalfHeight(42.f);
+	GetCharacterMovement()->SetCrouchedHalfHeight(TBCharacterGeometry::HumanCrouchedHalfHeight);
 	CrouchedEyeHeight = 26.f;
 	bUseControllerRotationYaw = false;
 }
@@ -57,10 +58,10 @@ void ATBCharacter::ApplyComfortBody(bool Toy)
 {
 	// Recreating the collision shape each frame causes unnecessary overlap/penetration corrections at walls.
 	if (!FMath::IsNearlyEqual(GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight(),
-	                          Toy ? 13.f * TBToyPresentation::SizeScale : (bIsCrouched ? 42.f : 65.f)))
+	                          Toy ? TBCharacterGeometry::ToyHalfHeight : (bIsCrouched ? TBCharacterGeometry::HumanCrouchedHalfHeight : TBCharacterGeometry::HumanHalfHeight)))
 	{
-		GetCapsuleComponent()->SetCapsuleSize(Toy ? 10.f * TBToyPresentation::SizeScale : 26.f,
-		                                      Toy ? 13.f * TBToyPresentation::SizeScale : (bIsCrouched ? 42.f : 65.f));
+		GetCapsuleComponent()->SetCapsuleSize(Toy ? TBCharacterGeometry::ToyRadius : TBCharacterGeometry::HumanRadius,
+		                                      Toy ? TBCharacterGeometry::ToyHalfHeight : (bIsCrouched ? TBCharacterGeometry::HumanCrouchedHalfHeight : TBCharacterGeometry::HumanHalfHeight));
 	}
 	BaseEyeHeight = Toy ? 7.f * TBToyPresentation::SizeScale : (bIsCrouched ? 26.f : 42.f);
 	Camera->SetRelativeLocation(FVector(0, 0, BaseEyeHeight));

@@ -37,7 +37,13 @@ public:
 	// 見える木箱とは独立した、従来の収納先の部屋。
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	TObjectPtr<USceneComponent> StorageRoom;
+	// Collision geometry owns the room bounds; escape validation must not duplicate its dimensions.
+	FBox StorageRoomBounds() const;
 	void ReleasePrisoners();
+	// Generation zero is reserved for the existing server-side team rescue path.
+	bool ReleasePrisoner(ATBCharacter* Toy, uint32 Generation, const TArray<FTransform>& Exits, bool bNotify = true);
+	uint32 CaptureGeneration(const ATBCharacter* Toy) const;
+	void ResetCaptivity();
 	// 救助・収納の秒数や範囲はマスターデータ（TB::Rules().Box）にある。
 	UPROPERTY(Replicated, BlueprintReadOnly)
 	float RescueProgress = 0.f;
@@ -58,6 +64,9 @@ public:
 	FTBBoxOpened OnOpened;
 
 private:
+	struct FCaptivity { uint32 Round = 0; uint32 Generation = 0; };
+	TMap<TWeakObjectPtr<ATBCharacter>, FCaptivity> Captivity;
+	uint32 NextCaptureGeneration = 0;
 	UFUNCTION(NetMulticast, Reliable)
 	void MulticastOpened();
 	void RefreshAppearance();

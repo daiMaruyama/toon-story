@@ -95,6 +95,14 @@ bool FTBRuleDataValidationTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Taunt cooldown at lower bound is accepted"), Passes(*TauntRules));
 	TauntRules->Toys.TauntCooldownSeconds = .2f;
 	TestTrue(TEXT("Longer taunt cooldown is accepted"), Passes(*TauntRules));
+	for (float Invalid : {-1.f, 0.f, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::infinity()})
+	{
+		auto* TimingRules = NewObject<UTBRuleData>();
+		TimingRules->Match.HidePreparationSeconds = Invalid;
+		TestFalse(TEXT("Invalid hiding duration is rejected"), Passes(*TimingRules));
+		TimingRules->Match.HidePreparationSeconds = 6.f;
+		TestTrue(TEXT("Non-default timing settings are accepted"), Passes(*TimingRules));
+	}
 	return true;
 }
 #endif

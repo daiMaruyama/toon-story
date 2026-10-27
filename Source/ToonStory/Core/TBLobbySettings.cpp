@@ -17,17 +17,19 @@ namespace
 {
 	struct FStageDefinition
 	{
+		int32 Id;
 		const TCHAR* Path;
 		const TCHAR* Name;
 		int32 ItemCount;
 	};
 	// ロビーでの表示・上限。実際のアイテム数はステージ到着時に再確認する。
-	constexpr FStageDefinition Stages[] = {{TEXT("/Game/Maps/TB_KidsRoom"), TEXT("Kids' Rooms"), 7},
-	                                       {TEXT("/Game/Maps/TB_ToyWorldDemoExpanded"), TEXT("Demo ＋ こども部屋"), 10},
-	                                       {TEXT("/Game/Maps/TB_ArchViz"), TEXT("ArchViz Apartment"), 8}};
+	// IDs survive saved selections; retired IDs and invalid values fall back to the retained Demo.
+	constexpr FStageDefinition Stages[] = {{TBLobbySettings::DemoStageId, TEXT("/Game/Maps/TB_ToyWorldDemoExpanded"), TEXT("Demo ＋ こども部屋"), 10},
+	                                       {TBLobbySettings::HouseStageId, TEXT("/Game/Maps/TB_StylizedHouse"), TEXT("Stylized House"), 8}};
 	const FStageDefinition* FindStage(int32 Index)
 	{
-		return Index >= 0 && Index < UE_ARRAY_COUNT(Stages) ? &Stages[Index] : nullptr;
+		for (const auto& Stage : Stages) if (Stage.Id == Index) return &Stage;
+		return &Stages[0];
 	}
 } // namespace
 
@@ -63,18 +65,18 @@ const TCHAR* TBLobbySettings::StagePath(int32 Index)
 }
 int32 TBLobbySettings::StageIndex(const UWorld* World)
 {
-	for (int32 Index = 0; StagePath(Index); ++Index)
+	for (const auto& Stage : Stages)
 	{
-		if (World && World->GetMapName().EndsWith(FPackageName::GetShortName(StagePath(Index))))
+		if (World && World->GetMapName().EndsWith(FPackageName::GetShortName(Stage.Path)))
 		{
-			return Index;
+			return Stage.Id;
 		}
 	}
 	return INDEX_NONE;
 }
 int32 TBLobbySettings::AvailableItems(UWorld* World)
 {
-	// Authored pickup counts for KidsRoom, Expanded and ArchViz. Revalidated on arrival
+	// Authored pickup counts for the retained Demo and Stylized House. Revalidated on arrival
 	// so a later map edit cannot produce an impossible collection target.
 	if (ShouldTravelToStage(World))
 	{
@@ -101,6 +103,7 @@ void TBLobbySettings::SelectStage(ATBController* Host, int32 Index)
 	auto* World = Host->GetWorld();
 	auto* Mode = World->GetAuthGameMode<ATBGameMode>();
 	auto* State = World->GetGameState<ATBGameState>();
+	Index = FindStage(Index)->Id;
 	const auto* Path = StagePath(Index);
 	auto* Pending = World->GetGameInstance()->GetSubsystem<UTBLobbySettings>();
 	if (!Mode || !Mode->IsHost(Host) || !State || State->Phase != ETBPhase::Lobby || State->bTravelPending || !Path ||
@@ -171,6 +174,8 @@ bool TBLobbySettings::Travel(ATBGameMode* Mode, bool StartMatch)
 	{
 		return false;
 	}
+	State->SelectedStage = FindStage(State->SelectedStage)->Id;
+	if (StartMatch) State->StageName = FindStage(State->SelectedStage)->Name;
 	Pending->PendingRules = State->Settings;
 	Pending->SelectedStage = State->SelectedStage;
 	Pending->ExpectedPlayers = State->PlayerArray.Num();
@@ -262,6 +267,7 @@ void TBLobbySettings::Restore(ATBGameMode* Mode)
 	{
 		Pending->SelectedStage = CurrentStage;
 	}
+	Pending->SelectedStage = FindStage(Pending->SelectedStage)->Id;
 	State->SelectedStage = Pending->SelectedStage;
 	// Arenaなどの直接起動時は、GameModeが設定したマップ名を維持する。
 	if (Pending->bDedicatedLobby || CurrentStage != INDEX_NONE)

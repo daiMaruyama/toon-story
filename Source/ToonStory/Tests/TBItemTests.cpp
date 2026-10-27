@@ -34,10 +34,13 @@ bool FTBItemConditionsTest::RunTest(const FString& Parameters)
 	if (!TestNotNull(TEXT("Player state"), Player)) return false;
 	ATBGameState* State = World->GetGameState<ATBGameState>();
 	const ETBPhase OldPhase = State->Phase;
+	const FTBHidePreparation OldPreparation = State->HidePreparation;
 	const ETBTeam OldTeam = Player->Team;
 	const ETBToyState OldToyState = Player->ToyState;
 	const bool bOldFrozen = Player->bFrozen;
 	State->Phase = ETBPhase::Playing;
+	State->HidePreparation.bValid = true;
+	State->HidePreparation.bHiding = false;
 	Player->Team = ETBTeam::Human;
 	Player->ToyState = ETBToyState::Free;
 	Player->bFrozen = false;
@@ -129,6 +132,7 @@ bool FTBItemConditionsTest::RunTest(const FString& Parameters)
 		}
 	}
 	State->Phase = OldPhase;
+	State->HidePreparation = OldPreparation;
 	Player->Team = OldTeam;
 	Player->ToyState = OldToyState;
 	Player->bFrozen = bOldFrozen;
@@ -152,11 +156,14 @@ bool FTBItemAimTest::RunTest(const FString& Parameters)
 	auto* State = World->GetGameState<ATBGameState>();
 	auto* Player = Human->TBPS();
 	const ETBPhase OldPhase = State->Phase;
+	const FTBHidePreparation OldPreparation = State->HidePreparation;
 	const ETBTeam OldTeam = Player->Team;
 	const bool bOldFrozen = Player->bFrozen;
 	const FTransform OldTransform = Human->GetActorTransform();
 	const FRotator OldAim = PC->GetControlRotation();
 	State->Phase = ETBPhase::Playing;
+	State->HidePreparation.bValid = true;
+	State->HidePreparation.bHiding = false;
 	Player->Team = ETBTeam::Human;
 	Player->bFrozen = false;
 	Human->SetActorLocation(FVector(0, 0, 10000), false, nullptr, ETeleportType::TeleportPhysics);
@@ -219,6 +226,7 @@ bool FTBItemAimTest::RunTest(const FString& Parameters)
 	Human->SetActorTransform(OldTransform, false, nullptr, ETeleportType::TeleportPhysics);
 	PC->SetControlRotation(OldAim);
 	State->Phase = OldPhase;
+	State->HidePreparation = OldPreparation;
 	Player->Team = OldTeam;
 	Player->bFrozen = bOldFrozen;
 	return !HasAnyErrors();

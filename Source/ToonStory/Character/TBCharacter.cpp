@@ -186,7 +186,8 @@ bool ATBCharacter::IsHuman() const
 bool ATBCharacter::CanAct() const
 {
 	const auto* ToyPlayerInfo = TBPS();
-	return TB::Playing(GetWorld()) && ToyPlayerInfo && !ToyPlayerInfo->bFrozen &&
+	const auto* State = TB::GS(GetWorld());
+	return TB::Playing(GetWorld()) && State && !State->IsPreparing() && ToyPlayerInfo && !ToyPlayerInfo->bFrozen &&
 	       (ToyPlayerInfo->Team == ETBTeam::Human ||
 	        (ToyPlayerInfo->Team == ETBTeam::Toy && ToyPlayerInfo->ToyState == ETBToyState::Free));
 }
@@ -200,6 +201,7 @@ bool ATBCharacter::IsPhysicsLocked() const
 {
 	const auto* MatchInfo = TB::GS(GetWorld());
 	const auto* ToyPlayerInfo = TBPS();
+	if (MatchInfo && MatchInfo->IsPreparing() && (!ToyPlayerInfo || ToyPlayerInfo->Team != ETBTeam::Toy)) return true;
 	if (MatchInfo && (MatchInfo->Phase == ETBPhase::Results || MatchInfo->Phase == ETBPhase::Aborted))
 	{
 		return true;
@@ -869,7 +871,8 @@ void ATBCharacter::UpdateItemContact(float DeltaSeconds)
 		return;
 	}
 	auto* ToyPlayerInfo = TBPS();
-	const bool Eligible = TB::Playing(GetWorld()) && ToyPlayerInfo && ToyPlayerInfo->Team == ETBTeam::Toy &&
+	const auto* State = TB::GS(GetWorld());
+	const bool Eligible = TB::Playing(GetWorld()) && State && !State->IsPreparing() && ToyPlayerInfo && ToyPlayerInfo->Team == ETBTeam::Toy &&
 	                      ToyPlayerInfo->ToyState == ETBToyState::Free;
 	if (!Eligible)
 	{

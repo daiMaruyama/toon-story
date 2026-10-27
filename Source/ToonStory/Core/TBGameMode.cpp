@@ -17,6 +17,8 @@
 #include "Character/TBNPCNavigation.h"
 #include "Character/TBToyCharacter.h"
 #include "GamePlay/TBBox.h"
+#include "GamePlay/TBHumanEntrance.h"
+#include "GamePlay/TBBoxEscapeCourse.h"
 #include "GamePlay/TBDummyToy.h"
 #include "GamePlay/TBPickup.h"
 #include "GamePlay/TBBlock.h"
@@ -29,7 +31,14 @@
 #include "EngineUtils.h"
 #include "GameFramework/GameSession.h"
 #include "GameFramework/PlayerStart.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "UObject/ConstructorHelpers.h"
+
+namespace
+{
+	// Survives GameMode replacement during seamless travel; controllers must not accept the prior round's role.
+	uint32 NextPreparationRound = 0;
+}
 
 void ATBGameMode::InitGame(const FString& MapName, const FString& Options, FString& ErrorMessage)
 {
@@ -80,10 +89,9 @@ void ATBGameMode::BeginPlay()
 	{
 		const FString Map = GetWorld()->GetMapName();
 		MatchInfo->PlayerLimit = GameSession ? GameSession->MaxPlayers : 0;
-		MatchInfo->StageName = Map.Contains(TEXT("ToyWorldDemo")) ? TEXT("ToyWorld Demo")
+		MatchInfo->StageName = Map.Contains(TEXT("StylizedHouse")) ? TEXT("Stylized House")
+		                       : Map.Contains(TEXT("ToyWorldDemo")) ? TEXT("ToyWorld Demo")
 		                       : Map.Contains(TEXT("ToyWorld"))   ? TEXT("紙のひみつクラブ")
-		                       : Map.Contains(TEXT("KidsRoom"))   ? TEXT("Kids' Rooms")
-		                       : Map.Contains(TEXT("ArchViz"))    ? TEXT("ArchViz Apartment")
 		                                                          : TEXT("Test Arena");
 		TActorIterator<ATBBox> It(GetWorld());
 		if (It)
@@ -106,7 +114,56 @@ bool ATBGameMode::PlaceInLobby(AController* Player)
 	const auto* State = TB::GS(GetWorld());
 	auto* Pawn = Player ? Cast<ATBCharacter>(Player->GetPawn()) : nullptr;
 	if (!State || State->Phase != ETBPhase::Lobby || !Pawn) return false;
+	auto* World = GetWorld();
+	const TWeakObjectPtr<ATBCharacter> OriginalPawn(Pawn);
+	const TWeakObjectPtr<AController> OriginalController(Player);
+	const FTransform OriginalTransform = Pawn->GetActorTransform();
+	const FVector OriginalVelocity = Pawn->GetCharacterMovement()->Velocity;
+	const EMovementMode OriginalMode = Pawn->GetCharacterMovement()->MovementMode;
+	const uint8 OriginalCustomMode = Pawn->GetCharacterMovement()->CustomMovementMode;
+	auto SameLobbyParticipant = [&]()
+	{
+		return IsValid(World) && !World->bIsTearingDown && IsValid(State) && TB::GS(World) == State &&
+		    State->Phase == ETBPhase::Lobby && OriginalPawn.IsValid() && OriginalController.IsValid() &&
+		    !Pawn->IsActorBeingDestroyed() && !Player->IsActorBeingDestroyed() &&
+		    Player->GetPawn() == Pawn && Pawn->GetController() == Player;
+	};
+	auto RestoreOriginal = [&]()
+	{
+		if (!SameLobbyParticipant()) return false;
+		const bool Restored = Pawn->GetActorTransform().Equals(OriginalTransform, .1f) ||
+		    Pawn->TeleportTo(OriginalTransform.GetLocation(), OriginalTransform.Rotator());
+		if (!SameLobbyParticipant()) return false;
+		if (Restored && Pawn->GetActorTransform().Equals(OriginalTransform, .1f))
+		{
+			auto* Movement = Pawn->GetCharacterMovement();
+			Movement->SetMovementMode(OriginalMode, OriginalCustomMode);
+			if (!SameLobbyParticipant()) return false;
+			Movement->Velocity = OriginalVelocity;
+			if (Pawn->GetActorTransform().Equals(OriginalTransform, .1f)) return true;
+		}
+		// Collision-aware recovery can fail. Do not report a normal unchanged-position refusal in this case.
+		FailRoundStart(TEXT("ロビー配置後の元の位置へ安全に戻せませんでした。"), false);
+		return false;
+	};
 	Pawn->ApplyState();
+	if (!SameLobbyParticipant()) return false;
+	auto Occupied = [&](FVector Center, float Radius, float HalfHeight)
+	{
+		for (TActorIterator<ATBCharacter> Other(World); Other; ++Other)
+		{
+			if (*Other == Pawn || Other->IsActorBeingDestroyed() || !IsValid(Other->GetController()) ||
+			    Other->GetController()->IsActorBeingDestroyed() || Other->GetController()->GetPawn() != *Other) continue;
+			const auto* OtherCapsule = Other->GetCapsuleComponent();
+			const float OtherRadius = OtherCapsule->GetScaledCapsuleRadius();
+			const float OtherHalf = OtherCapsule->GetScaledCapsuleHalfHeight();
+			const FVector Delta = Center - OtherCapsule->GetComponentLocation();
+			const float AxisGap = FMath::Max(0.f, float(FMath::Abs(Delta.Z)) -
+			    FMath::Max(0.f, HalfHeight - Radius) - FMath::Max(0.f, OtherHalf - OtherRadius));
+			if (Delta.SizeSquared2D() + FMath::Square(AxisGap) <= FMath::Square(Radius + OtherRadius + 2.f)) return true;
+		}
+		return false;
+	};
 	for (TActorIterator<ACameraActor> It(GetWorld()); It; ++It)
 	{
 		if (!It->ActorHasTag(TEXT("TBLobbyCamera"))) continue;
@@ -117,6 +174,24 @@ bool ATBGameMode::PlaceInLobby(AController* Player)
 		const float HalfHeight = Pawn->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
 		const float Radius = Pawn->GetCapsuleComponent()->GetScaledCapsuleRadius();
 		FCollisionQueryParams Query(SCENE_QUERY_STAT(LobbySpawn), false, Pawn);
+		const TWeakObjectPtr<ACameraActor> LobbyCamera(*It);
+		auto ClearAt = [&](FVector Center)
+		{
+			if (!SameLobbyParticipant() || !LobbyCamera.IsValid() || !IsValid(Camera)) return false;
+			const float ActualRadius = Pawn->GetCapsuleComponent()->GetScaledCapsuleRadius();
+			const float ActualHalf = Pawn->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+			if (Occupied(Center, ActualRadius, ActualHalf)) return false;
+			const FVector View = Camera->GetComponentTransform().InverseTransformPosition(Center);
+			const float TanHalfFOV = FMath::Tan(FMath::DegreesToRadians(Camera->FieldOfView * .5f));
+			if (View.X < 100 || FMath::Abs(View.Y) + ActualRadius > View.X * TanHalfFOV * .8f ||
+			    FMath::Abs(View.Z) + ActualHalf > View.X * TanHalfFOV / Camera->AspectRatio * .8f) return false;
+			FCollisionQueryParams VisibilityQuery = Query;
+			VisibilityQuery.bTraceComplex = true;
+			FHitResult Obstacle;
+			return !World->LineTraceSingleByChannel(Obstacle, Camera->GetComponentLocation(), Center, ECC_Visibility, VisibilityQuery) &&
+			    !World->OverlapBlockingTestByChannel(Center, FQuat::Identity, ECC_Pawn,
+			        FCollisionShape::MakeCapsule(ActualRadius + 4, ActualHalf), Query);
+		};
 		// Search visible, walkable ground in front of the actual authored lobby camera.
 		for (float Distance : {350.f, 500.f, 750.f, 1000.f, 1400.f, 1900.f})
 		{
@@ -124,6 +199,7 @@ bool ATBGameMode::PlaceInLobby(AController* Player)
 			if (TBLobbySettings::IsLobby(GetWorld()) && Distance < 700.f) continue;
 			for (float Side : {0.f, -80.f, 80.f, -160.f, 160.f, -280.f, 280.f, -420.f, 420.f})
 			{
+				if (!SameLobbyParticipant()) return false;
 				const FVector Target = Eye + Forward * Distance + Right * Side;
 				FHitResult Floor;
 				if (!GetWorld()->SweepSingleByChannel(Floor, FVector(Target.X, Target.Y, Eye.Z),
@@ -131,36 +207,34 @@ bool ATBGameMode::PlaceInLobby(AController* Player)
 				    FCollisionShape::MakeCapsule(Radius + 4, HalfHeight), Query) ||
 				    Floor.bStartPenetrating || Floor.ImpactNormal.Z < .7f) continue;
 				const FVector Center = Floor.Location + FVector(0, 0, 3);
-				const FVector View = Camera->GetComponentTransform().InverseTransformPosition(Center);
-				const float TanHalfFOV = FMath::Tan(FMath::DegreesToRadians(Camera->FieldOfView * .5f));
-				if (View.X < 100 || FMath::Abs(View.Y) + Radius > View.X * TanHalfFOV * .8f ||
-				    FMath::Abs(View.Z) + HalfHeight > View.X * TanHalfFOV / Camera->AspectRatio * .8f) continue;
-				FCollisionQueryParams VisibilityQuery = Query;
-				VisibilityQuery.bTraceComplex = true;
-				FHitResult Obstacle;
-				if (GetWorld()->LineTraceSingleByChannel(Obstacle, Eye, Center, ECC_Visibility, VisibilityQuery))
-				{
-					continue;
-				}
-				if (GetWorld()->OverlapBlockingTestByChannel(Center, FQuat::Identity, ECC_Pawn,
-				        FCollisionShape::MakeCapsule(Radius + 4, HalfHeight), Query))
-				{
-					continue;
-				}
-				if (Pawn->TeleportTo(Center, FRotator(0, (Eye - Center).Rotation().Yaw, 0)))
+				if (!ClearAt(Center)) continue;
+				const bool Teleported = Pawn->TeleportTo(Center, FRotator(0, (Eye - Center).Rotation().Yaw, 0));
+				if (!SameLobbyParticipant()) return false;
+				const FVector Arrived = Pawn->GetActorLocation();
+				const auto* ActualCapsule = Pawn->GetCapsuleComponent();
+				FHitResult ActualFloor;
+				if (Teleported && Arrived.Equals(Center, 1.f) && ClearAt(Arrived) &&
+				    World->SweepSingleByChannel(ActualFloor, Arrived + FVector(0, 0, 1), Arrived - FVector(0, 0, 8),
+				        FQuat::Identity, ECC_Pawn, FCollisionShape::MakeCapsule(ActualCapsule->GetScaledCapsuleRadius() + 4,
+				            ActualCapsule->GetScaledCapsuleHalfHeight()), Query) &&
+				    !ActualFloor.bStartPenetrating && ActualFloor.ImpactNormal.Z >= .7f)
 				{
 					Player->SetControlRotation(Pawn->GetActorRotation());
+					if (!SameLobbyParticipant()) return false;
 					if (auto* PC = Cast<APlayerController>(Player))
 					{
 						PC->ClientSetRotation(Pawn->GetActorRotation(), true);
 					}
+					if (!SameLobbyParticipant()) return false;
 					Pawn->ForceNetUpdate();
 					return true;
 				}
+				if (!RestoreOriginal()) return false;
 			}
 		}
 	}
-	return false; // Keep the map's PlayerStart if no safe camera-visible ground exists.
+	RestoreOriginal(); // Normally unchanged; failed collision-aware restoration explicitly aborts instead.
+	return false;
 }
 
 void ATBGameMode::PostSeamlessTravel()
@@ -219,6 +293,23 @@ void ATBGameMode::BuildArena()
 
 AActor* ATBGameMode::ChoosePlayerStart_Implementation(AController* Player)
 {
+	if (bStartingRound && RoundEntrance.IsValid())
+	{
+		const auto* Info = Player ? Player->GetPlayerState<ATBPlayerState>() : nullptr;
+		if (Info && Info->Team == ETBTeam::Human)
+		{
+			if (!RoundEntrance->DoorSlots.IsValidIndex(EntranceCursor)) return nullptr;
+			return RoundEntrance->DoorSlots[EntranceCursor++].Get();
+		}
+		for (int32 Attempt = 0; Attempt < SpawnPoints.Num(); ++Attempt)
+		{
+			auto* Start = SpawnPoints[SpawnCursor++ % SpawnPoints.Num()].Get();
+			bool DoorSlot = false;
+			for (const auto& Slot : RoundEntrance->DoorSlots) DoorSlot |= Slot.Get() == Start;
+			if (IsValid(Start) && !DoorSlot) return Start;
+		}
+		return nullptr;
+	}
 	if (bBuildTestArena)
 	{
 		BuildArena();
@@ -352,10 +443,11 @@ void ATBGameMode::StartRound(APlayerController* PlayerController)
 {
 	auto* MatchInfo = TB::GS(GetWorld());
 	auto* HostController = Cast<ATBController>(PlayerController);
-	if (!IsHost(PlayerController) || !MatchInfo || (MatchInfo->Phase != ETBPhase::Lobby || MatchInfo->bTravelPending))
+	if (bStartingRound || !IsHost(PlayerController) || !MatchInfo || (MatchInfo->Phase != ETBPhase::Lobby || MatchInfo->bTravelPending))
 	{
 		return;
 	}
+	TGuardValue<bool> StartingGuard(bStartingRound, true);
 	SyncLobbyCounts();
 	TArray<ATBPlayerState*> Players;
 	for (APlayerState* ToyPlayerInfo : MatchInfo->PlayerArray)
@@ -422,6 +514,24 @@ void ATBGameMode::StartRound(APlayerController* PlayerController)
 		if (HostController) HostController->ClientNotice(TEXT("NPCの移動経路を準備できませんでした。"));
 		return;
 	}
+	RoundEntrance = ATBHumanEntrance::Find(GetWorld());
+	EntranceCursor = 0;
+	FString SetupError;
+	int32 Entrances = 0;
+	for (TActorIterator<ATBHumanEntrance> It(GetWorld()); It; ++It) ++Entrances;
+	if (Entrances > 1 || (TBLobbySettings::StageIndex(GetWorld()) == TBLobbySettings::HouseStageId && !RoundEntrance.IsValid()) ||
+	    (RoundEntrance.IsValid() && !RoundEntrance->Validate(GameSession ? GameSession->MaxPlayers : 8, SetupError)))
+	{
+		FailRoundStart(SetupError.IsEmpty() ? TEXT("ステージの入口設定が不足または重複しています。") : SetupError, true);
+		return;
+	}
+	int32 Courses = 0;
+	for (TActorIterator<ATBBoxEscapeCourse> It(GetWorld()); It; ++It)
+	{
+		if (++Courses > 1) { FailRoundStart(TEXT("脱出コースを一つだけ登録してください。"), true); return; }
+		if (It->Box != MatchInfo->Box || !It->Validate(SetupError))
+		{ FailRoundStart(SetupError.IsEmpty() ? TEXT("脱出コースの箱参照が違います。") : SetupError, true); return; }
+	}
 	// 同じ希望内では抽選し、人間希望・希望なし・おもちゃ希望の順に人間枠を割り当てる。
 	for (int32 Index = Players.Num() - 1; Index > 0; --Index)
 	{
@@ -438,43 +548,294 @@ void ATBGameMode::StartRound(APlayerController* PlayerController)
 			}
 		}
 	}
-	for (int32 Index = 0; Index < Ordered.Num(); ++Index)
+	struct FPlacement
 	{
-		auto* ToyPlayerInfo = Ordered[Index];
-		ToyPlayerInfo->Team = Index < MatchInfo->Settings.Humans ? ETBTeam::Human : ETBTeam::Toy;
+		TWeakObjectPtr<ATBPlayerState> Info;
+		TWeakObjectPtr<AController> Controller;
+		TWeakObjectPtr<ATBCharacter> Body;
+		TWeakObjectPtr<AActor> Start;
+		FTransform Original, Destination;
+		ETBTeam Team;
+		ETBTeam AssignedTeam;
+		ETBToyState ToyState;
+		bool Frozen;
+		int32 Items;
+		EMovementMode MovementMode;
+		uint8 CustomMode;
+		FVector Velocity;
+		bool Moved = false;
+	};
+	TArray<FPlacement> Placements;
+	const int32 OriginalCursor = SpawnCursor;
+	const int32 OriginalEntranceCursor = EntranceCursor;
+	auto ValidParticipant = [](const FPlacement& Entry)
+	{
+		return Entry.Info.IsValid() && Entry.Controller.IsValid() && Entry.Body.IsValid() &&
+		       Entry.Info->GetPawn() == Entry.Body.Get() && Entry.Body->GetController() == Entry.Controller.Get() &&
+		       Entry.Controller->GetPlayerState<ATBPlayerState>() == Entry.Info.Get();
+	};
+	if (Ordered.Num() != Players.Num() || TActorIterator<ATBNPCController>(GetWorld()))
+	{
+		FailRoundStart(TEXT("参加者またはNPCの開始状態を確認できませんでした。"), true);
+		return;
+	}
+	for (auto* Info : Ordered)
+	{
+		auto* Body = IsValid(Info) ? Cast<ATBCharacter>(Info->GetPawn()) : nullptr;
+		auto* Controller = Body ? Body->GetController() : nullptr;
+		if (!IsValid(Body) || !IsValid(Controller) || Controller->GetPlayerState<ATBPlayerState>() != Info)
+		{
+			FailRoundStart(TEXT("参加者のキャラクターを確認できませんでした。"), true);
+			return;
+		}
+		const auto* Movement = Body->GetCharacterMovement();
+		FPlacement Entry;
+		Entry.Info = Info; Entry.Controller = Controller; Entry.Body = Body;
+		Entry.Original = Body->GetActorTransform();
+		Entry.Team = Info->Team; Entry.ToyState = Info->ToyState; Entry.Frozen = Info->bFrozen; Entry.Items = Info->Items;
+		Entry.AssignedTeam = Placements.Num() < MatchInfo->Settings.Humans ? ETBTeam::Human : ETBTeam::Toy;
+		Entry.MovementMode = Movement->MovementMode; Entry.CustomMode = Movement->CustomMovementMode;
+		Entry.Velocity = Movement->Velocity;
+		Placements.Add(Entry);
+	}
+	auto Rollback = [&](const FString& Reason)
+	{
+		if (RoundEntrance.IsValid()) RoundEntrance->SetPreparing(false);
+		bool Recovered = true;
+		// Restore every role before restoring any collision shape or position.
+		for (const auto& Entry : Placements)
+		{
+			if (!Entry.Info.IsValid()) { Recovered = false; continue; }
+			Entry.Info->Team = Entry.Team; Entry.Info->ToyState = Entry.ToyState;
+			Entry.Info->bFrozen = Entry.Frozen; Entry.Info->Items = Entry.Items;
+		}
+		for (const auto& Entry : Placements)
+		{
+			if (!ValidParticipant(Entry)) { Recovered = false; continue; }
+			Entry.Body->ApplyState();
+		}
+		for (int32 Index = Placements.Num() - 1; Index >= 0; --Index)
+		{
+			const auto& Entry = Placements[Index];
+			if (!ValidParticipant(Entry)) { Recovered = false; continue; }
+			if (Entry.Moved)
+			{
+				bool Restored = false;
+#if WITH_DEV_AUTOMATION_TESTS
+				if (!bTestFailRollback)
+#endif
+				Restored = Entry.Body->TeleportTo(Entry.Original.GetLocation(), Entry.Original.Rotator());
+				// Collision adjustment is acceptable only within one centimetre of the saved position.
+				if (!Restored || !ValidParticipant(Entry) || !Entry.Body->GetActorLocation().Equals(Entry.Original.GetLocation(), 1.f) ||
+				    !Entry.Body->GetActorRotation().Equals(Entry.Original.Rotator(), .1f)) Recovered = false;
+			}
+			if (!ValidParticipant(Entry)) { Recovered = false; continue; }
+			auto* Movement = Entry.Body->GetCharacterMovement();
+			Movement->SetMovementMode(Entry.MovementMode, Entry.CustomMode);
+			if (!ValidParticipant(Entry)) { Recovered = false; continue; }
+			Movement->Velocity = Entry.Velocity;
+			Entry.Body->ForceNetUpdate();
+		}
+		SpawnCursor = OriginalCursor;
+		EntranceCursor = OriginalEntranceCursor;
+		FailRoundStart(Reason, Recovered);
+	};
+	PreparationViewAttempt = ++NextPreparationRound;
+	if (PreparationViewAttempt == 0) PreparationViewAttempt = ++NextPreparationRound;
+	if (RoundEntrance.IsValid()) RoundEntrance->SetPreparing(true);
+	for (const auto& Entry : Placements)
+		if (auto* PC = Cast<ATBController>(Entry.Controller.Get())) PC->ClientPreparationBegin(PreparationViewAttempt);
+	for (int32 Index = 0; Index < Placements.Num(); ++Index)
+	{
+		const auto& Entry = Placements[Index];
+		if (!ValidParticipant(Entry)) { Rollback(TEXT("開始準備中に参加者が変わりました。")); return; }
+		auto* ToyPlayerInfo = Entry.Info.Get();
+		ToyPlayerInfo->Team = Entry.AssignedTeam;
 		ToyPlayerInfo->ToyState = ETBToyState::Free;
 		ToyPlayerInfo->bFrozen = false;
 		ToyPlayerInfo->Items = 0;
-		ToyPlayerInfo->OnRep_State();
-		// チーム確定後、プレイ開始前に見た目を選ぶ。
-		if (auto* Toy = Cast<ATBToyCharacter>(ToyPlayerInfo->GetPawn())) Toy->ChooseRandomToy();
-		ToyPlayerInfo->ForceNetUpdate();
-		if (auto* ToyCharacter = Cast<ATBCharacter>(ToyPlayerInfo->GetPawn()))
+		Entry.Body->ApplyState();
+	}
+	// Choose once, after final roles/body sizes are applied, before moving anybody.
+	for (auto& Entry : Placements)
+	{
+		if (!ValidParticipant(Entry)) { Rollback(TEXT("開始準備中に参加者が変わりました。")); return; }
+		auto* Start = ChoosePlayerStart(Entry.Controller.Get());
+		if (!IsValid(Start)) { Rollback(TEXT("開始位置がありません。ステージの配置を確認してください。")); return; }
+		Entry.Start = Start;
+		Entry.Destination = Start->GetActorTransform();
+	}
+	for (auto& Entry : Placements)
+	{
+		if (!ValidParticipant(Entry) || !Entry.Start.IsValid())
+		{ Rollback(TEXT("開始配置中に参加者または開始位置が変わりました。")); return; }
+		if (RoundEntrance.IsValid() && Entry.Info->Team == ETBTeam::Human)
 		{
-			if (auto* Start = ChoosePlayerStart(ToyCharacter->GetController()))
-			{
-				ToyCharacter->TeleportTo(Start->GetActorLocation(), Start->GetActorRotation());
-			}
-			ToyCharacter->ClearHeldInteraction();
+			FCollisionQueryParams Query(SCENE_QUERY_STAT(TBFinalEntranceBody), false, Entry.Body.Get());
+			for (const auto& Participant : Placements) if (Participant.Body.IsValid()) Query.AddIgnoredActor(Participant.Body.Get());
+			const auto* Capsule = Entry.Body->GetCapsuleComponent();
+			if (!TB::SupportsCapsule(GetWorld(), Entry.Destination.GetLocation(),
+			    Capsule->GetScaledCapsuleRadius(), Capsule->GetScaledCapsuleHalfHeight(), ECC_Pawn, Query,
+			    Entry.Body->GetCharacterMovement()->GetWalkableFloorZ()))
+			{ Rollback(TEXT("最終体格で入口の安全な床・頭上空間を確認できませんでした。")); return; }
+		}
+		const bool Placed = Entry.Body->TeleportTo(Entry.Destination.GetLocation(), Entry.Destination.Rotator());
+		Entry.Moved = Placed || (Entry.Body.IsValid() && !Entry.Body->GetActorTransform().Equals(Entry.Original));
+		if (!Placed || !ValidParticipant(Entry))
+		{ Rollback(TEXT("開始位置が塞がれています。ステージの配置を確認してください。")); return; }
+		// TeleportTo can succeed at a collision-adjusted location. Validate the actual arrival.
+		if (!Entry.Body->GetActorLocation().Equals(Entry.Destination.GetLocation(), 1.f))
+		{ Rollback(TEXT("開始位置から外れて配置されました。ステージの配置を確認してください。")); return; }
+		if (RoundEntrance.IsValid() && Entry.Info->Team == ETBTeam::Human)
+		{
+			FCollisionQueryParams Query(SCENE_QUERY_STAT(TBArrivedEntranceBody), false, Entry.Body.Get());
+			const auto* Capsule = Entry.Body->GetCapsuleComponent();
+			if (!TB::SupportsCapsule(GetWorld(), Entry.Body->GetActorLocation(),
+			    Capsule->GetScaledCapsuleRadius(), Capsule->GetScaledCapsuleHalfHeight(), ECC_Pawn, Query,
+			    Entry.Body->GetCharacterMovement()->GetWalkableFloorZ()))
+			{ Rollback(TEXT("入口への配置後に安全な床・空間を確認できませんでした。")); return; }
 		}
 	}
-	MatchInfo->Collected = 0;
-	MatchInfo->BoxedCount = 0;
-	MatchInfo->Winner = ETBWinner::None;
-	MatchInfo->EndTime = MatchInfo->GetServerWorldTimeSeconds() + MatchInfo->Settings.Duration;
+	if (LobbyPlayerCount() != Placements.Num())
+	{ Rollback(TEXT("開始準備中に参加人数が変わりました。")); return; }
 	// Spawn only after travel and player assignment; NPCs are not network arrivals or ready voters.
 	if (!SpawnNPCs())
 	{
 		RemoveNPCs();
-		if (HostController) HostController->ClientNotice(TEXT("NPCを配置できませんでした。"));
+		Rollback(TEXT("NPCを配置できませんでした。"));
 		return;
 	}
+	for (const auto& Entry : Placements)
+	{
+		if (!ValidParticipant(Entry))
+		{ RemoveNPCs(); Rollback(TEXT("開始確定前に参加者が変わりました。")); return; }
+	}
+	for (const auto& Entry : Placements)
+	{
+		if (auto* Toy = Cast<ATBToyCharacter>(Entry.Body.Get())) Toy->ChooseRandomToy();
+		if (!ValidParticipant(Entry))
+		{ RemoveNPCs(); Rollback(TEXT("開始確定中に参加者が変わりました。")); return; }
+		Entry.Body->ClearHeldInteraction();
+		Entry.Info->OnRep_State();
+		if (!ValidParticipant(Entry))
+		{ RemoveNPCs(); Rollback(TEXT("開始確定中に参加者が変わりました。")); return; }
+	}
+	for (const auto& Entry : Placements)
+	{
+		if (!ValidParticipant(Entry))
+		{ RemoveNPCs(); Rollback(TEXT("開始確定中に参加者が変わりました。")); return; }
+		Entry.Info->ForceNetUpdate();
+		Entry.Body->ForceNetUpdate();
+	}
+	if (LobbyPlayerCount() != Placements.Num())
+	{ RemoveNPCs(); Rollback(TEXT("開始確定中に参加人数が変わりました。")); return; }
+	TArray<FPlacement> NPCPlacements;
+	for (TActorIterator<ATBNPCController> It(GetWorld()); It; ++It)
+	{
+		FPlacement Entry{};
+		Entry.Controller = *It;
+		Entry.Info = It->GetPlayerState<ATBPlayerState>();
+		Entry.Body = Cast<ATBCharacter>(It->GetPawn());
+		if (!ValidParticipant(Entry))
+		{ RemoveNPCs(); Rollback(TEXT("開始確定前にNPCが変わりました。")); return; }
+		Entry.AssignedTeam = Entry.Info->Team;
+		NPCPlacements.Add(Entry);
+	}
+	MatchInfo->Collected = 0;
+	MatchInfo->BoxedCount = 0;
+	MatchInfo->Winner = ETBWinner::None;
+	MatchInfo->Reason.Reset();
+	MatchInfo->HidePreparation.bValid = true;
+	MatchInfo->HidePreparation.bHiding = true;
+	PreparationRound = PreparationViewAttempt;
+	MatchInfo->HidePreparation.Round = PreparationRound;
+	MatchInfo->HidePreparation.StartsAt = MatchInfo->GetServerWorldTimeSeconds();
+	MatchInfo->HidePreparation.EndsAt = MatchInfo->HidePreparation.StartsAt + TB::Rules().Match.HidePreparationSeconds;
+	MatchInfo->EndTime = 0;
 	MatchInfo->Phase = ETBPhase::Playing;
+	const uint32 CommittedRound = PreparationRound;
+	const auto CommittedEntrance = RoundEntrance;
+	auto CheckCommittedParticipants = [&]()
+	{
+		// A callback may already have ended this round. Never send its old rotation/role afterward.
+		if (!IsValid(MatchInfo) || TB::GS(GetWorld()) != MatchInfo || MatchInfo->Phase != ETBPhase::Playing ||
+		    PreparationRound != CommittedRound || !MatchInfo->HidePreparation.bValid ||
+		    !MatchInfo->HidePreparation.bHiding || MatchInfo->HidePreparation.Round != CommittedRound) return false;
+		bool Valid = LobbyPlayerCount() == Placements.Num() &&
+		    MatchInfo->PlayerArray.Num() == Placements.Num() + NPCPlacements.Num() &&
+		    (!CommittedEntrance.IsExplicitlyNull() ? CommittedEntrance.IsValid() && RoundEntrance == CommittedEntrance : !RoundEntrance.IsValid());
+		for (const auto& Entry : Placements)
+			Valid &= ValidParticipant(Entry) && Entry.Info->Team == Entry.AssignedTeam;
+		for (const auto& Entry : NPCPlacements)
+			Valid &= ValidParticipant(Entry) && Entry.Info->Team == Entry.AssignedTeam;
+		if (!Valid) Finish(ETBWinner::None, TEXT("開始確定後に参加者が変わりました。ロビーへ戻ってください。"), true);
+		return Valid;
+	};
+	for (const auto& Entry : NPCPlacements)
+	{
+		if (!CheckCommittedParticipants()) return;
+		Entry.Body->ApplyState();
+		if (!CheckCommittedParticipants()) return;
+	}
+	for (const auto& Entry : Placements)
+	{
+		if (!CheckCommittedParticipants()) return;
+		Entry.Body->ApplyState();
+		if (!CheckCommittedParticipants()) return;
+	}
+	// All placement and state callbacks succeeded before any entrance view is changed.
+	for (const auto& Entry : Placements)
+	{
+		if (!CheckCommittedParticipants()) return;
+		if (auto* PC = Cast<ATBController>(Entry.Controller.Get()))
+		{
+			if (CommittedEntrance.IsValid() && Entry.AssignedTeam == ETBTeam::Human)
+			{
+				const FRotator Facing(0, Entry.Destination.Rotator().Yaw, 0);
+				PC->SetControlRotation(Facing);
+				if (!CheckCommittedParticipants()) return;
+				PC->ClientSetRotation(Facing, true);
+				if (!CheckCommittedParticipants()) return;
+			}
+			PC->ClientPreparationRole(CommittedRound, Entry.AssignedTeam);
+			if (!CheckCommittedParticipants()) return;
+		}
+	}
 	MatchInfo->ForceNetUpdate();
 	if (auto* Session = GetGameInstance()->GetSubsystem<UTBSession>())
 	{
 		Session->RefreshLobbyAvailability();
 	}
+}
+
+void ATBGameMode::FailRoundStart(const FString& Reason, bool bRecovered)
+{
+	auto* State = TB::GS(GetWorld());
+	if (!State) return;
+	State->EndTime = 0;
+	if (RoundEntrance.IsValid()) RoundEntrance->SetPreparing(false);
+	State->HidePreparation = FTBHidePreparation();
+	State->Reason = bRecovered ? Reason + TEXT(" 準備をやり直してください。")
+	                          : Reason + TEXT(" 元の位置へ安全に戻せませんでした。ロビーへ戻ってください。");
+	State->Phase = bRecovered ? ETBPhase::Lobby : ETBPhase::Aborted;
+	if (!bRecovered) State->Winner = ETBWinner::None;
+	for (APlayerState* Player : State->PlayerArray)
+	{
+		if (auto* Info = Cast<ATBPlayerState>(Player); Info && !Info->IsABot())
+		{
+			Info->bReady = false;
+			Info->ForceNetUpdate();
+		}
+	}
+	State->ForceNetUpdate();
+	for (auto It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+		if (auto* PC = Cast<ATBController>(It->Get()))
+		{
+			PC->ClientPreparationCancelled(PreparationViewAttempt);
+			PC->ClientNotice(State->Reason);
+		}
+	if (auto* Session = GetGameInstance()->GetSubsystem<UTBSession>())
+		Session->RefreshLobbyAvailability();
 }
 
 // 接続・PlayerState・マップを保持し、試合に属する状態だけを初期化する。
@@ -485,7 +846,11 @@ void ATBGameMode::ReturnToLobby(APlayerController* PlayerController)
 	{
 		return;
 	}
+	State->HidePreparation = FTBHidePreparation();
+	for (auto It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+		if (auto* PC = Cast<ATBController>(It->Get())) PC->ClientPreparationCancelled(PreparationRound);
 	RemoveNPCs();
+	if (RoundEntrance.IsValid()) RoundEntrance->SetPreparing(false);
 	if (GetGameInstance()->GetSubsystem<UTBLobbySettings>()->bDedicatedLobby)
 	{
 		if (!TBLobbySettings::Travel(this, false)) return;
@@ -573,10 +938,12 @@ void ATBGameMode::ResetStageInteractions()
 	}
 	for (TActorIterator<ATBBox> It(GetWorld()); It; ++It)
 	{
+		It->ResetCaptivity();
 		It->RescueProgress = 0;
 		It->Rescuers = 0;
 		It->ForceNetUpdate();
 	}
+
 }
 
 // 頭・胴・足の3点について、視野の範囲と壁による遮蔽を確認する。
@@ -622,6 +989,7 @@ bool ATBGameMode::Watched(ATBCharacter* Toy, ATBCharacter* Human) const
 // 誰か1人に見られていれば凍結。全員の視線が外れた次の評価で解除する。
 void ATBGameMode::EvaluateGaze()
 {
+	if (const auto* State = TB::GS(GetWorld()); State && State->IsPreparing()) return;
 	TArray<ATBCharacter*> Humans, Toys;
 	for (TActorIterator<ATBCharacter> It(GetWorld()); It; ++It)
 	{
@@ -642,6 +1010,12 @@ void ATBGameMode::EvaluateGaze()
 	}
 	for (auto* Toy : Toys)
 	{
+		if (Toy->TBPS()->ToyState == ETBToyState::Boxed)
+		{
+			const auto* State = TB::GS(GetWorld());
+			const auto* Course = State ? ATBBoxEscapeCourse::Find(GetWorld(), State->Box) : nullptr;
+			if (Course && Course->Protects(Toy)) { Toy->SetFrozen(false); continue; }
+		}
 		bool Seen = false;
 		for (auto* Human : Humans)
 		{
@@ -658,22 +1032,79 @@ void ATBGameMode::EvaluateGaze()
 void ATBGameMode::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+	auto* Pending = GetGameInstance()->GetSubsystem<UTBLobbySettings>();
+	if (const auto* State = TB::GS(GetWorld()); State && State->bTravelPending && Pending->bStartOnArrival)
+		bObservedPreparationArrival = true;
 	TBLobbySettings::TickArrival(this);
+	if (const auto* State = TB::GS(GetWorld()); State && bObservedPreparationArrival)
+	{
+		if (State->Phase == ETBPhase::Playing) bObservedPreparationArrival = false;
+		else if (State->Phase == ETBPhase::Lobby && !State->bTravelPending &&
+		         !Pending->bStartOnArrival && Pending->PendingMap.IsEmpty())
+		{
+			bObservedPreparationArrival = false;
+			for (auto It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+				if (auto* PC = Cast<ATBController>(It->Get())) PC->ClientPreparationTravelCancelled();
+		}
+	}
 	if (!TB::Playing(GetWorld()))
 	{
 		EventDirector->ResetRound();
 		return;
 	}
+	if (AdvanceHidePreparation()) return;
 	EvaluateGaze();
 	CheckWin();
 	EventDirector->Advance(DeltaSeconds);
+}
+
+// Returns true while preparation (or its cancellation) consumes this server tick.
+#if WITH_DEV_AUTOMATION_TESTS
+void ATBGameMode::AdvancePreparationClockForTest(double SecondsRemaining)
+{
+	if (auto* State = TB::GS(GetWorld()); State && State->IsPreparing())
+	{
+		// Advance the test clock boundary, never bypass the authority's release/validation path.
+		State->HidePreparation.EndsAt = State->GetServerWorldTimeSeconds() + SecondsRemaining;
+		AdvanceHidePreparation();
+	}
+}
+#endif
+
+bool ATBGameMode::AdvanceHidePreparation()
+{
+	auto* State = TB::GS(GetWorld());
+	if (!State || !State->IsPreparing()) return false;
+	bool Human = false, Toy = false;
+	for (APlayerState* Player : State->PlayerArray)
+	{
+		auto* Info = Cast<ATBPlayerState>(Player);
+		auto* Body = Info ? Cast<ATBCharacter>(Info->GetPawn()) : nullptr;
+		if (!IsValid(Body) || !IsValid(Body->GetController())) continue;
+		Human |= Info->Team == ETBTeam::Human;
+		Toy |= Info->Team == ETBTeam::Toy;
+	}
+	if (!Human || !Toy || !State->HidePreparation.bValid || State->HidePreparation.Round != PreparationRound)
+	{
+		Finish(ETBWinner::None, TEXT("隠れる準備に必要な参加者を確認できませんでした。"), true);
+		for (auto It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+			if (auto* PC = Cast<ATBController>(It->Get())) PC->ClientNotice(State->Reason);
+		return true;
+	}
+	if (State->GetServerWorldTimeSeconds() < State->HidePreparation.EndsAt) return true;
+	State->HidePreparation.bHiding = false;
+	if (RoundEntrance.IsValid()) RoundEntrance->SetPreparing(false);
+	State->EndTime = State->GetServerWorldTimeSeconds() + State->Settings.Duration;
+	State->ForceNetUpdate();
+	for (TActorIterator<ATBCharacter> It(GetWorld()); It; ++It) It->ApplyState();
+	return true;
 }
 
 // この呼び出しでは時間切れ → アイテム達成 → 全員収納の順で判定する。
 void ATBGameMode::CheckWin()
 {
 	auto* MatchInfo = TB::GS(GetWorld());
-	if (!MatchInfo || MatchInfo->Phase != ETBPhase::Playing)
+	if (!MatchInfo || MatchInfo->Phase != ETBPhase::Playing || MatchInfo->IsPreparing())
 	{
 		return;
 	}
@@ -718,8 +1149,12 @@ void ATBGameMode::Finish(ETBWinner Winner, const FString& Why, bool Abort)
 		return;
 	}
 	MatchInfo->Winner = Winner;
+	if (RoundEntrance.IsValid()) RoundEntrance->SetPreparing(false);
+	MatchInfo->HidePreparation = FTBHidePreparation();
 	MatchInfo->Reason = Why;
 	MatchInfo->Phase = Abort ? ETBPhase::Aborted : ETBPhase::Results;
+	for (auto It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+		if (auto* PC = Cast<ATBController>(It->Get())) PC->ClientPreparationCancelled(PreparationRound);
 	MatchInfo->ForceNetUpdate();
 	for (TActorIterator<ATBCharacter> It(GetWorld()); It; ++It)
 	{
@@ -772,6 +1207,13 @@ void ATBGameMode::Logout(AController* Exiting)
 	}
 	if (Humans == 0 || Toys == 0)
 	{
+		if (MatchInfo->IsPreparing())
+		{
+			Finish(ETBWinner::None, TEXT("隠れる準備中に陣営の参加者がいなくなりました。"), true);
+			for (auto It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+				if (auto* PC = Cast<ATBController>(It->Get())) PC->ClientNotice(MatchInfo->Reason);
+			return;
+		}
 		Finish(Humans == 0 ? ETBWinner::Toys : ETBWinner::Humans,
 		       Humans == 0 ? TEXT("All humans disconnected") : TEXT("All toys disconnected"));
 	}
@@ -785,11 +1227,22 @@ bool ATBGameMode::SpawnNPCs()
 {
 	const auto* State = TB::GS(GetWorld());
 	if (!State) return false;
+#if WITH_DEV_AUTOMATION_TESTS
+	TestSuccessfulNPCs = 0;
+	bTestNPCFailureReached = false;
+#endif
 	for (ETBTeam Team : {ETBTeam::Human, ETBTeam::Toy})
 	{
 		const int32 Count = Team == ETBTeam::Human ? State->Settings.NPCHumans : State->Settings.NPCToys;
 		for (int32 Index = 0; Index < Count; ++Index)
 		{
+#if WITH_DEV_AUTOMATION_TESTS
+			if (TestFailNPCAfter != INDEX_NONE && TestSuccessfulNPCs >= TestFailNPCAfter)
+			{
+				bTestNPCFailureReached = true;
+				return false;
+			}
+#endif
 			auto* AI = GetWorld()->SpawnActor<ATBNPCController>();
 			if (!AI) return false;
 			auto* Info = AI->GetPlayerState<ATBPlayerState>();
@@ -804,9 +1257,20 @@ bool ATBGameMode::SpawnNPCs()
 			auto* Body = Cast<ATBCharacter>(AI->GetPawn());
 			if (!Body) return false;
 			Body->ApplyState();
+			if (Team == ETBTeam::Human && RoundEntrance.IsValid())
+			{
+				FCollisionQueryParams Query(SCENE_QUERY_STAT(TBNPCEntranceFloor), false, Body);
+				const auto* Capsule = Body->GetCapsuleComponent();
+				if (!TB::SupportsCapsule(GetWorld(), Body->GetActorLocation(),
+				    Capsule->GetScaledCapsuleRadius(), Capsule->GetScaledCapsuleHalfHeight(), ECC_Pawn, Query,
+				    Body->GetCharacterMovement()->GetWalkableFloorZ())) return false;
+			}
 			Body->UpdateNavAgent();
 			if (auto* Toy = Cast<ATBToyCharacter>(Body)) Toy->ChooseRandomToy();
 			Info->ForceNetUpdate();
+#if WITH_DEV_AUTOMATION_TESTS
+			if (IsValid(AI) && IsValid(Body) && AI->GetPawn() == Body && Body->GetController() == AI) ++TestSuccessfulNPCs;
+#endif
 		}
 	}
 	return true;

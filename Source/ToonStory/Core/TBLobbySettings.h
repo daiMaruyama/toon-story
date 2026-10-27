@@ -29,6 +29,8 @@ private:
 };
 namespace TBLobbySettings
 {
+	inline constexpr int32 DemoStageId = 1;
+	inline constexpr int32 HouseStageId = 3;
 	const TCHAR* StagePath(int32 Index);
 	int32 StageIndex(const UWorld* World);
 	int32 AvailableItems(UWorld* World);

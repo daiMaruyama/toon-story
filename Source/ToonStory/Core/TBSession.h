@@ -7,6 +7,7 @@
 #include "OnlineSessionSettings.h"
 #include "Engine/EngineBaseTypes.h"
 #include "TimerManager.h"
+#include "Containers/Ticker.h"
 #include "TBSession.generated.h"
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FTBSessionChanged);
@@ -47,6 +48,9 @@ public:
 	FTBSessionChanged Changed;
 
 private:
+#if WITH_DEV_AUTOMATION_TESTS
+	friend class FTBOfflineReturnTest;
+#endif
 	enum class ESessionOperation : uint8
 	{
 		Idle,
@@ -65,6 +69,14 @@ private:
 	FTimerHandle CloseTimer;
 	FDelegateHandle MapLoadedHandle;
 	bool bReturningOffline = false;
+	FTSTicker::FDelegateHandle OfflineReturnWatch;
+	double OfflineReturnDeadline = 0;
+	bool bOfflineReturnFailurePending = false;
+	TWeakObjectPtr<UWorld> OfflineReturnFailureWorld;
+	bool TickOfflineReturn(float DeltaSeconds);
+	void StopOfflineReturnWatch();
+	void FailOfflineReturn(const FString& Reason, UWorld* FailedWorld = nullptr);
+	void OfflineMapLoaded(UWorld* World);
 	bool bRoomClosed = false;
 	bool bKicked = false;
 	FString DisconnectReason;

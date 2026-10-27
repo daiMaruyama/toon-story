@@ -5,6 +5,7 @@
 #include "GameFramework/PlayerController.h"
 #include "Data/TBTypes.h"
 #include "Audio/TBAudioTypes.h"
+#include "Engine/EngineBaseTypes.h"
 #include "TBController.generated.h"
 
 class UInputMappingContext;
@@ -42,6 +43,16 @@ public:
 	{
 		return bLeaveMenuOpen;
 	}
+	bool ShouldHidePreparationView() const;
+	bool IsShowingEntranceApproach() const { return bEntranceApproach; }
+	UFUNCTION(Client, Reliable)
+	void ClientPreparationRole(uint32 Round, ETBTeam Team);
+	UFUNCTION(Client, Reliable)
+	void ClientPreparationBegin(uint32 Round);
+	UFUNCTION(Client, Reliable)
+	void ClientPreparationCancelled(uint32 Round);
+	UFUNCTION(Client, Reliable)
+	void ClientPreparationTravelCancelled();
 	void ToggleLeaveMenu();
 	/** 陣営に合わせてInput Mapping Contextを付け替える。設定が空なら何もしない */
 	void SyncInputContexts();
@@ -92,6 +103,19 @@ public:
 private:
 	void ClearInputContexts();
 	TArray<TWeakObjectPtr<const UInputMappingContext>> AppliedContexts;
+	bool bPreparationTravelMask = false;
+	bool bPreparationStartMask = false;
+	bool bPreparationBlack = false;
+	bool bEntranceApproach = false;
+	TWeakObjectPtr<class ACameraActor> EntranceCamera;
+	double NextEntranceFootstep = 0;
+	bool bPreparationTravelFailed = false;
+	uint32 PreparationStartRound = 0;
+	FDelegateHandle PreparationTravelFailureHandle;
+	void PreparationTravelFailed(UWorld* World, ETravelFailure::Type Type, const FString& Error);
+	uint32 PreparationViewRound = 0;
+	uint32 LastCompletedPreparationRound = 0;
+	ETBTeam PreparationViewTeam = ETBTeam::None;
 	void UpdateViewAspect();
 	void TickRecovery();
 	TWeakObjectPtr<APawn> RecoveryPawn;

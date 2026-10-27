@@ -35,3 +35,14 @@ namespace TB
 		}
 	}
 }
+
+bool TB::SupportsCapsule(const UWorld* World, FVector Position, float Radius, float HalfHeight,
+    ECollisionChannel Channel, const FCollisionQueryParams& Params, float WalkableZ, float MaxDrop)
+{
+	if (!World || Position.ContainsNaN() || Radius <= 0 || HalfHeight < Radius) return false;
+	const auto Shape = FCollisionShape::MakeCapsule(Radius, HalfHeight);
+	if (World->OverlapBlockingTestByChannel(Position, FQuat::Identity, Channel, Shape, Params)) return false;
+	FHitResult Floor;
+	return World->SweepSingleByChannel(Floor, Position + FVector(0, 0, 1), Position - FVector(0, 0, MaxDrop),
+	    FQuat::Identity, Channel, Shape, Params) && !Floor.bStartPenetrating && Floor.ImpactNormal.Z >= WalkableZ;
+}

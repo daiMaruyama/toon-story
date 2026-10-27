@@ -12,6 +12,7 @@
 #include "Character/TBCharacter.h"
 #include "Data/TBRuleData.h"
 #include "GamePlay/TBBox.h"
+#include "GamePlay/TBBoxEscapeCourse.h"
 #include "Components/SceneComponent.h"
 #include "Engine/Canvas.h"
 #include "Engine/GameInstance.h"
@@ -52,9 +53,8 @@ bool ATBHUD::HandleLobbyPanelClick(FName Name)
 		bStagePickerOpen = false;
 		return true;
 	}
-	const int32 Stage = Name == TEXT("StageKidsRoom")   ? 0
-	                    : Name == TEXT("StageExpanded") ? 1
-	                    : Name == TEXT("StageArchViz")  ? 2
+	const int32 Stage = Name == TEXT("StageExpanded") ? TBLobbySettings::DemoStageId
+	                    : Name == TEXT("StagePlayroom") ? TBLobbySettings::HouseStageId
 	                                                    : INDEX_NONE;
 	if (bStagePickerOpen && Stage != INDEX_NONE)
 	{
@@ -93,6 +93,60 @@ void ATBHUD::DrawLobby()
 		{
 			DrawRect(Color, X + PX * S, Y + PY * S, W * S, H * S);
 		}
+	};
+	auto DrawNotice = [&](float PY, float Width, float AvailableHeight, bool IncludeStatus = false)
+	{
+		constexpr float FontScale = .85f;
+		float TextWidth = 0, TextHeight = 0;
+		GetTextSize(TEXT("あAg"), TextWidth, TextHeight, PaperFont, FontScale);
+		const float LineHeight = FMath::Max(16.f, TextHeight) + 6.f;
+		const int32 MaxLines = FMath::FloorToInt((AvailableHeight - 16.f) / LineHeight);
+		if (MaxLines < 1) return;
+		const float TextArea = Width - 28.f;
+		auto Fits = [&](const FString& Value)
+		{
+			GetTextSize(Value, TextWidth, TextHeight, PaperFont, FontScale);
+			return TextWidth <= TextArea;
+		};
+		auto Ellipsize = [&](FString Value)
+		{
+			while (!Value.IsEmpty() && !Fits(Value + TEXT("…"))) Value.LeftChopInline(1);
+			return Value + TEXT("…");
+		};
+		TArray<FString> Lines;
+		if (IncludeStatus)
+		{
+			if (auto* Session = PC->GetGameInstance()->GetSubsystem<UTBSession>())
+			{
+				FString Status = TBPaper::Status(Session->Status).Replace(TEXT("\r"), TEXT(" ")).Replace(TEXT("\n"), TEXT(" "));
+				// Keep space for the notice even when the session status is long.
+				if (!Status.IsEmpty() && (PC->Notice.IsEmpty() || MaxLines > 1))
+					Lines.Add(Fits(Status) ? Status : Ellipsize(Status));
+			}
+		}
+		FString Line;
+		const FString Message = PC->Notice.Replace(TEXT("\r"), TEXT(""));
+		for (int32 Index = 0; Index < Message.Len(); ++Index)
+		{
+			const TCHAR Character = Message[Index] == TEXT('\t') ? TEXT(' ') : Message[Index];
+			const bool NewLine = Character == TEXT('\n');
+			if (NewLine || !Fits(Line + FString::Chr(Character)))
+			{
+				Lines.Add(Line);
+				Line.Reset();
+				if (Lines.Num() == MaxLines)
+				{
+					Lines.Last() = Ellipsize(Lines.Last());
+					break;
+				}
+			}
+			if (!NewLine) Line.AppendChar(Character);
+		}
+		if (!Line.IsEmpty() && Lines.Num() < MaxLines) Lines.Add(Line);
+		if (Lines.IsEmpty()) return;
+		Panel(28, PY, Width, 16.f + Lines.Num() * LineHeight, TBPaper::Cream);
+		for (int32 Index = 0; Index < Lines.Num(); ++Index)
+			Text(Lines[Index], 42, PY + 8.f + 10.f * FontScale + Index * LineHeight, FontScale, Ink);
 	};
 	auto Button =
 	    [&](FName Id, const FString& Label, float PX, float PY, float W, bool Enabled = true, bool Selected = false, float Height = 42)
@@ -149,6 +203,7 @@ void ATBHUD::DrawLobby()
 		Button(TEXT("Start"),
 		       PC->HasAuthority() ? FString::Printf(TEXT("あそびはじめる [%s]"), *StartKey) : FString(TEXT("ホストを待っています")),
 		       858, Bottom, 294, CanStart, CanStart);
+		DrawNotice(Bottom - 166, 1144, 110);
 		return;
 	}
 	DrawRect(FLinearColor(.009f, .018f, .027f, .48f), 0, 0, Canvas->ClipX, Canvas->ClipY);
@@ -158,13 +213,12 @@ void ATBHUD::DrawLobby()
 		Text(TEXT("ステージを選ぶ"), 312, 194, 1.6f, Accent);
 		Text(TEXT("試合開始時に、選んだステージへ移動します。"), 312, 241, .95f, Muted);
 		const int32 Current = State->SelectedStage;
-		Button(TEXT("StageExpanded"), TEXT("Demo ＋ こども部屋"), 312, 284, 576, PC->HasAuthority(), Current == 1);
-		Text(TEXT("リビングと子ども部屋"), 328, 330, .85f, Muted);
-		Button(TEXT("StageKidsRoom"), TEXT("Kids' Rooms"), 312, 369, 576, PC->HasAuthority(), Current == 0);
-		Text(TEXT("家具付きの4部屋と廊下"), 328, 415, .85f, Muted);
-		Button(TEXT("StageArchViz"), TEXT("ArchViz Apartment"), 312, 454, 576, PC->HasAuthority(), Current == 2);
-		Text(TEXT("アパートの4部屋と通路"), 328, 500, .85f, Muted);
+		Button(TEXT("StagePlayroom"), TEXT("Stylized House"), 312, 284, 576, PC->HasAuthority(), Current == 3);
+		Text(TEXT("家具のおうち"), 328, 330, .85f, Muted);
+		Button(TEXT("StageExpanded"), TEXT("Demo ＋ こども部屋"), 312, 352, 576, PC->HasAuthority(), Current == 1);
+		Text(TEXT("リビングと子ども部屋"), 328, 398, .85f, Muted);
 		Button(TEXT("CancelStage"), TEXT("設定にもどる"), 654, 557, 234);
+		DrawNotice(640, 1144, 100);
 		return;
 	}
 	Text(TEXT("TOON STORY"), 28, 22, 2.3f, TBPaper::Cream);
@@ -251,11 +305,7 @@ void ATBHUD::DrawLobby()
 	}
 	Button(TEXT("OpenOptions"), TEXT("オプション"), 700, 600, 200);
 	Button(TEXT("Leave"), Host ? TEXT("部屋を閉じてタイトルへ") : TEXT("部屋を出てタイトルへ"), 922, 600, 250);
-	if (auto* Session = PC->GetGameInstance()->GetSubsystem<UTBSession>())
-	{
-		Text(TBPaper::Status(Session->Status).Left(115), 28, 660, .95f, TBPaper::Cream);
-	}
-	Text(PC->Notice.Left(115), 28, 688, 1.f, Accent);
+	DrawNotice(592, 650, 120, true);
 	Text(TEXT("おもちゃ：電池を集めて仲間を救助 ／ にんげん：おもちゃを見つけて箱へ"), 28, 722, .9f, TBPaper::Cream);
 }
 
@@ -298,11 +348,63 @@ void ATBHUD::DrawMatch(const ATBGameState& MatchState, ATBController& Controller
 	const float W = Canvas->ClipX, H = Canvas->ClipY;
 	const FLinearColor Ink = TBPaper::Ink, Accent = TBPaper::Accent, Panel = FLinearColor::White;
 	const auto* Player = Controller.GetPlayerState<ATBPlayerState>();
+	if (Controller.ShouldHidePreparationView())
+	{
+		if (!Controller.IsShowingEntranceApproach()) DrawRect(FLinearColor::Black, 0, 0, W, H);
+		const FString Wait = Player && Player->Team == ETBTeam::Human && MatchState.HidePreparation.bValid && MatchState.HidePreparation.bHiding
+		    ? FString::Printf(TEXT("にんげん：おもちゃが隠れるまで待とう　あと%d秒"), FMath::CeilToInt(MatchState.HideRemaining()))
+		    : TEXT("あそぶ準備をしています…");
+		if (Controller.IsShowingEntranceApproach())
+		{
+			PaperPanel(Panel, W * .5f - 300 * S, H - 130 * S, 600 * S, 75 * S);
+			DrawText(FString::Printf(TEXT("にんげん：片付けへ　あと%d秒"), FMath::CeilToInt(MatchState.HideRemaining())),
+			         Ink, W * .5f - 265 * S, H - 100 * S, PaperFont, 1.2f * S);
+		}
+		else DrawText(Wait, TBPaper::Cream, W * .5f - 220 * S, H * .5f, PaperFont, 1.3f * S);
+		return;
+	}
+	if (MatchState.IsPreparing())
+		DrawText(FString::Printf(TEXT("隠れよう！ あと%d秒"), FMath::CeilToInt(MatchState.HideRemaining())),
+		         TBPaper::Accent, W * .5f - 145 * S, 115 * S, PaperFont, 1.3f * S);
 	const bool Child = Player && Player->Team == ETBTeam::Human;
+	if (Player && Player->Team == ETBTeam::Toy && Player->ToyState == ETBToyState::Boxed)
+	{
+		if (const auto* Course = ATBBoxEscapeCourse::Find(GetWorld(), MatchState.Box))
+		{
+			DrawText(TEXT("箱の高いところへ登って脱出しよう"),
+			         Accent, 24 * S, H * .65f, PaperFont, 1.1f * S);
+		}
+	}
 	PaperPanel(Panel, 24 * S, 24 * S, 310 * S, 77 * S);
 	DrawText(Child ? TEXT("にんげん") : TEXT("おもちゃ"), Accent, 40 * S, 35 * S, PaperFont, 1.4f * S);
-	DrawText(Child ? TEXT("おもちゃを見つけて、箱へ。") : TEXT("電池を集めて、仲間を救助。"), Ink, 40 * S, 67 * S,
-	         PaperFont, .95f * S);
+	const TCHAR* Objective = Child ? TEXT("おもちゃを見つけて、箱へ。") : TEXT("電池を集めて、仲間を救助。");
+	if (MatchState.IsPreparing() && Player && Player->Team == ETBTeam::Toy)
+		Objective = TEXT("物かげに隠れよう。電池は開始後！");
+	if (Player && Player->Team == ETBTeam::Toy)
+	{
+		switch (Player->ToyState)
+		{
+			case ETBToyState::Grabbed:
+				Objective = TEXT("捕まった！ 持ち上げられています。");
+				break;
+			case ETBToyState::Carried:
+				Objective = TEXT("運ばれています。今は動けません。");
+				break;
+			case ETBToyState::Storing:
+				Objective = TEXT("箱にしまわれています…");
+				break;
+			case ETBToyState::Boxed:
+				Objective = ATBBoxEscapeCourse::Find(GetWorld(), MatchState.Box)
+				    ? TEXT("上へ登って脱出。仲間の救助も！") : TEXT("箱のなか。仲間の救助を待とう。");
+				break;
+			case ETBToyState::Free:
+				break;
+		}
+	}
+	float ObjectiveWidth = 0, ObjectiveHeight = 0;
+	GetTextSize(Objective, ObjectiveWidth, ObjectiveHeight, PaperFont, 1.f);
+	DrawText(Objective, Ink, 40 * S, 67 * S, PaperFont,
+	         FMath::Min(.95f, 278.f / FMath::Max(ObjectiveWidth, 1.f)) * S);
 	const int32 Seconds = FMath::Max(0, FMath::CeilToInt(MatchState.Remaining()));
 	PaperPanel(Panel, W * .5f - 64 * S, 24 * S, 128 * S, 56 * S);
 	DrawText(FString::Printf(TEXT("%02d:%02d"), Seconds / 60, Seconds % 60), Seconds < 60 ? Accent : Ink,

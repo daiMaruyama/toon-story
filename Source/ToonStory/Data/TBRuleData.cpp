@@ -35,6 +35,10 @@ EDataValidationResult UTBRuleData::IsDataValid(FDataValidationContext& Context) 
 	{
 		Fail(LOCTEXT("TauntCooldownTooShort", "音を鳴らすクールダウンは0.1秒以上の有限の値にしてください。"));
 	}
+	if (!FMath::IsFinite(Match.HidePreparationSeconds) || Match.HidePreparationSeconds < .1f)
+	{
+		Fail(LOCTEXT("InvalidPreparationTiming", "隠れる時間は0.1秒以上の有限の値にしてください。"));
+	}
 	return Result;
 }
 

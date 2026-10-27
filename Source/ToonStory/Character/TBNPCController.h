@@ -24,6 +24,8 @@ public:
 	float RecognitionSeconds = 1.f;
 	UPROPERTY(EditDefaultsOnly, Category = "NPC", meta = (ClampMin = "0.1", ClampMax = "1"))
 	float HumanSpeedScale = .5f;
+	UPROPERTY(EditDefaultsOnly, Category = "NPC", meta = (ClampMin = "1400"))
+	float HumanSightRangeCm = 2200.f;
 
 private:
 	void ThinkHuman(ATBCharacter* Body);
@@ -33,6 +35,7 @@ private:
 	double HumanProgressAt = 0;
 	FVector HumanProgressLocation = FVector::ZeroVector;
 	void ThinkToy(ATBCharacter* Body);
+	void ThinkHide(ATBCharacter* Body);
 	static constexpr float DefaultAcceptanceCm = 20.f;
 	void WalkTo(const FVector& Destination, float Acceptance = DefaultAcceptanceCm);
 	void Wander();

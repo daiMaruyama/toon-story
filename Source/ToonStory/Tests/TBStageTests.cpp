@@ -21,6 +21,7 @@
 #include "Camera/CameraActor.h"
 #include "Core/TBPlayerState.h"
 #include "Core/TBController.h"
+#include "Core/TBLobbySettings.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Camera/CameraComponent.h"
@@ -28,10 +29,11 @@
 #include "Animation/AnimSingleNodeInstance.h"
 #include "GameFramework/CharacterMovementComponent.h"
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBResidentialStageTest, "ToonStory.Stages.RuntimeLayout",
+// Shared presentation coverage survives retirement of the old residential layouts.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBRetainedStagePresentationTest, "ToonStory.Stages.RetainedPresentation",
                                  EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
 
-bool FTBResidentialStageTest::RunTest(const FString& Parameters)
+bool FTBRetainedStagePresentationTest::RunTest(const FString& Parameters)
 {
 	UWorld* World = nullptr;
 	for (const auto& Context : GEngine->GetWorldContexts())
@@ -45,8 +47,8 @@ bool FTBResidentialStageTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
-	const bool Kids = World->GetMapName().Contains(TEXT("KidsRoom"));
-	if (!TestTrue(TEXT("Residential stage loaded"), Kids || World->GetMapName().Contains(TEXT("ArchViz"))))
+	const int32 StageId = TBLobbySettings::StageIndex(World);
+	if (!TestTrue(TEXT("Retained Demo or Stylized House loaded"), StageId == 1 || StageId == 3))
 	{
 		return false;
 	}
@@ -223,22 +225,9 @@ bool FTBResidentialStageTest::RunTest(const FString& Parameters)
 		}
 	}
 	TestTrue(TEXT("At least one character appearance was checked"), VerifiedCharacters > 0);
-	for (TActorIterator<APlayerStart> It(World); It; ++It)
-	{
-		Query.AddIgnoredActor(*It);
-	}
-	int32 Starts = 0, Boxes = 0, Pickups = 0, Doors = 0, Barriers = 0;
-	for (TActorIterator<APlayerStart> It(World); It; ++It)
-	{
-		++Starts;
-		const FVector P = It->GetActorLocation();
-		TestFalse(*FString::Printf(TEXT("Spawn %s clear"), *It->GetName()),
-		          World->OverlapBlockingTestByChannel(P, FQuat::Identity, ECC_Pawn,
-		                                              FCollisionShape::MakeCapsule(34, 88), Query));
-		FHitResult Floor;
-		TestTrue(*FString::Printf(TEXT("Spawn %s has floor"), *It->GetName()),
-		         World->LineTraceSingleByChannel(Floor, P, P - FVector(0, 0, 150), ECC_Pawn, Query));
-	}
+	// These mesh and population checks are shared by the retained stages, unlike the retired doorway grid.
+	int32 Starts = 0, Boxes = 0, Pickups = 0;
+	for (TActorIterator<APlayerStart> It(World); It; ++It) ++Starts;
 	for (TActorIterator<ATBBox> It(World); It; ++It)
 	{
 		++Boxes;
@@ -254,171 +243,9 @@ bool FTBResidentialStageTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("Battery has visible real-world scale"),
 		         FMath::IsNearlyEqual(It->Mesh->Bounds.BoxExtent.Z * 2, 12.0, .5));
 	}
-	for (TActorIterator<AStaticMeshActor> It(World); It; ++It)
-	{
-		FVector Origin, Extent;
-		It->GetActorBounds(false, Origin, Extent);
-		if (It->ActorHasTag(TEXT("TBStructuralBarrier")))
-		{
-			++Barriers;
-			const FVector Across = Extent.X < Extent.Y ? FVector(Extent.X + 35, 0, 0) : FVector(0, Extent.Y + 35, 0);
-			for (const bool Toy : {true, false})
-			{
-				const float HalfHeight = Toy ? 13.f : 65.f;
-				FVector Center = Origin;
-				// 小型化で抜けやすい壁の下端を、実際の体格で検査する。
-				Center.Z = Origin.Z - Extent.Z + HalfHeight + 2.f;
-				for (const float Direction : {-1.f, 1.f})
-				{
-					FHitResult Hit;
-					FCollisionQueryParams WallQuery;
-					for (TActorIterator<AActor> Other(World); Other; ++Other)
-					{
-						if (*Other != *It)
-						{
-							WallQuery.AddIgnoredActor(*Other);
-						}
-					}
-					TestTrue(*FString::Printf(TEXT("Wall blocks %s from either side: %s"),
-					                          Toy ? TEXT("toy") : TEXT("child"), *It->GetName()),
-					         World->SweepSingleByChannel(Hit, Center - Across * Direction, Center + Across * Direction,
-					                                     FQuat::Identity, Toy ? ECC_GameTraceChannel1 : ECC_Pawn,
-					                                     FCollisionShape::MakeCapsule(Toy ? 10.f : 26.f, HalfHeight),
-					                                     WallQuery));
-				}
-			}
-		}
-		// The separately streamed toy-box interior has its own collision layout.
-		if (It->GetLevel() == World->PersistentLevel && Extent.GetMax() * 2 < 30 &&
-		    It->GetStaticMeshComponent()->GetCollisionEnabled() != ECollisionEnabled::NoCollision)
-		{
-			AddError(FString::Printf(TEXT("Small prop must not block players: %s"), *It->GetName()));
-		}
-		if (It->ActorHasTag(TEXT("TBRoomDoorway")))
-		{
-			++Doors;
-			TestEqual(TEXT("Doorway remains fixed"), It->GetStaticMeshComponent()->Mobility.GetValue(),
-			          EComponentMobility::Static);
-		}
-	}
 	TestTrue(TEXT("At least eight distinct starts"), Starts >= 8);
 	TestEqual(TEXT("One toy box"), Boxes, 1);
-	TestTrue(TEXT("Enough collectibles"), Pickups >= 5);
-	TestEqual(TEXT("Connected room openings"), Doors, Kids ? 1 : 4);
-	TestTrue(TEXT("Structural wall collision is authored"), Barriers >= 12);
-	TArray<TPair<FVector, FVector>> Routes;
-	for (int32 Index = 0; Index < 4; ++Index)
-	{
-		AActor* Start = nullptr;
-		AActor* End = nullptr;
-		for (TActorIterator<AActor> It(World); It; ++It)
-		{
-			if (It->ActorHasTag(FName(*FString::Printf(TEXT("TBRouteStart%d"), Index))))
-			{
-				Start = *It;
-			}
-			if (It->ActorHasTag(FName(*FString::Printf(TEXT("TBRouteEnd%d"), Index))))
-			{
-				End = *It;
-			}
-		}
-		if (TestNotNull(TEXT("Door route start"), Start) && TestNotNull(TEXT("Door route end"), End))
-		{
-			Routes.Add({Start->GetActorLocation(), End->GetActorLocation()});
-		}
-	}
-	for (const auto& Route : Routes)
-	{
-		FHitResult Hit;
-		const bool Blocked = World->SweepSingleByChannel(Hit, Route.Key, Route.Value, FQuat::Identity, ECC_Pawn,
-		                                                 FCollisionShape::MakeCapsule(26, 65), Query);
-		TestFalse(*FString::Printf(TEXT("Child can cross doorway; blocker=%s"), *GetNameSafe(Hit.GetActor())), Blocked);
-	}
-
-
-	// Sample real collision, rather than just the doorway markers: furniture must not
-	// isolate a spawn, collectible or the front of the rescue chest from the other rooms.
-	FBox PlayableBounds(ForceInit);
-	for (TActorIterator<AStaticMeshActor> It(World); It; ++It)
-	{
-		if (It->ActorHasTag(TEXT("TBPlayableFloor")))
-		{
-			PlayableBounds += It->GetComponentsBoundingBox();
-		}
-	}
-	if (!TestTrue(TEXT("Playable floor bounds are authored"), PlayableBounds.IsValid != 0)) return false;
-	FVector Seed = FVector::ZeroVector;
-	for (TActorIterator<APlayerStart> It(World); It; ++It) { Seed = It->GetActorLocation(); break; }
-	constexpr float GridStep = 25.f;
-	const int32 Columns = FMath::FloorToInt((PlayableBounds.GetSize().X - 50.f) / GridStep) + 1;
-	const int32 Rows = FMath::FloorToInt((PlayableBounds.GetSize().Y - 50.f) / GridStep) + 1;
-	for (const bool Toy : {false, true})
-	{
-		const float HalfHeight = Toy ? 13.f : 65.f;
-		const auto Capsule = FCollisionShape::MakeCapsule(Toy ? 10.f : 26.f, HalfHeight);
-		auto Position = [&](int32 Cell)
-		{
-			return FVector(PlayableBounds.Min.X + 25.f + (Cell % Columns) * GridStep,
-			               PlayableBounds.Min.Y + 25.f + (Cell / Columns) * GridStep, HalfHeight + 2);
-		};
-		TArray<bool> Clear, Reached;
-		Clear.Init(false, Columns * Rows);
-		Reached.Init(false, Columns * Rows);
-		for (int32 Cell = 0; Cell < Clear.Num(); ++Cell)
-		{
-			const FVector P = Position(Cell);
-			Clear[Cell] = !World->OverlapBlockingTestByChannel(P, FQuat::Identity, ECC_Pawn, Capsule, Query);
-		}
-		TArray<int32> Queue;
-		int32 SeedCell = INDEX_NONE;
-		float SeedDistance = FMath::Square(75.f);
-		FVector SeedPosition(Seed.X, Seed.Y, HalfHeight + 2);
-		for (int32 Cell = 0; Cell < Clear.Num(); ++Cell)
-		{
-			const float Distance = FVector::DistSquared(Position(Cell), SeedPosition);
-			FHitResult Hit;
-			if (Clear[Cell] && Distance < SeedDistance &&
-			    !World->SweepSingleByChannel(Hit, Position(Cell), SeedPosition, FQuat::Identity, ECC_Pawn, Capsule, Query))
-			{
-				SeedCell = Cell; SeedDistance = Distance;
-			}
-		}
-		if (TestTrue(TEXT("A spawn connects to the floor grid"), SeedCell != INDEX_NONE))
-		{
-			Queue.Add(SeedCell); Reached[SeedCell] = true;
-		}
-		for (int32 Head = 0; Head < Queue.Num(); ++Head)
-		{
-			const int32 Cell = Queue[Head];
-			for (const int32 Step : {-1, 1, -Columns, Columns})
-			{
-				const int32 Next = Cell + Step;
-				if (!Clear.IsValidIndex(Next) || !Clear[Next] || Reached[Next] ||
-				    (FMath::Abs(Step) == 1 && Cell / Columns != Next / Columns)) continue;
-				FHitResult Hit;
-				if (!World->SweepSingleByChannel(Hit, Position(Cell), Position(Next), FQuat::Identity, ECC_Pawn, Capsule, Query))
-				{
-					Reached[Next] = true; Queue.Add(Next);
-				}
-			}
-		}
-		for (TActorIterator<AActor> It(World); It; ++It)
-		{
-			const auto* Box = Cast<ATBBox>(*It);
-			if (!It->IsA<APlayerStart>() && !(Toy && It->IsA<ATBPickup>()) && !Box) continue;
-			FVector Target = Box ? Box->InteractionPoint->GetComponentLocation() : It->GetActorLocation();
-			Target.Z = HalfHeight + 2;
-			bool Accessible = false;
-			for (const int32 Cell : Queue)
-			{
-				if (FVector::DistSquared(Position(Cell), Target) > FMath::Square(75.f)) continue;
-				FHitResult Hit;
-				if (!World->SweepSingleByChannel(Hit, Position(Cell), Target, FQuat::Identity, ECC_Pawn, Capsule, Query))
-				{ Accessible = true; break; }
-			}
-			TestTrue(*FString::Printf(TEXT("%s can reach %s through furnished rooms"), Toy ? TEXT("Toy") : TEXT("Human"), *It->GetName()), Accessible);
-		}
-	}
+	TestEqual(TEXT("Retained stage authored collectible count"), Pickups, StageId == 3 ? 8 : 10);
 
 	return !HasAnyErrors();
 }
