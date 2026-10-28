@@ -1,5 +1,6 @@
 // Copyright (c) 2026 Mamodou. All Rights Reserved.
 #include "TBNPCController.h"
+#include "GamePlay/Items/TBMirror.h"
 #include "TBCharacter.h"
 #include "Core/TBGameHelpers.h"
 #include "Core/TBGameState.h"
@@ -203,18 +204,30 @@ bool ATBNPCController::CanSee(const AActor* Actor) const
 		if (Delta.SizeSquared() <= FMath::Square(Range) &&
 		    FVector::DotProduct(GetControlRotation().Vector(), Delta.GetSafeNormal()) >= SightHalfAngleCos &&
 		    !GetWorld()->LineTraceTestByChannel(Eye, Point, ECC_Visibility, Query)) return true;
+		FVector MirrorHit;
+		const float Tan=FMath::Tan(FMath::Acos(FMath::Clamp(SightHalfAngleCos,.01f,.999f)));
+		if (Observer && Observer->IsHuman() && ATBMirror::FindView(Body,Actor,Eye,GetControlRotation(),Point,Tan,Tan,MirrorHit,Range) &&
+		    FVector::DotProduct(GetControlRotation().Vector(),(MirrorHit-Eye).GetSafeNormal())>=SightHalfAngleCos) return true;
 	}
 	return false;
 }
 
 void ATBNPCController::UpdateControlRotation(float DeltaTime, bool bUpdatePawn)
 {
+	const FRotator PreviousView=GetControlRotation();
 	Super::UpdateControlRotation(DeltaTime, bUpdatePawn);
 	const auto* Body = Cast<ATBCharacter>(GetPawn());
 	const auto* Focus = GetFocusActor();
 	// AAIController normally flattens pitch for non-pawns, including floor-level decoys.
 	if (Body && Body->IsHuman() && Focus && (Focus->IsA<ATBDummyToy>() || Focus->IsA<ATBCharacter>()))
-		SetControlRotation((Focus->GetActorLocation() - Body->GetPawnViewLocation()).Rotation());
+	{
+		FVector Aim=Focus->GetActorLocation(), MirrorHit;
+		const FVector Eye=Body->GetPawnViewLocation();
+		// A remembered reflected target must be watched at its reflection, not through a wall.
+		const float Tan=FMath::Tan(FMath::Acos(SightHalfAngleCos));
+		if (!TB::ClearPath(Body,Focus,Eye,Aim) && ATBMirror::FindView(Body,Focus,Eye,PreviousView,Aim,Tan,Tan,MirrorHit,HumanSightRangeCm)) Aim=MirrorHit;
+		SetControlRotation((Aim-Eye).Rotation());
+	}
 	else if (Body && Body->IsHuman() && !Focus && !Body->HasCarriedToy() &&
 	         !Target.IsValid() && !PendingTarget.IsValid() && Body->CanAct())
 	{
