@@ -1,5 +1,6 @@
 #include "Misc/AutomationTest.h"
 #if WITH_DEV_AUTOMATION_TESTS
+#include "Tests/TBTestMatch.h"
 #include "GamePlay/TBHumanEntrance.h"
 #include "GamePlay/TBBoxEscapeCourse.h"
 #include "GamePlay/TBBox.h"
@@ -132,8 +133,7 @@ bool FTBPlayroomVisionTest::RunTest(const FString&)
 	Collision->SetBoxExtent(FVector(20, 200, 400)); Collision->SetCollisionProfileName(TEXT("BlockAll")); Collision->RegisterComponent();
 	Wall->SetActorLocation(Eye + FVector(900, 0, 200));
 	TestFalse(TEXT("Wall occlusion still rejects every body sample"), AI->CanSee(Target));
-	State->Phase = ETBPhase::Playing; State->HidePreparation.bValid = true; State->HidePreparation.bHiding = false;
-	State->EndTime = State->GetServerWorldTimeSeconds() + 60;
+	TBTest::FPlayingScope Playing(*State, State->GetServerWorldTimeSeconds() + 60);
 	AI->UpdateControlRotation(0, false);
 	const float Scan = AI->GetControlRotation().Pitch;
 	Target->SetActorLocation(Eye + FVector(-1000, 1000, 1000));

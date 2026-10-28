@@ -1,5 +1,6 @@
 #include "Misc/AutomationTest.h"
 #if WITH_DEV_AUTOMATION_TESTS
+#include "Tests/TBTestMatch.h"
 #include "Character/TBCharacter.h"
 #include "Core/TBGameState.h"
 #include "Core/TBPlayerState.h"
@@ -47,7 +48,7 @@ bool FTBToyTauntTest::RunTest(const FString& Parameters)
 	Player->bFrozen = false;
 	State->Phase = ETBPhase::Lobby;
 	TestFalse(TEXT("Lobby cannot taunt"), Character->TryTaunt());
-	State->Phase = ETBPhase::Playing;
+	TBTest::FPlayingScope Playing(*State);
 	Player->Team = ETBTeam::Human;
 	TestFalse(TEXT("Humans cannot taunt"), Character->TryTaunt());
 	TestTrue(TEXT("Humans hear taunts"), UTBAudioEvents::ShouldDeliver(ETBSoundEvent::ToyTaunt, Player, Player));

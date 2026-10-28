@@ -1,5 +1,6 @@
 #include "Misc/AutomationTest.h"
 #if WITH_DEV_AUTOMATION_TESTS
+#include "Tests/TBTestMatch.h"
 #include "Character/TBCharacter.h"
 #include "Core/TBController.h"
 #include "Core/TBGameState.h"
@@ -78,7 +79,7 @@ bool FTBRegisteredSurviveGCTest::RunTest(const FString& Parameters)
 
 	// 人間・人形・ロビーのIMCを外してGCを回す。
 	Info->Team = ETBTeam::None;
-	State->Phase = ETBPhase::Playing;
+	TBTest::FPlayingScope Playing(*State);
 	PC->SyncInputContexts();
 	TestFalse(TEXT("Human context is detached"), Input->HasMappingContext(Settings->HumanContext.LoadSynchronous()));
 	TestFalse(TEXT("Toy context is detached"), Input->HasMappingContext(Settings->ToyContext.LoadSynchronous()));

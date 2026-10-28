@@ -1,5 +1,6 @@
 #include "Misc/AutomationTest.h"
 #if WITH_DEV_AUTOMATION_TESTS
+#include "Tests/TBTestMatch.h"
 #include "TBEventTestEvent.h"
 #include "Core/TBGameState.h"
 #include "Data/TBRuleData.h"
@@ -42,7 +43,7 @@ bool FTBEventTest::RunTest(const FString& Parameters)
 	Director->Advance(10);
 	TestFalse(TEXT("Lobby rejects explicit trigger"), Director->TryTrigger(UTBEventTestEvent::StaticClass()));
 	TestEqual(TEXT("Lobby does not roll"), UTBEventTestEvent::Executions, 0);
-	State->Phase = ETBPhase::Playing;
+	TBTest::FPlayingScope Playing(*State);
 	Director->Advance(.5f);
 	TestEqual(TEXT("No roll before one second"), UTBEventTestEvent::Executions, 0);
 	Director->Advance(.5f);

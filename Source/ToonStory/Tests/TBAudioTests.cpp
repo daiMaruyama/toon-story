@@ -1,6 +1,7 @@
 #include "Misc/AutomationTest.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
+#include "Tests/TBTestMatch.h"
 #include "Audio/TBAudioEvents.h"
 #include "Audio/TBAudioSettings.h"
 #include "Audio/TBAudioSubsystem.h"
@@ -492,7 +493,7 @@ bool FTBDummyStoreAudioTest::RunTest(const FString& Parameters)
 	FScopedEmptyAudio Empty(Audio);
 	const auto OldPhase = State->Phase;
 	const auto OldTeam = Human->TBPS()->Team;
-	State->Phase = ETBPhase::Playing;
+	TBTest::FPlayingScope Playing(*State);
 	Human->TBPS()->Team = ETBTeam::Human;
 	auto* Dummy = World->SpawnActor<ATBDummyToy>();
 	FActorSpawnParameters Spawn;

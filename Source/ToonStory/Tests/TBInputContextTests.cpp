@@ -1,5 +1,6 @@
 #include "Misc/AutomationTest.h"
 #if WITH_DEV_AUTOMATION_TESTS
+#include "Tests/TBTestMatch.h"
 #include "Core/TBController.h"
 #include "Core/TBGameState.h"
 #include "Input/TBInputSettings.h"
@@ -92,7 +93,7 @@ bool FTBInputContextTest::RunTest(const FString& Parameters)
 
 	// ロビーのIMCは、ロビーの間だけ付く
 	TestTrue(TEXT("Lobby phase: lobby context"), Input->HasMappingContext(Lobby));
-	State->Phase = ETBPhase::Playing;
+	TBTest::FPlayingScope Playing(*State);
 	PC->SyncInputContexts();
 	TestFalse(TEXT("Playing: lobby context is removed"), Input->HasMappingContext(Lobby));
 	TestTrue(TEXT("Playing: common stays"), Input->HasMappingContext(Common));

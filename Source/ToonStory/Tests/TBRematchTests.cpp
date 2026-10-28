@@ -3,6 +3,7 @@
 #include "Misc/AutomationTest.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
+#include "Tests/TBTestMatch.h"
 #include "Character/TBCharacter.h"
 #include "Core/TBController.h"
 #include "Core/TBGameMode.h"
@@ -274,7 +275,7 @@ bool FTBStorageHoldTest::RunTest(const FString& Parameters)
 	         FVector::Dist(Toy->GetActorLocation(), Box->GetActorLocation()) > 800.f);
 	TestFalse(TEXT("Stored toy cannot rescue itself through the chest wall"), Box->InRange(Toy));
 	// この2人テストでは収納で試合終了する。救助は進行中の試合でのみ許可される。
-	State->Phase = ETBPhase::Playing;
+	TBTest::BeginPlaying(*State);
 	// 落下エリアとテレビがある部屋では、入った瞬間に本人の画面がテレビの方を向く。
 	// 運搬カメラの解除（視点を水平に戻す）より先にテレビがTickしても、解除の後に見上げる向きになる。
 	if (TActorIterator<ATBBoxTV> TV(World); DropArea && TV)

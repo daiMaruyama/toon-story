@@ -1,5 +1,6 @@
 #include "Misc/AutomationTest.h"
 #if WITH_DEV_AUTOMATION_TESTS
+#include "Tests/TBTestMatch.h"
 #include "Core/TBController.h"
 #include "Core/TBGameState.h"
 #include "Core/TBPlayerState.h"
@@ -62,13 +63,12 @@ namespace
 				// 元の状態を控えてから、人間・試合中にする。
 				bStarted = true;
 				OriginalTeam = Body->TBPS()->Team;
-				OriginalPhase = State->Phase;
-				bHasOriginalPhase = true;
 				Body->TBPS()->Team = ETBTeam::Human;
 				PC->SyncInputContexts();
 			}
-			// 人がいない試合はGameModeがすぐ終わらせるので、毎フレーム試合中へ戻す。
-			State->Phase = ETBPhase::Playing;
+			// 人がいない試合はGameModeがすぐ終わらせるので、毎フレーム試合中へ戻す。抜けるときは元のフェーズへ戻る。
+			if (!Playing.IsSet()) Playing.Emplace(*State);
+			Playing->Hold();
 			switch (Frame)
 			{
 			case PressHumanFrame:
@@ -150,10 +150,7 @@ namespace
 			{
 				Body->TBPS()->Team = OriginalTeam;
 			}
-			if (auto* State = PC->GetWorld()->GetGameState<ATBGameState>(); State && bHasOriginalPhase)
-			{
-				State->Phase = OriginalPhase;
-			}
+			Playing.Reset();
 			PC->SyncInputContexts();
 		}
 
@@ -161,9 +158,8 @@ namespace
 		FAutomationTestBase* Test;
 		int32 Frame = 0;
 		bool bStarted = false;
-		bool bHasOriginalPhase = false;
 		ETBTeam OriginalTeam = ETBTeam::None;
-		ETBPhase OriginalPhase = ETBPhase::Lobby;
+		TOptional<TBTest::FPlayingScope> Playing;
 	};
 } // namespace
 

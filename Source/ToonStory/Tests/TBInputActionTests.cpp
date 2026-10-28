@@ -1,5 +1,6 @@
 #include "Misc/AutomationTest.h"
 #if WITH_DEV_AUTOMATION_TESTS
+#include "Tests/TBTestMatch.h"
 #include "Core/TBController.h"
 #include "Core/TBGameState.h"
 #include "Input/TBInputSettings.h"
@@ -82,8 +83,6 @@ namespace
 				// 元の状態を控えてから、人間・試合中・固定の刻みにする。
 				bStarted = true;
 				OriginalTeam = Body->TBPS()->Team;
-				OriginalPhase = State->Phase;
-				OriginalEndTime = State->EndTime;
 				bOriginalFixedStep = FApp::UseFixedTimeStep();
 				OriginalFixedDelta = FApp::GetFixedDeltaTime();
 				bFixedStepChanged = true;
@@ -93,8 +92,9 @@ namespace
 				PC->SyncInputContexts();
 			}
 			// 試合中のまま保つ。
-			State->Phase = ETBPhase::Playing;
-			State->EndTime = State->GetServerWorldTimeSeconds() + KeepAliveSeconds;
+			const double KeepUntil = State->GetServerWorldTimeSeconds() + KeepAliveSeconds;
+			if (!Playing.IsSet()) Playing.Emplace(*State, KeepUntil);
+			Playing->Hold(KeepUntil);
 			switch (Frame)
 			{
 			case PressHumanInteractFrame:
@@ -176,11 +176,7 @@ namespace
 				Body->TBPS()->Team = OriginalTeam;
 				Body->ClearHeldInteraction();
 			}
-			if (auto* State = PC->GetWorld()->GetGameState<ATBGameState>(); State && bStarted)
-			{
-				State->Phase = OriginalPhase;
-				State->EndTime = OriginalEndTime;
-			}
+			Playing.Reset();
 			PC->SyncInputContexts();
 		}
 
@@ -201,8 +197,7 @@ namespace
 		bool bOriginalFixedStep = false;
 		double OriginalFixedDelta = 1.0 / 60.0;
 		ETBTeam OriginalTeam = ETBTeam::None;
-		ETBPhase OriginalPhase = ETBPhase::Lobby;
-		double OriginalEndTime = 0;
+		TOptional<TBTest::FPlayingScope> Playing;
 	};
 } // namespace
 

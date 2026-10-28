@@ -1,6 +1,7 @@
 #include "Misc/AutomationTest.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
+#include "Tests/TBTestMatch.h"
 #include "GamePlay/TBRoomLighting.h"
 #include "GamePlay/TBLightSwitch.h"
 #include "Components/BoxComponent.h"
@@ -96,7 +97,7 @@ bool FTBLightSwitchItemTest::RunTest(const FString& Parameters)
 		if (Room) Room->Destroy();
 	};
 	if (!TestNotNull(TEXT("Room"), Room) || !TestNotNull(TEXT("Switch"), Switch)) return false;
-	State->Phase = ETBPhase::Playing;
+	TBTest::FPlayingScope Playing(*State);
 	Player->Team = ETBTeam::Toy;
 	Player->ToyState = ETBToyState::Free;
 	Player->bFrozen = false;

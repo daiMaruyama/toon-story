@@ -1,5 +1,6 @@
 #include "Misc/AutomationTest.h"
 #if WITH_DEV_AUTOMATION_TESTS
+#include "Tests/TBTestMatch.h"
 #include "GamePlay/Items/TBNoiseRadio.h"
 #include "Audio/TBAudioSubsystem.h"
 #include "Character/TBCharacter.h"
@@ -42,7 +43,7 @@ bool FTBNoiseRadioTest::RunTest(const FString& Parameters)
 		const auto* Clip = OldSounds.Find(Feedback);
 		TestTrue(TEXT("Production catalog excludes progress feedback from masking"), Clip && !Clip->bToyActionSound);
 	}
-	State->Phase = ETBPhase::Playing;
+	TBTest::FPlayingScope Playing(*State);
 	Player->Team = ETBTeam::Toy;
 	Player->ToyState = ETBToyState::Free;
 	Player->bFrozen = false;

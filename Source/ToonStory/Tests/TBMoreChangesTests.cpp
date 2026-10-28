@@ -1,5 +1,6 @@
 #include "Misc/AutomationTest.h"
 #if WITH_DEV_AUTOMATION_TESTS
+#include "Tests/TBTestMatch.h"
 #include "Core/TBGameMode.h"
 #include "Core/TBGameState.h"
 #include "Core/TBPlayerState.h"
@@ -76,7 +77,7 @@ bool FTBRescueEligibilityTest::RunTest(const FString& Parameters)
 	Info->Team = ETBTeam::Toy;
 	Info->ToyState = ETBToyState::Free;
 	Toy->ApplyState();
-	State->Phase = ETBPhase::Playing;
+	TBTest::FPlayingScope Playing(*State);
 	TestEqual(TEXT("Default solo rescue is five seconds"), TB::Rules().Box.RescueSeconds, 5.f);
 	TestFalse(TEXT("Empty box cannot start rescue"), Box->HasPrisoners());
 	TestEqual(TEXT("Free decoys do not block toy movement"),

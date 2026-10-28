@@ -1,5 +1,6 @@
 #include "Misc/AutomationTest.h"
 #if WITH_DEV_AUTOMATION_TESTS
+#include "Tests/TBTestMatch.h"
 #include "Character/TBCharacter.h"
 #include "Core/TBController.h"
 #include "Core/TBGameState.h"
@@ -355,8 +356,6 @@ namespace
 			{
 				bStarted = true;
 				OriginalTeam = Body->TBPS()->Team;
-				OriginalPhase = State->Phase;
-				OriginalEndTime = State->EndTime;
 				Body->TBPS()->Team = ETBTeam::Human;
 				PC->SyncInputContexts();
 				Remapper = MakeUnique<FTBKeyRemapper>(*Test, User);
@@ -364,8 +363,9 @@ namespace
 				Test->TestTrue(TEXT("Remap Human_Crouch to C"),
 				               TB::Remap(PC.Get(), TB::Keys::HumanCrouch, EKeys::C).Result == TB::ERemapResult::OK);
 			}
-			State->Phase = ETBPhase::Playing;
-			State->EndTime = State->GetServerWorldTimeSeconds() + RemapKeepAliveSeconds;
+			const double KeepUntil = State->GetServerWorldTimeSeconds() + RemapKeepAliveSeconds;
+			if (!Playing.IsSet()) Playing.Emplace(*State, KeepUntil);
+			Playing->Hold(KeepUntil);
 			auto* Movement = Body->GetCharacterMovement();
 			switch (Frame)
 			{
@@ -404,11 +404,7 @@ namespace
 				Body->TBPS()->Team = OriginalTeam;
 				Body->GetCharacterMovement()->bWantsToCrouch = false;
 			}
-			if (auto* State = PC->GetWorld()->GetGameState<ATBGameState>(); State && bStarted)
-			{
-				State->Phase = OriginalPhase;
-				State->EndTime = OriginalEndTime;
-			}
+			Playing.Reset();
 			PC->SyncInputContexts();
 		}
 
@@ -418,8 +414,7 @@ namespace
 		int32 Frame = 0;
 		bool bStarted = false;
 		ETBTeam OriginalTeam = ETBTeam::None;
-		ETBPhase OriginalPhase = ETBPhase::Lobby;
-		double OriginalEndTime = 0;
+		TOptional<TBTest::FPlayingScope> Playing;
 	};
 }
 

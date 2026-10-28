@@ -1,5 +1,6 @@
 #include "Misc/AutomationTest.h"
 #if WITH_DEV_AUTOMATION_TESTS
+#include "Tests/TBTestMatch.h"
 #include "Core/TBController.h"
 #include "Core/TBGameState.h"
 #include "Input/TBInputSettings.h"
@@ -65,13 +66,19 @@ namespace
 				bStarted = true;
 				OriginalReady = Info->bReady;
 				OriginalPhase = State->Phase;
+				OriginalPreparation = State->HidePreparation;
 				OriginalEndTime = State->EndTime;
 			}
 			// 開始の前まではロビー、そのあとは試合中のまま保つ。
-			State->Phase = Frame < StartPlayingFrame ? ETBPhase::Lobby : ETBPhase::Playing;
-			if (Frame >= StartPlayingFrame)
+			if (Frame < StartPlayingFrame)
 			{
-				State->EndTime = State->GetServerWorldTimeSeconds() + LobbyKeepAliveSeconds;
+				State->Phase = ETBPhase::Lobby;
+			}
+			else
+			{
+				const double KeepUntil = State->GetServerWorldTimeSeconds() + LobbyKeepAliveSeconds;
+				if (!Playing.IsSet()) Playing.Emplace(*State, KeepUntil);
+				Playing->Hold(KeepUntil);
 			}
 			switch (Frame)
 			{
@@ -123,15 +130,19 @@ namespace
 			auto* State = PC->GetWorld()->GetGameState<ATBGameState>();
 			if (State && PC->IsLeaveMenuOpen())
 			{
-				State->Phase = ETBPhase::Playing;
+				// 退出メニューを閉じるには試合中でなければならない。
+				if (!Playing.IsSet()) Playing.Emplace(*State);
+				Playing->Hold();
 				PC->ToggleLeaveMenu();
 			}
+			Playing.Reset();
 			if (bStarted)
 			{
 				if (auto* Info = PC->GetPlayerState<ATBPlayerState>()) Info->bReady = OriginalReady;
 				if (State)
 				{
 					State->Phase = OriginalPhase;
+					State->HidePreparation = OriginalPreparation;
 					State->EndTime = OriginalEndTime;
 				}
 			}
@@ -144,7 +155,9 @@ namespace
 		bool bStarted = false;
 		bool OriginalReady = false;
 		ETBPhase OriginalPhase = ETBPhase::Lobby;
+		FTBHidePreparation OriginalPreparation;
 		double OriginalEndTime = 0;
+		TOptional<TBTest::FPlayingScope> Playing;
 	};
 } // namespace
 

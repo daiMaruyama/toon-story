@@ -1,5 +1,6 @@
 #include "Misc/AutomationTest.h"
 #if WITH_DEV_AUTOMATION_TESTS
+#include "Tests/TBTestMatch.h"
 #include "Character/TBNPCController.h"
 #include "Character/TBCharacter.h"
 #include "Core/TBGameMode.h"
@@ -216,9 +217,9 @@ bool FTBNPCPerfTest::RunTest(const FString& Parameters)
  Mode->SyncLobbyCounts();
  auto Camera = PC->GetPawn()->GetActorTransform();
  auto Look = PC->GetControlRotation();
- State->Phase = ETBPhase::Playing;
+ // 待機コマンドの最後まで試合中を保ち、最後のコマンドが消えるときに元へ戻す。
+ auto Playing = MakeShared<TBTest::FPlayingScope>(*State, World->GetTimeSeconds() + 600);
  State->Settings.RequiredItems = 100;
- State->EndTime = World->GetTimeSeconds() + 600;
  ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(10));
  ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([]()
  {
@@ -254,7 +255,7 @@ bool FTBNPCPerfTest::RunTest(const FString& Parameters)
  ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(15));
  ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([]() { FCsvProfiler::Get()->EndCapture(); return true; }));
  ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(3));
- ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([this, State]() { TestEqual(TEXT("Match remains active during measurement"), State->Phase, ETBPhase::Playing); return true; }));
+ ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([this, State, Playing]() { TestEqual(TEXT("Match remains active during measurement"), State->Phase, ETBPhase::Playing); return true; }));
  return true;
 }
 

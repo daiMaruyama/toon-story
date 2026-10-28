@@ -1,5 +1,6 @@
 #include "Misc/AutomationTest.h"
 #if WITH_DEV_AUTOMATION_TESTS
+#include "Tests/TBTestMatch.h"
 #include "GamePlay/Events/TBBlackoutEvent.h"
 #include "GamePlay/Events/TBEventDirector.h"
 #include "GamePlay/TBRoomLighting.h"
@@ -49,7 +50,7 @@ bool FTBBlackoutEventTest::RunTest(const FString& Parameters)
 		Owner->Destroy();
 	};
 	if (!TestTrue(TEXT("Authored map has at least two rooms"), Rooms.Num() >= 2)) return false;
-	State->Phase = ETBPhase::Playing;
+	TBTest::FPlayingScope Playing(*State);
 	for (auto* Room : Rooms) Room->SetLightsOn(false);
 	TestFalse(TEXT("Empty room and dark rooms are ineligible"), Event->CanExecute(World));
 	TestFalse(TEXT("No target reports failure"), Event->Execute(World));
