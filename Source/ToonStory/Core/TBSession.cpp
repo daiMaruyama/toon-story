@@ -26,7 +26,7 @@ namespace
 {
 	constexpr double OfflineReturnTimeoutSeconds = 30.0;
 	const FName GameKey(TEXT("TOYBOX_BUILD"));
-	const FString BuildTag(TEXT("ToonStory_ResidentialStages_20261003"));
+	const FString BuildTag(TEXT("ToonStory_ResidentialStages_20261028"));
 	const FName LobbyKey(TEXT("LOBBY_OPEN"));
 } // namespace
 void UTBSession::Initialize(FSubsystemCollectionBase& Collection)
