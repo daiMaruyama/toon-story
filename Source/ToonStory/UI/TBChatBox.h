@@ -5,7 +5,9 @@
 #include "Blueprint/UserWidget.h"
 #include "TBChatBox.generated.h"
 
+struct FTBChatLine;
 class UBorder;
+class UTBChatLog;
 class UCanvasPanelSlot;
 class UEditableText;
 class UFont;
@@ -40,10 +42,15 @@ private:
 	void TextChanged(const FText& Text);
 	UFUNCTION()
 	void TextCommitted(const FText& Text, ETextCommit::Type Method);
-	void Rebuild();
+	void Sync(const UTBChatLog& Log);
+	void AddLine(const FTBChatLine& Line);
 	bool bOpen = false;
 	bool bResults = false;
+	bool bLayoutApplied = false;
 	uint32 BuiltRevision = MAX_uint32;
+	// LineWidgetsと同じ並び。行の通し番号と、最後に入れた透明度（-1はまだ入れていない）。
+	TArray<uint64> LineIds;
+	TArray<float> LineOpacity;
 	UPROPERTY(Transient)
 	TObjectPtr<UFont> PaperFont;
 	UPROPERTY(Transient)

@@ -33,11 +33,14 @@ namespace TB::Chat
 	{
 		return Last >= 0 && Now - Last < Interval;
 	}
-	/** 1回の文字数で切る。サロゲートペアの途中では切らない。 */
-	TOONSTORY_API FString Limit(const FString& Text);
-	/** 改行と制御文字を空白にして前後を詰め、Limitで切る。 */
+	// ログとロビーの一覧に出す名前の長さ。
+	inline constexpr int32 NameLength = 18;
+
+	/** MaxLength文字で切る。サロゲートペアの途中では切らない。 */
+	TOONSTORY_API FString Limit(const FString& Text, int32 MaxLength);
+	/** 見えない文字を消し、改行と制御文字を空白にして前後を詰め、1回の文字数で切る。 */
 	TOONSTORY_API FString Clean(const FString& Text);
-	/** ログに出す名前。ロビーの一覧と同じ長さで切る。 */
+	/** 画面に出す名前。Cleanと同じく見えない文字を消し、NameLengthで切る。 */
 	TOONSTORY_API FString DisplayName(const APlayerState* Player);
 	TOONSTORY_API FString NoticeText(ETBChatNotice Kind, const FString& Name);
 	/** 受け取った側で呼ぶ。SenderNetIdは送った人のUniqueNetIdの文字列（SteamならSteamID）。 */
@@ -55,6 +58,8 @@ struct FTBChatLine
 	bool bNotice = false;
 	// FPlatformTime::Seconds。ワールドの時刻はマップを移ると戻るので使わない。
 	double Time = 0;
+	// 足した順の通し番号。画面は、これで足された行と消えた行を見分ける。
+	uint64 Id = 0;
 };
 
 /** その部屋に入ってから受け取った発言。マップを移っても残し、部屋を作る・入るときに消す。 */
@@ -80,4 +85,5 @@ private:
 	void Push(FTBChatLine&& Line);
 	TArray<FTBChatLine> Lines;
 	uint32 Revision = 0;
+	uint64 NextId = 1;
 };

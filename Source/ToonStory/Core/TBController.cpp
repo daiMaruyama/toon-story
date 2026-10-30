@@ -322,16 +322,21 @@ void ATBController::UpdateMenuInput(bool ShowMenu)
 		bEnableClickEvents = ShowMenu;
 		SetIgnoreLookInput(ShowMenu);
 		SetIgnoreMoveInput(ShowMenu);
-		if (ShowMenu)
-		{
-			FInputModeGameAndUI Mode;
-			Mode.SetHideCursorDuringCapture(false);
-			SetInputMode(Mode);
-		}
-		else
-		{
-			SetInputMode(FInputModeGameOnly());
-		}
+		ApplyMenuInputMode();
+	}
+}
+
+void ATBController::ApplyMenuInputMode()
+{
+	if (bLobbyInput)
+	{
+		FInputModeGameAndUI Mode;
+		Mode.SetHideCursorDuringCapture(false);
+		SetInputMode(Mode);
+	}
+	else
+	{
+		SetInputMode(FInputModeGameOnly());
 	}
 }
 
@@ -643,10 +648,8 @@ void ATBController::CloseChat()
 		return;
 	}
 	ChatBox->SetOpen(false);
-	// フォーカスをゲームへ戻す。ロビーと結果画面の入力モードはUpdateMenuInputと同じ。
-	FInputModeGameAndUI Mode;
-	Mode.SetHideCursorDuringCapture(false);
-	SetInputMode(Mode);
+	// フォーカスをゲームへ戻す。試合が始まった同じフレームで閉じることもあるので、ロビー用と決めつけない。
+	ApplyMenuInputMode();
 }
 
 bool ATBController::SendChat(const FString& Text)

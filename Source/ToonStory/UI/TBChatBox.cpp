@@ -97,6 +97,11 @@ void UTBChatBox::NativeOnInitialized()
 
 void UTBChatBox::SetResultsLayout(bool bInResults)
 {
+	if (bLayoutApplied && bResults == bInResults)
+	{
+		return;
+	}
+	bLayoutApplied = true;
 	bResults = bInResults;
 	PanelSlot->SetPosition(FVector2D(PanelX, (bResults ? ResultsBottom : LobbyBottom) - PanelH));
 }
@@ -115,36 +120,56 @@ void UTBChatBox::SetOpen(bool bInOpen)
 	Scroll->ScrollToEnd();
 }
 
-void UTBChatBox::Rebuild()
+// 履歴は後ろに足すか、前から消すか、全部消すかだけ。消えた行を前から外し、増えた行を後ろに足す。
+void UTBChatBox::Sync(const UTBChatLog& Log)
 {
-	LineBox->ClearChildren();
-	LineWidgets.Reset();
-	const auto* Log = GetGameInstance()->GetSubsystem<UTBChatLog>();
-	BuiltRevision = Log->GetRevision();
-	for (const FTBChatLine& Line : Log->GetLines())
+	BuiltRevision = Log.GetRevision();
+	const auto& Lines = Log.GetLines();
+	const uint64 FirstId = Lines.IsEmpty() ? MAX_uint64 : Lines[0].Id;
+	int32 Removed = 0;
+	while (Removed < LineIds.Num() && LineIds[Removed] < FirstId)
 	{
-		auto MakeText = [this](const FString& Value, FLinearColor Color)
+		LineBox->RemoveChild(LineWidgets[Removed]);
+		++Removed;
+	}
+	LineWidgets.RemoveAt(0, Removed);
+	LineIds.RemoveAt(0, Removed);
+	LineOpacity.RemoveAt(0, Removed);
+	const uint64 LastId = LineIds.IsEmpty() ? 0 : LineIds.Last();
+	for (const FTBChatLine& Line : Lines)
+	{
+		if (Line.Id > LastId)
 		{
-			auto* Block = WidgetTree->ConstructWidget<UTextBlock>();
-			Block->SetText(FText::FromString(Value));
-			Block->SetFont(FSlateFontInfo(PaperFont, 15));
-			Block->SetColorAndOpacity(Color);
-			Block->SetShadowOffset(FVector2D(1, 1));
-			Block->SetShadowColorAndOpacity(FLinearColor(0, 0, 0, .8f));
-			return Block;
-		};
-		auto* Row = WidgetTree->ConstructWidget<UHorizontalBox>();
-		if (!Line.bNotice)
-		{
-			Row->AddChildToHorizontalBox(MakeText(Line.Name + TEXT(": "), Line.bSelf ? SelfName : OtherName));
+			AddLine(Line);
 		}
-		auto* Text = MakeText(Line.Text, Line.bNotice ? Notice : Body);
-		Text->SetAutoWrapText(true);
-		Row->AddChildToHorizontalBox(Text)->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
-		LineBox->AddChildToVerticalBox(Row)->SetPadding(FMargin(0, 1));
-		LineWidgets.Add(Row);
 	}
 	Scroll->ScrollToEnd();
+}
+
+void UTBChatBox::AddLine(const FTBChatLine& Line)
+{
+	auto MakeText = [this](const FString& Value, FLinearColor Color)
+	{
+		auto* Block = WidgetTree->ConstructWidget<UTextBlock>();
+		Block->SetText(FText::FromString(Value));
+		Block->SetFont(FSlateFontInfo(PaperFont, 15));
+		Block->SetColorAndOpacity(Color);
+		Block->SetShadowOffset(FVector2D(1, 1));
+		Block->SetShadowColorAndOpacity(FLinearColor(0, 0, 0, .8f));
+		return Block;
+	};
+	auto* Row = WidgetTree->ConstructWidget<UHorizontalBox>();
+	if (!Line.bNotice)
+	{
+		Row->AddChildToHorizontalBox(MakeText(Line.Name + TEXT(": "), Line.bSelf ? SelfName : OtherName));
+	}
+	auto* Text = MakeText(Line.Text, Line.bNotice ? Notice : Body);
+	Text->SetAutoWrapText(true);
+	Row->AddChildToHorizontalBox(Text)->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+	LineBox->AddChildToVerticalBox(Row)->SetPadding(FMargin(0, 1));
+	LineWidgets.Add(Row);
+	LineIds.Add(Line.Id);
+	LineOpacity.Add(-1.f); // まだ何も入れていない
 }
 
 void UTBChatBox::NativeTick(const FGeometry& Geometry, float DeltaTime)
@@ -157,19 +182,30 @@ void UTBChatBox::NativeTick(const FGeometry& Geometry, float DeltaTime)
 	}
 	if (Log->GetRevision() != BuiltRevision)
 	{
-		Rebuild();
+		Sync(*Log);
 	}
-	// 開いている間は全部。閉じている間は新しい発言だけを出し、最後の1秒で薄れさせる。
+	// 開いている間は全部。閉じている間は新しい発言だけを出し、最後の1秒で薄れさせる。変わった行にだけ入れる。
 	const double Now = FPlatformTime::Seconds();
 	const double ShowSeconds = TB::Rules().Chat.ShowSeconds;
 	const auto& Lines = Log->GetLines();
+	bool bShownChanged = false;
 	for (int32 Index = 0; Index < LineWidgets.Num() && Index < Lines.Num(); ++Index)
 	{
-		const double Left = ShowSeconds - (Now - Lines[Index].Time);
-		LineWidgets[Index]->SetVisibility(bOpen || Left > 0 ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
-		LineWidgets[Index]->SetRenderOpacity(bOpen ? 1.f : FMath::Clamp(float(Left), 0.f, 1.f));
+		const float Opacity = bOpen ? 1.f : FMath::Clamp(float(ShowSeconds - (Now - Lines[Index].Time)), 0.f, 1.f);
+		if (Opacity == LineOpacity[Index])
+		{
+			continue;
+		}
+		// 作ったばかりの行（-1）は、見せるか隠すかを必ず入れる。隠すのを忘れると、透明なまま場所を取る。
+		if (LineOpacity[Index] < 0 || (Opacity > 0) != (LineOpacity[Index] > 0))
+		{
+			LineWidgets[Index]->SetVisibility(Opacity > 0 ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+			bShownChanged = true;
+		}
+		LineWidgets[Index]->SetRenderOpacity(Opacity);
+		LineOpacity[Index] = Opacity;
 	}
-	if (!bOpen)
+	if (bShownChanged)
 	{
 		Scroll->ScrollToEnd();
 	}
@@ -178,9 +214,10 @@ void UTBChatBox::NativeTick(const FGeometry& Geometry, float DeltaTime)
 void UTBChatBox::TextChanged(const FText& Text)
 {
 	const FString Value = Text.ToString();
-	if (Value.Len() > TB::Rules().Chat.MaxLength)
+	const int32 MaxLength = TB::Rules().Chat.MaxLength;
+	if (Value.Len() > MaxLength)
 	{
-		Input->SetText(FText::FromString(TB::Chat::Limit(Value)));
+		Input->SetText(FText::FromString(TB::Chat::Limit(Value, MaxLength)));
 	}
 }
 

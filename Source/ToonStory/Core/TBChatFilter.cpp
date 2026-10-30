@@ -28,8 +28,9 @@ FString TB::Chat::Filter(const UWorld* World, const FString& Text, const FString
 		return Text; // ゲームの言語に伏せ字が無いときは、Steamがそのまま返すのと同じ。
 	}
 	const FTCHARToUTF8 Input(*Text);
+	// 伏せ字の♥はUTF-8で3バイトなので、ASCIIの文字を伏せると入力より長くなる。
 	TArray<ANSICHAR> Output;
-	Output.SetNumZeroed(Input.Length() + 1);
+	Output.SetNumZeroed(Input.Length() * 3 + 1);
 	Utils->FilterText(k_ETextFilteringContextChat, CSteamID(SenderId), Input.Get(), Output.GetData(), Output.Num());
 	return FString(UTF8_TO_TCHAR(Output.GetData()));
 #else

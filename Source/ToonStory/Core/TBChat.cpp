@@ -8,33 +8,51 @@
 #include "GameFramework/PlayerState.h"
 #include "HAL/PlatformTime.h"
 
-FString TB::Chat::Limit(const FString& Text)
+namespace
 {
-	const int32 MaxLength = Rules().Chat.MaxLength;
-	if (Text.Len() <= MaxLength)
+	// 見えないのに幅や向きを変える文字。空に見える発言や、向きを逆にしたなりすましに使える。
+	bool IsHiddenFormat(TCHAR Character)
 	{
-		return Text;
+		return (Character >= 0x200B && Character <= 0x200F) || (Character >= 0x202A && Character <= 0x202E) ||
+		       (Character >= 0x2060 && Character <= 0x2069) || Character == 0xFEFF;
+	}
+
+	// 見えない文字は消し、改行などの制御文字は空白にして、前後を詰める。
+	FString Strip(const FString& Text)
+	{
+		FString Result;
+		Result.Reserve(Text.Len());
+		for (const TCHAR Character : Text)
+		{
+			if (!IsHiddenFormat(Character))
+			{
+				Result.AppendChar(FChar::IsControl(Character) ? TEXT(' ') : Character);
+			}
+		}
+		Result.TrimStartAndEndInline();
+		return Result;
+	}
+}
+
+FString TB::Chat::Limit(const FString& Text, int32 MaxLength)
+{
+	if (MaxLength <= 0 || Text.Len() <= MaxLength)
+	{
+		return MaxLength <= 0 ? FString() : Text;
 	}
 	return Text.Left(StringConv::IsHighSurrogate(Text[MaxLength - 1]) ? MaxLength - 1 : MaxLength);
 }
 
 FString TB::Chat::Clean(const FString& Text)
 {
-	FString Result;
-	Result.Reserve(Text.Len());
-	for (const TCHAR Character : Text)
-	{
-		Result.AppendChar(FChar::IsControl(Character) ? TEXT(' ') : Character);
-	}
-	Result.TrimStartAndEndInline();
-	Result = Limit(Result);
+	FString Result = Limit(Strip(Text), Rules().Chat.MaxLength);
 	Result.TrimEndInline();
 	return Result;
 }
 
 FString TB::Chat::DisplayName(const APlayerState* Player)
 {
-	return Player ? Player->GetPlayerName().Left(18) : FString();
+	return Player ? Limit(Strip(Player->GetPlayerName()), NameLength) : FString();
 }
 
 FString TB::Chat::NoticeText(ETBChatNotice Kind, const FString& Name)
@@ -81,6 +99,7 @@ void UTBChatLog::AddNotice(const FString& Text)
 void UTBChatLog::Push(FTBChatLine&& Line)
 {
 	Line.Time = FPlatformTime::Seconds();
+	Line.Id = NextId++;
 	Lines.Add(MoveTemp(Line));
 	if (Lines.Num() > TB::Chat::MaxLines)
 	{
