@@ -44,6 +44,10 @@ bool FTBChatRulesTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Too soon"), TB::Chat::IsTooSoon(10, 10.5, 1));
 	TestFalse(TEXT("Just the interval"), TB::Chat::IsTooSoon(10, 11, 1));
 	TestTrue(TEXT("Server is looser than the sender"), TB::Chat::ServerSlack < 1);
+
+	// Steamで遊んでいないときの伏せ字は、そのまま返す。
+	TestEqual(TEXT("Filter without a world"), TB::Chat::Filter(nullptr, TEXT("gg"), TEXT("76561197960287930")), FString(TEXT("gg")));
+	TestEqual(TEXT("Filter without a sender"), TB::Chat::Filter(nullptr, TEXT("gg"), FString()), FString(TEXT("gg")));
 	return true;
 }
 
@@ -68,10 +72,25 @@ bool FTBChatLogTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Oldest dropped"), Log->GetLines()[0].Text, FString::FromInt(10));
 	TestEqual(TEXT("Newest kept"), Log->GetLines().Last().Text, FString::FromInt(TB::Chat::MaxLines + 9));
 
+	Log->AddNotice(TEXT("notice"));
+	TestTrue(TEXT("Notice line"), Log->GetLines().Last().bNotice && Log->GetLines().Last().Name.IsEmpty());
+	TestFalse(TEXT("Chat line is not a notice"), Log->GetLines()[0].bNotice);
+
 	const uint32 BeforeClear = Log->GetRevision();
 	Log->Clear();
 	TestEqual(TEXT("Cleared"), Log->GetLines().Num(), 0);
 	TestNotEqual(TEXT("Revision moves on clear"), Log->GetRevision(), BeforeClear);
+	return true;
+}
+
+// 出入りのお知らせの文言。
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBChatNoticeTest, "ToonStory.Chat.Notice",
+                                 EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+bool FTBChatNoticeTest::RunTest(const FString& Parameters)
+{
+	TestEqual(TEXT("Joined"), TB::Chat::NoticeText(ETBChatNotice::Joined, TEXT("A")), FString(TEXT("Aがあそびにきた！")));
+	TestEqual(TEXT("Left"), TB::Chat::NoticeText(ETBChatNotice::Left, TEXT("A")), FString(TEXT("Aがかえっていった")));
+	TestEqual(TEXT("Kicked"), TB::Chat::NoticeText(ETBChatNotice::Kicked, TEXT("A")), FString(TEXT("Aはホストにおうちへ帰された")));
 	return true;
 }
 #endif
