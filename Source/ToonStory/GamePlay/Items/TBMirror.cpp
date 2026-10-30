@@ -1,5 +1,6 @@
 #include "TBMirror.h"
 #include "Data/TBMirrorData.h"
+#include "Core/TBGameHelpers.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/SceneCaptureComponent2D.h"
@@ -15,9 +16,10 @@
 
 ATBMirror::ATBMirror()
 {
-	DisplayName = NSLOCTEXT("TBItems", "Mirror", "Mirror");
+	DisplayName = NSLOCTEXT("TBItems", "Mirror", "鏡");
 	Actions.Reset();
 	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bAllowTickOnDedicatedServer = false;
 	PrimaryActorTick.TickGroup = TG_PostUpdateWork;
 	MirrorData = TSoftObjectPtr<UTBMirrorData>(FSoftObjectPath(TEXT("/Game/Data/DA_Mirror.DA_Mirror")));
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> Cube(TEXT("/Engine/BasicShapes/Cube.Cube"));
@@ -67,6 +69,8 @@ void ATBMirror::ApplyData()
 		Frame[Index]->SetRelativeLocation(Side ? FVector(0,Sign*(W+B)*.5f,0) : FVector(0,0,Sign*(H+B)*.5f));
 		Frame[Index]->SetRelativeScale3D((Side ? FVector(B*2,B,H+B*2) : FVector(B*2,W,B))/100.f);
 	}
+	// 判定用の寸法と当たり判定はサーバーにも必要。描画素材は画面を持つ側だけで読み込む。
+	if (GetNetMode()==NM_DedicatedServer) return;
 	if (auto* Material=Data.MirrorMaterial.LoadSynchronous()) Surface->SetMaterial(0,Material);
 	if (auto* Material=Data.FrameMaterial.LoadSynchronous())
 	{
@@ -76,7 +80,17 @@ void ATBMirror::ApplyData()
 }
 
 void ATBMirror::OnConstruction(const FTransform& Transform) { Super::OnConstruction(Transform); ApplyData(); }
-void ATBMirror::PostInitializeComponents() { Super::PostInitializeComponents(); ApplyData(); }
+void ATBMirror::PostInitializeComponents()
+{
+	Super::PostInitializeComponents();
+	ApplyData();
+}
+
+void ATBMirror::BeginPlay()
+{
+	Super::BeginPlay();
+	if (GetNetMode()==NM_DedicatedServer) SetActorTickEnabled(false);
+}
 
 FVector ATBMirror::ReflectPoint(FVector Point, FVector Origin, FVector Normal)
 { return Point-2*FVector::DotProduct(Point-Origin,Normal)*Normal; }
@@ -96,11 +110,10 @@ bool ATBMirror::ReflectionPoint(FVector Eye, FVector Target, FVector& Hit) const
 }
 
 bool ATBMirror::FindView(const AActor* Observer, const AActor* Target, FVector Eye, FRotator View,
-    FVector Sample, float TanH, float TanV, FVector& Hit, float MaxPathLength)
+    FVector Sample, float TanH, float TanV, FVector& Hit, float MaxPathLength, float MinViewDot)
 {
 	if (!IsValid(Observer) || !IsValid(Target) || Observer->GetWorld()!=Target->GetWorld()) return false;
 	const FRotationMatrix Basis(View);
-	FCollisionQueryParams Query(SCENE_QUERY_STAT(MirrorGaze),false,Observer); Query.AddIgnoredActor(Target);
 	for (TActorIterator<ATBMirror> It(Observer->GetWorld()); It; ++It)
 	{
 		FVector Point;
@@ -109,11 +122,11 @@ bool ATBMirror::FindView(const AActor* Observer, const AActor* Target, FVector E
 		const double Depth=FVector::DotProduct(Basis.GetUnitAxis(EAxis::X),Delta);
 		if (Depth<=0 || FMath::Abs(FVector::DotProduct(Basis.GetUnitAxis(EAxis::Y),Delta))>Depth*TanH ||
 		    FMath::Abs(FVector::DotProduct(Basis.GetUnitAxis(EAxis::Z),Delta))>Depth*TanV ||
+		    FVector::DotProduct(Basis.GetUnitAxis(EAxis::X),Delta.GetSafeNormal())<MinViewDot ||
 		    (MaxPathLength>0 && Delta.Size()+FVector::Dist(Point,Sample)>MaxPathLength)) continue;
 		// Stop just in front of the glass; retain the frame, walls, and other mirrors as occluders.
 		const FVector Front=Point+It->GetActorForwardVector()*.2f;
-		if (!Observer->GetWorld()->LineTraceTestByChannel(Eye,Front,ECC_Visibility,Query) &&
-		    !Observer->GetWorld()->LineTraceTestByChannel(Front,Sample,ECC_Visibility,Query))
+		if (TB::ClearPath(Observer,Target,Eye,Front) && TB::ClearPath(Observer,Target,Front,Sample))
 		{ Hit=Point; return true; }
 	}
 	return false;
@@ -149,6 +162,10 @@ void ATBMirror::Tick(float DeltaSeconds)
 	if (Depth+Radius<=0 || FMath::Abs(FVector::DotProduct(Basis.GetUnitAxis(EAxis::Y),Delta))>FMath::Max(0.,Depth)*Tan+Radius*2 ||
 	    FMath::Abs(FVector::DotProduct(Basis.GetUnitAxis(EAxis::Z),Delta))>FMath::Max(0.,Depth)*TanV+Radius*2) return;
 	const double Now=GetWorld()->GetTimeSeconds();
+	// 影や別の鏡の描画で更新を継続させない。遮蔽が解けた最初の描画後に再開する。
+	const float LastOnScreen=Surface->GetLastRenderTimeOnScreen();
+	const float VisibilityGrace=FMath::Max(.2f,DeltaSeconds+UE_KINDA_SMALL_NUMBER);
+	if (LastOnScreen<0 || Now-LastOnScreen>VisibilityGrace) return;
 	if (Now<NextCapture) return;
 	NextCapture=Now+1.f/FMath::Clamp(Data.FramesPerSecond,1.f,60.f);
 	const int32 Width=FMath::Clamp(Data.CaptureWidth,128,2048), Height=FMath::Clamp(FMath::RoundToInt(Width/Aspect),64,2048);

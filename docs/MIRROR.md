@@ -3,8 +3,6 @@
 配置するだけで使えるアイテム。Eキーでの操作はない。
 人間が鏡に映るおもちゃを見た場合も、サーバーがフリーズを判定する。
 
-![家マップの姿見に部屋が反射している実行画面](images/mirror-house.png)
-
 ## 配置
 
 1. Content Browserで `Items/Mirror/BP_Mirror` をレベルへドラッグする。
@@ -23,12 +21,12 @@
 
 | 項目 | 初期値 | 内容 |
 | --- | --- | --- |
-| Width / Height | 100 / 160cm | 鏡面のサイズ。描画と視認判定で共用 |
-| Frame Width | 4cm | 枠の幅と本体の厚み |
-| View Distance | 1500cm | 視点から鏡の中央までの有効距離。範囲外は鏡面を暗くし、反射による凍結も無効 |
-| Capture Width | 512px | 反射映像の横解像度。縦は画面比から決定 |
-| Frames Per Second | 30 | 反射映像の最大更新回数。ゲームの判定頻度とは独立 |
-| Mirror / Frame Material | 専用素材 | 鏡面と枠。鏡面素材のReflectionTexture等のパラメーターを維持する |
+| 鏡面の幅 / 鏡面の高さ | 100 / 160cm | 鏡面のサイズ。描画と視認判定で共用 |
+| 枠の幅 | 4cm | 枠の幅と本体の厚み |
+| 有効距離 | 1500cm | 視点から鏡の中央までの有効距離。範囲外は鏡面を暗くし、反射による凍結も無効 |
+| 反射映像の横解像度 | 512px | 反射映像の横解像度。縦は画面比から決定 |
+| 反射映像の毎秒更新回数 | 30 | 反射映像の最大更新回数。ゲームの判定頻度とは独立 |
+| 鏡面のマテリアル / 枠のマテリアル | 専用素材 | 鏡面と枠。鏡面素材のReflectionTexture等のパラメーターを維持する |
 
 変更後はPlayを開始し直す。描画負荷を抑える場合は、解像度を256px、更新を15回/秒に下げる。
 同時に画面へ入る鏡を増やすと追加描画が増える。解像度を下げても、シーンを描くCPU処理はなくならない。
@@ -41,7 +39,8 @@
 - NPCも鏡からおもちゃを発見できる。既存の認識待ち時間・見落とし判定を通り、認識前は凍結させない。
 - 反射は1回まで。合わせ鏡や鏡の中の鏡による凍結は扱わず、反射映像にも別の鏡面映像を入れない。
 - 映像は各クライアントで生成し、ネット送信しない。サーバーの判定はGPU描画に依存しない。
-- 専用サーバーでは鏡映像を生成しない。画面外・裏側・有効距離外では追加描画を停止する。
+- 専用サーバーでは鏡のTickと描画素材の明示的なロードを停止する。反射経路の判定と当たり判定は維持する。
+- 画面外・裏側・有効距離外に加え、壁などに完全に隠された鏡も追加描画を停止する。鏡面の画面描画時刻を使い、遮蔽が解けると再開する（描画遅延を許容する猶予は約0.2秒）。
 - カメラを鏡面に対して反転し、画面上の座標で反射テクスチャを表示する。部屋やキャラクターの複製は不要。
 - `r.AllowGlobalClipPlane=True` が必要。初回起動では関連シェーダーの生成が発生する。
   Lumenやプロジェクト全体の反射方式は変更していない。
@@ -53,14 +52,50 @@
 
 `ToonStory.Mirror.Geometry` は有限な鏡面・裏側・回転・拡大縮小・有効距離を検証する。
 `ToonStory.Mirror.Gaze` はサーバーでの凍結・解除、反射経路の両側の遮蔽、暗室保護、NPC認識を検証する。
+上半身だけが映る小さな鏡でも、NPCが反射位置を見続けて凍結を維持することを含む。
+`ToonStory.Mirror.ConeSelection` は、矩形視野内・円形視野外の鏡を飛ばして次の有効な鏡を選べることを検証する。
 `ToonStory.Mirror.Placement` は家マップの保存済みDA・素材と、鏡の前に立てる床・空間を検証する。
 `ToonStory.Mirror.Visual` は `-MirrorScreenshot` を付けた描画ありのStandalone実行で、
 背後の物体と文字を映す確認シーンを `Saved/MirrorPreview/mirror.png` に保存する。
 家マップでさらに `-MirrorHouseScreenshot` を指定すると、保存済みの鏡を `Saved/MirrorPreview/house.png` に撮影する。
 
-UE 5.8でビルドと上記テスト、既存の `ToonStory.Items.Conditions`、`ToonStory.NPC.Sight`、
-`ToonStory.Playroom.AuthoredContract` の成功を確認済み。実画像でも鏡文字と、家の部屋が映ることを確認した。
-本番環境でのGPU負荷・複数台の鏡を同時に表示した場合の性能は未計測。
+`ToonStory.Mirror.CaptureOcclusion` は `-MirrorCaptureTest` を付けた描画ありのStandalone実行で、
+鏡の前に壁を出し、更新停止と壁を除いた後の再開を検証する。各状態で3秒待機後、5秒間のフレームレートを `MIRROR_PERF` としてログに出す。
+`ToonStory.Mirror.DedicatedServer` は `-server -NullRHI` で実行し、Tick停止と反射判定の維持を検証する。
+
+レビュー修正後、UE 5.8でEditorとWindows Developmentをビルドし、上記7テストと
+既存の `ToonStory.Items.Conditions`、`ToonStory.NPC.Sight` の計9項目の成功を確認済み。
+家の部屋が映る実画像も確認した。複数台の鏡を同時に表示した場合の性能は未計測。
 
 実機では人間1人・おもちゃ1人以上で、直接見えない位置から鏡越しに見て止まること、
 視線を外す／鏡との間に家具を挟むと動けることを確認する。
+
+## Windowsパッケージでの測定（2026-10-30）
+
+UE 5.8 / Windows Development、i5-12400、32GB RAM、GTX 1660 SUPER、D3D12、
+1280×720、Epic設定（品質3）、オフスクリーン描画で測定。
+`r.AllowGlobalClipPlane=1`、鏡の横解像度512・最大30更新/秒、家マップの保存済み姿見1台を使用した。
+Title・Arena・家マップを含む検証用パッケージを作成し、家マップへ直接起動している。
+
+| 測定 | 1回目 | 2回目 |
+| --- | ---: | ---: |
+| プロセス起動→エンジン初期化完了の確認 | 9.58秒 | 2.41秒 |
+| エンジンの初期化ログ上の時間 | 8.77秒 | 2.12秒 |
+| 鏡表示中 | 34.74 FPS | 35.08 FPS |
+| 壁で完全に隠した状態 | 49.87 FPS | 49.58 FPS |
+| 壁を除いて再表示 | 34.93 FPS | 34.55 FPS |
+
+各状態は3秒待機後に5秒計測。起動確認はログを0.25秒間隔で監視しており、OSキャッシュは消去していない。
+両方の起動でクラッシュ・起動失敗はなく、パッケージ内でも `CaptureOcclusion` と `Placement` が成功した。
+遮蔽中に更新時刻が進まないことと、壁を除いた後に更新が再開することも検証している。
+
+この条件では鏡表示中に約35 FPSで、60 FPSには届いていない。
+壁で隠すと主画面に映る物も変わるため、上表の差を鏡だけの描画コストとは解釈しない。
+クリップ平面設定のON/OFFで別々にシェーダーを生成した比較は行っておらず、この設定単体の負荷増加率は未測定。
+
+ログは `Saved/Logs/MirrorPackageRun1.log`、`MirrorPackageRun2.log`、
+集計は `Saved/MirrorPackageMeasurements.json` に保存。
+検証用実行ファイルは `Saved/MirrorPackage/Windows/ToonStory.exe`。
+再確認する場合は家マップを指定し、`-MirrorCaptureTest` と
+`-ExecCmds="Automation RunTests ToonStory.Mirror.CaptureOcclusion+ToonStory.Mirror.Placement"`、
+`-TestExit="Automation Test Queue Empty"` を付けて起動する。

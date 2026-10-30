@@ -43,6 +43,10 @@ constexpr float SightRangeCm = 1400.f;
 constexpr float SightTargetHeightCm = 15.f;
 constexpr float SightHalfAngleCos = .70710678f; // cos(45 degrees): a 90-degree cone.
 constexpr float SightBodySampleRatio = .7f;
+float SightHalfAngleTangent()
+{
+	return FMath::Tan(FMath::Acos(FMath::Clamp(SightHalfAngleCos,.01f,.999f)));
+}
 constexpr float ScanMinPitchDegrees = -30.f;
 constexpr float ScanMaxPitchDegrees = 45.f;
 constexpr float ScanRadiansPerSecond = .7f;
@@ -187,6 +191,12 @@ void ATBNPCController::Wander()
 
 bool ATBNPCController::CanSee(const AActor* Actor) const
 {
+	FVector Aim;
+	return FindVisiblePoint(Actor,GetControlRotation(),Aim);
+}
+
+bool ATBNPCController::FindVisiblePoint(const AActor* Actor, FRotator View, FVector& Aim) const
+{
 	const APawn* Body = GetPawn();
 	if (!Body || !IsValid(Actor) || Actor == Body || Actor->IsHidden()) return false;
 	const FVector Eye = Body->GetPawnViewLocation();
@@ -202,12 +212,12 @@ bool ATBNPCController::CanSee(const AActor* Actor) const
 		const FVector Point = Origin + FVector(0, 0, Height);
 		const FVector Delta = Point - Eye;
 		if (Delta.SizeSquared() <= FMath::Square(Range) &&
-		    FVector::DotProduct(GetControlRotation().Vector(), Delta.GetSafeNormal()) >= SightHalfAngleCos &&
-		    !GetWorld()->LineTraceTestByChannel(Eye, Point, ECC_Visibility, Query)) return true;
+		    FVector::DotProduct(View.Vector(), Delta.GetSafeNormal()) >= SightHalfAngleCos &&
+		    !GetWorld()->LineTraceTestByChannel(Eye, Point, ECC_Visibility, Query)) { Aim=Point; return true; }
 		FVector MirrorHit;
-		const float Tan=FMath::Tan(FMath::Acos(FMath::Clamp(SightHalfAngleCos,.01f,.999f)));
-		if (Observer && Observer->IsHuman() && ATBMirror::FindView(Body,Actor,Eye,GetControlRotation(),Point,Tan,Tan,MirrorHit,Range) &&
-		    FVector::DotProduct(GetControlRotation().Vector(),(MirrorHit-Eye).GetSafeNormal())>=SightHalfAngleCos) return true;
+		const float Tan=SightHalfAngleTangent();
+		if (Observer && Observer->IsHuman() && ATBMirror::FindView(Body,Actor,Eye,View,Point,Tan,Tan,MirrorHit,Range,SightHalfAngleCos))
+		{ Aim=MirrorHit; return true; }
 	}
 	return false;
 }
@@ -221,11 +231,10 @@ void ATBNPCController::UpdateControlRotation(float DeltaTime, bool bUpdatePawn)
 	// AAIController normally flattens pitch for non-pawns, including floor-level decoys.
 	if (Body && Body->IsHuman() && Focus && (Focus->IsA<ATBDummyToy>() || Focus->IsA<ATBCharacter>()))
 	{
-		FVector Aim=Focus->GetActorLocation(), MirrorHit;
+		FVector Aim=Focus->GetActorLocation();
 		const FVector Eye=Body->GetPawnViewLocation();
-		// A remembered reflected target must be watched at its reflection, not through a wall.
-		const float Tan=FMath::Tan(FMath::Acos(SightHalfAngleCos));
-		if (!TB::ClearPath(Body,Focus,Eye,Aim) && ATBMirror::FindView(Body,Focus,Eye,PreviousView,Aim,Tan,Tan,MirrorHit,HumanSightRangeCm)) Aim=MirrorHit;
+		// 視認時と同じ体の3点・視野・遮蔽条件で、見えた反射位置に視線を合わせる。
+		FindVisiblePoint(Focus,PreviousView,Aim);
 		SetControlRotation((Aim-Eye).Rotation());
 	}
 	else if (Body && Body->IsHuman() && !Focus && !Body->HasCarriedToy() &&

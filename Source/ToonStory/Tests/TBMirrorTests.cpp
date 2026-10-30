@@ -123,9 +123,47 @@ bool FTBMirrorGazeTest::RunTest(const FString&)
 		AI->OverlookChance=0; AI->RecognitionSeconds=0; AI->Tick(.4f); AI->UpdateControlRotation(.016f);
 		TestTrue(TEXT("NPC tracks the discovered reflected toy"),AI->IsTracking(Toy));
 		TestTrue(TEXT("NPC looks at reflection and freezes toy"),Mode->Watched(Toy,Human));
+		// 中心は鏡面の外、上半身だけが映る小さな鏡でも追跡を維持する。
+		FVector BoundsOrigin,BoundsExtent; Toy->GetActorBounds(true,BoundsOrigin,BoundsExtent);
+		const FVector Upper=BoundsOrigin+FVector(0,0,BoundsExtent.Z*.7f);
+		Mirror->ReflectionPoint(Human->GetPawnViewLocation(),Upper,Hit);
+		Data->Height=10; Data->FrameWidth=1; Mirror->SetActorLocation(Hit);
+		Mirror->SetActorScale3D(FVector(1,1,.4f)); Mirror->OnConstruction(Mirror->GetActorTransform());
+		TestFalse(TEXT("Center sample misses short mirror"),Mirror->ReflectionPoint(Human->GetPawnViewLocation(),BoundsOrigin,Hit));
+		TestTrue(TEXT("Upper sample still reflects"),Mirror->ReflectionPoint(Human->GetPawnViewLocation(),Upper,Hit));
+		AI->SetControlRotation((Hit-Human->GetPawnViewLocation()).Rotation());
+		TestTrue(TEXT("NPC discovers upper-only reflection"),AI->CanSee(Toy));
+		AI->SetFocus(Toy); AI->UpdateControlRotation(.016f);
+		TestTrue(TEXT("NPC aims at accepted upper reflection"),AI->GetControlRotation().Vector().Equals((Hit-Human->GetPawnViewLocation()).GetSafeNormal(),.001f));
+		TestTrue(TEXT("Upper reflection stays visible on next gaze check"),AI->CanSee(Toy));
+		TestTrue(TEXT("Upper reflection keeps toy frozen"),Mode->Watched(Toy,Human));
 	}
 	AI->UnPossess(); HumanPC->Possess(Human); Human->ApplyState();
 	if(AIState) { State->RemovePlayerState(AIState); AIState->Destroy(); } AI->Destroy();
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBMirrorConeTest,"ToonStory.Mirror.ConeSelection",
+ EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+bool FTBMirrorConeTest::RunTest(const FString&)
+{
+	UWorld* World=nullptr;
+	for(const auto& Context:GEngine->GetWorldContexts()) if(Context.WorldType==EWorldType::Game) World=Context.World();
+	if(!World) return false;
+	auto* Observer=World->SpawnActor<AActor>(); auto* Target=World->SpawnActor<AActor>();
+	const FVector Eye(0,0,20000), Sample(0,100,20000);
+	const FVector Outside(100,80,20080), Inside(100,0,20000);
+	auto SpawnMirror=[&](FVector Point) {
+		const FVector Normal=((Eye-Point).GetSafeNormal()+(Sample-Point).GetSafeNormal()).GetSafeNormal();
+		return World->SpawnActor<ATBMirror>(Point,Normal.Rotation());
+	};
+	auto* First=SpawnMirror(Outside); auto* Second=SpawnMirror(Inside);
+	ON_SCOPE_EXIT { First->Destroy(); Second->Destroy(); Observer->Destroy(); Target->Destroy(); };
+	FVector Hit;
+	TestTrue(TEXT("Square frustum accepts the first corner reflection"),ATBMirror::FindView(Observer,Target,Eye,FRotator::ZeroRotator,Sample,1,1,Hit) && Hit.Equals(Outside,.01f));
+	TestTrue(TEXT("Circular cone skips first mirror and finds second"),ATBMirror::FindView(Observer,Target,Eye,FRotator::ZeroRotator,Sample,1,1,Hit,0,.70710678f) && Hit.Equals(Inside,.01f));
+	Second->SetActorHiddenInGame(true);
+	TestFalse(TEXT("Corner alone is outside circular cone"),ATBMirror::FindView(Observer,Target,Eye,FRotator::ZeroRotator,Sample,1,1,Hit,0,.70710678f));
 	return true;
 }
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBMirrorVisualTest,"ToonStory.Mirror.Visual",
