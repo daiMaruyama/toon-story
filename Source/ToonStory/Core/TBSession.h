@@ -88,6 +88,8 @@ private:
 	bool bUpdatingLobbyOpen = false;
 	void LobbyUpdated(FName Name, bool bSucceeded);
 	bool Acquire();
+	// チャットの履歴は部屋ごと。作る・入るときに前の部屋の分を消す。
+	void ClearChat();
 	void Message(const FString& Text, bool bError = false);
 	void Created(FName Name, bool bSucceeded);
 	void Found(bool bSucceeded);

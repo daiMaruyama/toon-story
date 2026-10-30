@@ -94,6 +94,14 @@ void ATBHUD::NotifyHitBoxClick(FName Name)
 	}
 }
 
+bool ATBHUD::IsChatBlocked() const
+{
+	// 設定の開閉はロビーを離れても残るので、ロビーの間だけ見る。
+	const auto* State = TB::GS(GetWorld());
+	return bPlayersOpen || (bLobbySettingsOpen && State && State->Phase == ETBPhase::Lobby) ||
+	       (Options.IsValid() && Options->IsInViewport());
+}
+
 // HUDは状態の表示だけを行う。勝敗や取得の判定はサーバー側で行う。
 void ATBHUD::DrawHUD()
 {

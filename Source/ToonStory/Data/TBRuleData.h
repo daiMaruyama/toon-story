@@ -198,6 +198,23 @@ struct FTBToyRules
 	     1}};
 };
 
+/** ロビーと結果画面のチャット */
+USTRUCT(BlueprintType)
+struct FTBChatRules
+{
+	GENERATED_BODY()
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "チャット",
+	          meta = (DisplayName = "1回の文字数", ClampMin = "1", ClampMax = "200"))
+	int32 MaxLength = 60;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "チャット",
+	          meta = (DisplayName = "続けて送れるまで", Units = "s", ClampMin = "0"))
+	float SendIntervalSeconds = 1.f;
+	/** 閉じている間、新しい発言を出しておく時間。最後の1秒で薄れて消える */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "チャット",
+	          meta = (DisplayName = "発言を出しておく時間", Units = "s", ClampMin = "1"))
+	float ShowSeconds = 8.f;
+};
+
 class UTBRandomEvent;
 
 USTRUCT(BlueprintType)
@@ -238,6 +255,8 @@ public:
 	FTBVoiceRules Voice;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "人形の見た目", meta = (ShowOnlyInnerProperties))
 	FTBToyRules Toys;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "チャット", meta = (ShowOnlyInnerProperties))
+	FTBChatRules Chat;
 
 #if WITH_EDITOR
 	// 1つずつの範囲は ClampMin/Max で守り、ここでは値どうしの関係だけを確かめる。

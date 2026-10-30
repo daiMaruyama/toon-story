@@ -99,8 +99,26 @@ public:
 	float ViewAspect = 0.f;
 	UFUNCTION(Server, Reliable)
 	void ServerSetViewAspect(float Aspect);
+	// チャット。開く・送るはEnter、閉じるはEsc。キー設定には出さない。
+	virtual bool InputKey(const FInputKeyEventArgs& Params) override;
+	bool CanUseChat() const;
+	bool IsChatOpen() const;
+	void OpenChat();
+	void CloseChat();
+	/** 間隔が短すぎるときは送らずにfalseを返す。入力欄は文を残す。 */
+	bool SendChat(const FString& Text);
+	UFUNCTION(Server, Reliable)
+	void ServerSendChat(const FString& Text);
+	UFUNCTION(Client, Reliable)
+	void ClientReceiveChat(const FString& Name, const FString& Text, int32 SenderId);
 
 private:
+	void UpdateChat();
+	UPROPERTY(Transient)
+	TObjectPtr<class UTBChatBox> ChatBox;
+	// どちらもFPlatformTime::Seconds。送った側とサーバーで別々に数える。
+	double LastChatSent = -1;
+	double LastChatAccepted = -1;
 	void ClearInputContexts();
 	TArray<TWeakObjectPtr<const UInputMappingContext>> AppliedContexts;
 	bool bPreparationTravelMask = false;
