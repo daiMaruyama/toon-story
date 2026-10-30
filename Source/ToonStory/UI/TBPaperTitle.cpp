@@ -24,7 +24,6 @@ void UTBTitleMenu::BuildPaperLayout()
 	PaperFont = TBPaper::Font(this);
 	LogoFont = TBPaper::Font(this, true);
 	PaperTexture = LoadObject<UTexture2D>(nullptr, TEXT("/Game/UI/PaperClub/Panel.Panel"));
-	BackgroundTexture = LoadObject<UTexture2D>(nullptr, TEXT("/Game/UI/PaperClub/Room.Room"));
 	auto* Root = WidgetTree->ConstructWidget<UCanvasPanel>();
 	WidgetTree->RootWidget = Root;
 	auto Fill = [&](UWidget* Widget)
@@ -47,20 +46,19 @@ void UTBTitleMenu::BuildPaperLayout()
 		Slot->SetPosition(FVector2D(X, Y));
 		Slot->SetSize(FVector2D(W, H));
 	};
-	auto* Background = WidgetTree->ConstructWidget<UImage>();
-	if (BackgroundTexture)
-	{
-		Background->SetBrushFromTexture(BackgroundTexture);
-	}
-	else
-	{
-		Background->SetColorAndOpacity(FLinearColor(.08f, .11f, .095f));
-	}
-	Fill(Background);
+	// 後ろの3Dを見せる。左のメニューの文字が読めるよう、左側だけに縦の暗幕を敷く。
+	auto* Layer = WidgetTree->ConstructWidget<UCanvasPanel>();
+	MenuLayer = Layer;
+	Fill(Layer);
+	ShadeTexture = MakeSideShade(this);
 	auto* Shade = WidgetTree->ConstructWidget<UImage>();
-	Shade->SetColorAndOpacity(FLinearColor(0.015f, .025f, .02f, .38f));
-	Fill(Shade);
-	Fill(Scale);
+	Shade->SetBrushFromTexture(ShadeTexture, true);
+	auto* ShadeSlot = Layer->AddChildToCanvas(Shade);
+	ShadeSlot->SetAnchors(FAnchors(0, 0, .55f, 1));
+	ShadeSlot->SetOffsets(FMargin(0));
+	auto* ScaleSlot = Layer->AddChildToCanvas(Scale);
+	ScaleSlot->SetAnchors(FAnchors(0, 0, 1, 1));
+	ScaleSlot->SetOffsets(FMargin(0));
 	auto Label = [&](const TCHAR* Text, int32 FontSize, FLinearColor Color, bool Logo = false)
 	{
 		auto* L = WidgetTree->ConstructWidget<UTextBlock>();
@@ -103,6 +101,8 @@ void UTBTitleMenu::BuildPaperLayout()
 	HelpButton = AddButton(TEXT("Help"), TEXT("あそびかた"), 90, 601, 175, true);
 	OptionsButton = AddButton(TEXT("Options"), TEXT("オプション"), 280, 601, 180, true);
 	auto* QuitButton = AddButton(TEXT("Quit"), TEXT("ゲームを閉じる"), 90, 679, 175, true);
+	StoryButton = AddButton(TEXT("Story"), TEXT("ストーリーを見る"), 280, 679, 180, true);
+	StoryButton->OnClicked.AddDynamic(this, &ThisClass::WatchStory);
 	auto* Card = WidgetTree->ConstructWidget<UBorder>();
 	Card->SetBrush(TBPaper::Brush(PaperTexture));
 	Place(Card, 700, 85, 490, 205);
@@ -121,6 +121,9 @@ void UTBTitleMenu::BuildPaperLayout()
 	Column->AddChildToVerticalBox(RoomList)->SetPadding(FMargin(0, 22, 0, 12));
 	JoinButton = AddButton(TEXT("Join"), TEXT("選んだ部屋に入る"), 745, 490, 415);
 	CleanupButton = AddButton(TEXT("Cleanup"), TEXT("部屋から退出する"), 745, 567, 415, true);
+	// 右の2枚のカードは、部屋をさがすときだけ出す。
+	RoomCardWidgets = {Card, RoomCard, JoinButton, CleanupButton};
+	SetRoomCardsShown(false);
 	StatusText = Label(TEXT(""), 17, TBPaper::Cream);
 	Place(StatusText, 90, 757, 1100, 40);
 	HostButton->OnClicked.AddDynamic(this, &ThisClass::Host);
@@ -218,6 +221,11 @@ void UTBTitleMenu::CloseHelp()
 
 FReply UTBTitleMenu::NativeOnPreviewKeyDown(const FGeometry& Geometry, const FKeyEvent& KeyEvent)
 {
+	if (State == EState::Story)
+	{
+		SkipStory();
+		return FReply::Handled();
+	}
 	if (HelpOverlay && HelpOverlay->GetVisibility() == ESlateVisibility::Visible && KeyEvent.GetKey() == EKeys::Escape)
 	{
 		CloseHelp();
