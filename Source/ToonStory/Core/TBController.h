@@ -6,6 +6,7 @@
 #include "Data/TBTypes.h"
 #include "Audio/TBAudioTypes.h"
 #include "Engine/EngineBaseTypes.h"
+#include "Core/TBChat.h"
 #include "TBController.generated.h"
 
 class UInputMappingContext;
@@ -110,7 +111,11 @@ public:
 	UFUNCTION(Server, Reliable)
 	void ServerSendChat(const FString& Text);
 	UFUNCTION(Client, Reliable)
-	void ClientReceiveChat(const FString& Name, const FString& Text, int32 SenderId);
+	void ClientReceiveChat(const FString& Name, const FString& Text, int32 SenderId, const FString& SenderNetId);
+	UFUNCTION(Client, Reliable)
+	void ClientReceiveChatNotice(ETBChatNotice Kind, const FString& Name);
+	// サーバーだけで使う。ホストがキックしたら立て、Logoutでお知らせの文言を分ける。
+	bool bKickedByHost = false;
 
 private:
 	void UpdateChat();

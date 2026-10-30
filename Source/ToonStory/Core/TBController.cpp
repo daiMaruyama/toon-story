@@ -672,18 +672,18 @@ void ATBController::ServerSendChat_Implementation(const FString& Text)
 		return;
 	}
 	LastChatAccepted = Now;
-	// ロビーの一覧と同じ長さで切る。
-	const FString Name = PlayerState->GetPlayerName().Left(18);
+	const FString Name = TB::Chat::DisplayName(PlayerState);
 	for (auto It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 	{
 		if (auto* PC = Cast<ATBController>(It->Get()))
 		{
-			PC->ClientReceiveChat(Name, Message, PlayerState->GetPlayerId());
+			PC->ClientReceiveChat(Name, Message, PlayerState->GetPlayerId(), PlayerState->GetUniqueId().ToString());
 		}
 	}
 }
 
-void ATBController::ClientReceiveChat_Implementation(const FString& Name, const FString& Text, int32 SenderId)
+void ATBController::ClientReceiveChat_Implementation(const FString& Name, const FString& Text, int32 SenderId,
+                                                     const FString& SenderNetId)
 {
 	auto* Log = GetGameInstance()->GetSubsystem<UTBChatLog>();
 	if (!Log)
@@ -691,11 +691,20 @@ void ATBController::ClientReceiveChat_Implementation(const FString& Name, const 
 		return;
 	}
 	const bool bSelf = PlayerState && PlayerState->GetPlayerId() == SenderId;
-	Log->Add(Name, TB::Chat::Clean(Text), bSelf);
+	Log->Add(Name, TB::Chat::Filter(GetWorld(), TB::Chat::Clean(Text), SenderNetId), bSelf);
 	// 画面のほかの所を見ていても届いたと分かるよう、ほかの人の発言だけ鳴らす。
 	if (!bSelf)
 	{
 		ClientPlaySoundEvent(ETBSoundEvent::ChatMessage, FVector::ZeroVector);
+	}
+}
+
+// 出入りの音はロビーの人数の変化で別に鳴るので、ここでは鳴らさない。
+void ATBController::ClientReceiveChatNotice_Implementation(ETBChatNotice Kind, const FString& Name)
+{
+	if (auto* Log = GetGameInstance()->GetSubsystem<UTBChatLog>())
+	{
+		Log->AddNotice(TB::Chat::NoticeText(Kind, TB::Chat::Clean(Name)));
 	}
 }
 

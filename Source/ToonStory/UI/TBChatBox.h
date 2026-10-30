@@ -10,6 +10,7 @@ class UCanvasPanelSlot;
 class UEditableText;
 class UFont;
 class UScrollBox;
+class UTextBlock;
 class UVerticalBox;
 
 /** 左隅のチャット。閉じている間は新しい発言だけを出して薄れさせ、開くと履歴と入力欄を出す。 */
@@ -59,6 +60,8 @@ private:
 	TObjectPtr<UBorder> InputBack;
 	UPROPERTY(Transient)
 	TObjectPtr<UEditableText> Input;
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> OpenHint;
 	// 履歴と同じ並び。
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UWidget>> LineWidgets;

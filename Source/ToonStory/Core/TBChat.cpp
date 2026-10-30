@@ -2,7 +2,10 @@
 
 #include "Core/TBChat.h"
 #include "Containers/StringConv.h"
+#include "Core/TBController.h"
 #include "Data/TBRuleData.h"
+#include "Engine/World.h"
+#include "GameFramework/PlayerState.h"
 #include "HAL/PlatformTime.h"
 
 FString TB::Chat::Limit(const FString& Text)
@@ -29,9 +32,56 @@ FString TB::Chat::Clean(const FString& Text)
 	return Result;
 }
 
+FString TB::Chat::DisplayName(const APlayerState* Player)
+{
+	return Player ? Player->GetPlayerName().Left(18) : FString();
+}
+
+FString TB::Chat::NoticeText(ETBChatNotice Kind, const FString& Name)
+{
+	switch (Kind)
+	{
+	case ETBChatNotice::Joined:
+		return Name + TEXT("があそびにきた！");
+	case ETBChatNotice::Kicked:
+		return Name + TEXT("はホストにおうちへ帰された");
+	default:
+		return Name + TEXT("がかえっていった");
+	}
+}
+
+void TB::Chat::BroadcastNotice(UWorld* World, ETBChatNotice Kind, const FString& Name, const AController* Except)
+{
+	if (!World || Name.IsEmpty())
+	{
+		return;
+	}
+	for (auto It = World->GetPlayerControllerIterator(); It; ++It)
+	{
+		if (auto* PC = Cast<ATBController>(It->Get()); PC && static_cast<const AController*>(PC) != Except)
+		{
+			PC->ClientReceiveChatNotice(Kind, Name);
+		}
+	}
+}
+
 void UTBChatLog::Add(const FString& Name, const FString& Text, bool bSelf)
 {
-	Lines.Add({Name, Text, bSelf, FPlatformTime::Seconds()});
+	Push({Name, Text, bSelf});
+}
+
+void UTBChatLog::AddNotice(const FString& Text)
+{
+	FTBChatLine Line;
+	Line.Text = Text;
+	Line.bNotice = true;
+	Push(MoveTemp(Line));
+}
+
+void UTBChatLog::Push(FTBChatLine&& Line)
+{
+	Line.Time = FPlatformTime::Seconds();
+	Lines.Add(MoveTemp(Line));
 	if (Lines.Num() > TB::Chat::MaxLines)
 	{
 		Lines.RemoveAt(0, Lines.Num() - TB::Chat::MaxLines);

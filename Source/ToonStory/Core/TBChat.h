@@ -6,6 +6,18 @@
 #include "Data/TBTypes.h"
 #include "TBChat.generated.h"
 
+class AController;
+class APlayerState;
+
+/** 部屋の出入りのお知らせ。ログに名前なしの1行で出す */
+UENUM()
+enum class ETBChatNotice : uint8
+{
+	Joined,
+	Left,
+	Kicked
+};
+
 /** ロビーと結果画面のチャット。遊んでいる最中は声だけにする（声は敵にも聞こえるのが駆け引きなので）。数値はTB::Rules().Chat。 */
 namespace TB::Chat
 {
@@ -25,6 +37,13 @@ namespace TB::Chat
 	TOONSTORY_API FString Limit(const FString& Text);
 	/** 改行と制御文字を空白にして前後を詰め、Limitで切る。 */
 	TOONSTORY_API FString Clean(const FString& Text);
+	/** ログに出す名前。ロビーの一覧と同じ長さで切る。 */
+	TOONSTORY_API FString DisplayName(const APlayerState* Player);
+	TOONSTORY_API FString NoticeText(ETBChatNotice Kind, const FString& Name);
+	/** 受け取った側で呼ぶ。SenderNetIdは送った人のUniqueNetIdの文字列（SteamならSteamID）。 */
+	TOONSTORY_API FString Filter(const UWorld* World, const FString& Text, const FString& SenderNetId);
+	/** サーバーで呼ぶ。Except（抜けた本人）以外の全員に配る。 */
+	void BroadcastNotice(UWorld* World, ETBChatNotice Kind, const FString& Name, const AController* Except = nullptr);
 }
 
 struct FTBChatLine
@@ -32,6 +51,8 @@ struct FTBChatLine
 	FString Name;
 	FString Text;
 	bool bSelf = false;
+	// 出入りのお知らせ。名前は出さず、色を変える。
+	bool bNotice = false;
 	// FPlatformTime::Seconds。ワールドの時刻はマップを移ると戻るので使わない。
 	double Time = 0;
 };
@@ -43,6 +64,7 @@ class TOONSTORY_API UTBChatLog : public UGameInstanceSubsystem
 	GENERATED_BODY()
 public:
 	void Add(const FString& Name, const FString& Text, bool bSelf);
+	void AddNotice(const FString& Text);
 	void Clear();
 	const TArray<FTBChatLine>& GetLines() const
 	{
@@ -55,6 +77,7 @@ public:
 	}
 
 private:
+	void Push(FTBChatLine&& Line);
 	TArray<FTBChatLine> Lines;
 	uint32 Revision = 0;
 };

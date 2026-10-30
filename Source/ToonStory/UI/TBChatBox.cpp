@@ -27,7 +27,8 @@ namespace
 	// 仮の配置（本番のUIが決まるまで）。1280x800の板の上で左下。ロビーは下の板のすぐ上、結果画面は角。
 	constexpr float PanelX = 68, PanelW = 520, PanelH = 220;
 	constexpr float LobbyBottom = 636, ResultsBottom = 776;
-	const FLinearColor SelfName(1.f, .74f, .42f), OtherName(.58f, .86f, 1.f), Body(.97f, .95f, .9f);
+	// 仮の色。名前は自分とほかの人で分け、出入りのお知らせは山吹色。
+	const FLinearColor SelfName(1.f, .74f, .42f), OtherName(.58f, .86f, 1.f), Body(.97f, .95f, .9f), Notice(1.f, .84f, .25f);
 }
 
 void UTBChatBox::NativeOnInitialized()
@@ -82,6 +83,14 @@ void UTBChatBox::NativeOnInitialized()
 	Input->OnTextChanged.AddDynamic(this, &UTBChatBox::TextChanged);
 	Input->OnTextCommitted.AddDynamic(this, &UTBChatBox::TextCommitted);
 	InputBack->SetContent(Input);
+	// 閉じている間は、入力欄の出る所に開き方を出す。
+	OpenHint = WidgetTree->ConstructWidget<UTextBlock>();
+	OpenHint->SetText(FText::FromString(TEXT("Enter チャットを開く")));
+	OpenHint->SetFont(FSlateFontInfo(PaperFont, 13));
+	OpenHint->SetColorAndOpacity(FLinearColor(1, 1, 1, .75f));
+	OpenHint->SetShadowOffset(FVector2D(1, 1));
+	OpenHint->SetShadowColorAndOpacity(FLinearColor(0, 0, 0, .8f));
+	Panel->AddChildToVerticalBox(OpenHint)->SetPadding(FMargin(10, 4, 0, 0));
 	SetResultsLayout(false);
 	SetOpen(false);
 }
@@ -98,6 +107,7 @@ void UTBChatBox::SetOpen(bool bInOpen)
 	Panel->SetVisibility(bOpen ? ESlateVisibility::Visible : ESlateVisibility::HitTestInvisible);
 	LogBack->SetBrushColor(FLinearColor(0, 0, 0, bOpen ? .5f : 0.f));
 	InputBack->SetVisibility(bOpen ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+	OpenHint->SetVisibility(bOpen ? ESlateVisibility::Collapsed : ESlateVisibility::HitTestInvisible);
 	if (bOpen)
 	{
 		Input->SetKeyboardFocus();
@@ -124,8 +134,11 @@ void UTBChatBox::Rebuild()
 			return Block;
 		};
 		auto* Row = WidgetTree->ConstructWidget<UHorizontalBox>();
-		Row->AddChildToHorizontalBox(MakeText(Line.Name + TEXT(": "), Line.bSelf ? SelfName : OtherName));
-		auto* Text = MakeText(Line.Text, Body);
+		if (!Line.bNotice)
+		{
+			Row->AddChildToHorizontalBox(MakeText(Line.Name + TEXT(": "), Line.bSelf ? SelfName : OtherName));
+		}
+		auto* Text = MakeText(Line.Text, Line.bNotice ? Notice : Body);
 		Text->SetAutoWrapText(true);
 		Row->AddChildToHorizontalBox(Text)->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
 		LineBox->AddChildToVerticalBox(Row)->SetPadding(FMargin(0, 1));
