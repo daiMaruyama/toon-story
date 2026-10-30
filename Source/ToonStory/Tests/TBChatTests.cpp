@@ -27,6 +27,18 @@ bool FTBChatCleanTest::RunTest(const FString& Parameters)
 	// 切った後ろの空白は詰める。
 	const FString SpaceAtCut = FString::ChrN(MaxLength - 1, TEXT('a')) + TEXT(" b");
 	TestEqual(TEXT("Trailing space after cut"), Clean(SpaceAtCut), FString::ChrN(MaxLength - 1, TEXT('a')));
+
+	// 見えない幅・向きの文字は消す。それだけの発言は空になる。
+	TestEqual(TEXT("Zero width space only"), Clean(TEXT("​​")), FString());
+	TestEqual(TEXT("Right-to-left override removed"), Clean(TEXT("a‮b")), FString(TEXT("ab")));
+	TestEqual(TEXT("BOM removed"), Clean(TEXT("﻿gg")), FString(TEXT("gg")));
+
+	// 名前の長さでも、絵文字の途中では切らない。
+	using TB::Chat::Limit;
+	const FString Name = FString::ChrN(TB::Chat::NameLength - 1, TEXT('n')) + TEXT("\U0001F600");
+	TestEqual(TEXT("Name keeps the pair whole"), Limit(Name, TB::Chat::NameLength), FString::ChrN(TB::Chat::NameLength - 1, TEXT('n')));
+	TestEqual(TEXT("Short text stays"), Limit(TEXT("abc"), 5), FString(TEXT("abc")));
+	TestEqual(TEXT("Zero length"), Limit(TEXT("abc"), 0), FString());
 	return true;
 }
 
