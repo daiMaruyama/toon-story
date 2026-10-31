@@ -6,6 +6,7 @@
 #include "Engine/Attenuation.h"
 #include "Engine/DataAsset.h"
 #include "GamePlay/TBRuleMath.h"
+#include "GamePlay/Items/TBItemSpawnTypes.h"
 #include "TBRuleData.generated.h"
 
 USTRUCT(BlueprintType)
@@ -239,6 +240,8 @@ class TOONSTORY_API UTBRuleData : public UDataAsset
 {
 	GENERATED_BODY()
 public:
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="ランダム配置", meta=(ShowOnlyInnerProperties))
+	FTBItemSpawnRules RandomItems;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "イベント", meta = (ShowOnlyInnerProperties))
 	FTBEventRules Events;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "視界", meta = (ShowOnlyInnerProperties))
