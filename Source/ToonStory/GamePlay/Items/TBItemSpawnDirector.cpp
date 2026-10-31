@@ -8,6 +8,33 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "Misc/ScopeExit.h"
+#include "Components/StaticMeshComponent.h"
+#include "Components/SkinnedMeshComponent.h"
+
+namespace
+{
+// 表示ラベル・インタラクト範囲・音の範囲を除き、実物のモデルだけを使う。
+FBox ModelBounds(const AActor& Actor)
+{
+	FBox Result(ForceInit);
+	TInlineComponentArray<UPrimitiveComponent*> Parts(&Actor);
+	for(const auto* Part:Parts)
+	{
+		const auto* StaticMesh=Cast<UStaticMeshComponent>(Part);
+		const auto* SkinnedMesh=Cast<USkinnedMeshComponent>(Part);
+		if(Part->IsRegistered() && Part->IsVisible() && !Part->bHiddenInGame &&
+		   ((StaticMesh && StaticMesh->GetStaticMesh()) || (SkinnedMesh && SkinnedMesh->GetSkinnedAsset())))
+			Result+=Part->CalcBounds(Part->GetComponentTransform()).GetBox();
+	}
+	return Result;
+}
+
+double BoundsDistanceSquared(const FBox& A,const FBox& B)
+{
+	const FVector Gap=(A.Min-B.Max).ComponentMax(B.Min-A.Max).ComponentMax(FVector::ZeroVector);
+	return Gap.SizeSquared();
+}
+}
 
 int32 UTBItemSpawnDirector::GetSpawnedCount() const
 {
@@ -47,6 +74,24 @@ bool UTBItemSpawnDirector::CanSpawnAt(const ATBItemSpawnPoint& Point, const FTBI
 	return HasFloorAt(Point.GetActorLocation(),Rules,&Point);
 }
 
+bool UTBItemSpawnDirector::FitOnFloor(ATBItemBase& Item,double ProbeHeight,const FTBItemSpawnRules& Rules) const
+{
+	const FBox Bounds=ModelBounds(Item);
+	if(!Bounds.IsValid || Bounds.GetExtent().IsNearlyZero() || Bounds.Min.ContainsNaN() || Bounds.Max.ContainsNaN()) return false;
+	double Lowest=TNumericLimits<double>::Max(),Highest=TNumericLimits<double>::Lowest();
+	FCollisionQueryParams Query(SCENE_QUERY_STAT(RandomItemFootprint),false,&Item);
+	// 中心だけ床に乗り、モデルの端が落ちている配置も除外する。
+	for(int32 X=0;X<3;++X) for(int32 Y=0;Y<3;++Y)
+	{
+		const FVector Sample(FMath::Lerp(Bounds.Min.X,Bounds.Max.X,X*.5),FMath::Lerp(Bounds.Min.Y,Bounds.Max.Y,Y*.5),ProbeHeight);
+		FHitResult Floor;
+		if(!GetWorld()->LineTraceSingleByChannel(Floor,Sample+FVector(0,0,2),Sample-FVector(0,0,Rules.FloorProbeDistance),ECC_WorldStatic,Query) || Floor.ImpactNormal.Z<.7f) return false;
+		Lowest=FMath::Min(Lowest,Floor.ImpactPoint.Z); Highest=FMath::Max(Highest,Floor.ImpactPoint.Z);
+	}
+	if(Highest-Lowest>Rules.FloorHeightTolerance) return false;
+	return Item.SetActorLocation(Item.GetActorLocation()+FVector(0,0,Highest+Rules.FloorGap-Bounds.Min.Z),false,nullptr,ETeleportType::TeleportPhysics);
+}
+
 ATBItemBase* UTBItemSpawnDirector::TrySpawn(const ATBItemSpawnPoint& Point, const FTBItemSpawnEntry& Entry, const FTBItemSpawnRules& Rules)
 {
 	const FTransform* Placement=Entry.FindPlacement(Point.PlacementType);
@@ -58,20 +103,22 @@ ATBItemBase* UTBItemSpawnDirector::TrySpawn(const ATBItemSpawnPoint& Point, cons
 	FVector FloorLocation=Transform.GetLocation();
 	FloorLocation.Z=FMath::Min(FloorLocation.Z,Point.GetActorLocation().Z);
 	if(!HasFloorAt(FloorLocation,Rules,&Point)) return nullptr;
-	for(const auto& Existing:SpawnedItems)
-		if(Existing.IsValid() && FVector::DistSquared(Existing->GetActorLocation(),Transform.GetLocation())<FMath::Square(FMath::Max(0.f,Rules.MinimumSeparation))) return nullptr;
 	// 配置確定前は描画用のOwnerを付けない。全クライアントへ同じActorを複製する。
 	auto* Item=GetWorld()->SpawnActorDeferred<ATBItemBase>(Entry.ItemClass,Transform,nullptr,nullptr,ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
 	if(!Item) return nullptr;
 	if(auto* Switch=Cast<ATBLightSwitch>(Item)) Switch->Room=Point.Room;
 	Item->FinishSpawning(Transform);
 	if(!IsValid(Item) || Item->IsActorBeingDestroyed()) return nullptr;
+	if(Entry.bPlaceOnFloor && !FitOnFloor(*Item,FloorLocation.Z,Rules)) { Item->Destroy(); return nullptr; }
 	FCollisionQueryParams Query(SCENE_QUERY_STAT(RandomItemSpace),false,Item);
-	const FBox Bounds=Item->GetComponentsBoundingBox(true);
-	const FVector Extent=Bounds.GetExtent();
-	const bool Blocked=!Item->GetIsReplicated() || !Bounds.IsValid || Extent.IsNearlyZero() ||
-		GetWorld()->OverlapBlockingTestByChannel(Bounds.GetCenter(),FQuat::Identity,ECC_WorldDynamic,
-			FCollisionShape::MakeBox(Extent.ComponentMax(FVector(1))*.98f),Query);
+	const FBox Bounds=ModelBounds(*Item);
+	if(!Item->GetIsReplicated() || !Bounds.IsValid || Bounds.GetExtent().IsNearlyZero() || Bounds.Min.ContainsNaN() || Bounds.Max.ContainsNaN()) { Item->Destroy(); return nullptr; }
+	for(const auto& Existing:SpawnedItems)
+		if(Existing.IsValid() && BoundsDistanceSquared(ModelBounds(*Existing),Bounds)<FMath::Square(Rules.MinimumSeparation)) { Item->Destroy(); return nullptr; }
+	FBox Space=Bounds.ExpandBy(FVector(Rules.ObstacleClearance));
+	Space.Min.Z=Bounds.Min.Z; // 支持する床は余白判定に含めない。
+	const bool Blocked=GetWorld()->OverlapBlockingTestByChannel(Space.GetCenter(),FQuat::Identity,ECC_WorldDynamic,FCollisionShape::MakeBox(Space.GetExtent()),Query) ||
+		GetWorld()->OverlapBlockingTestByChannel(Space.GetCenter(),FQuat::Identity,ECC_Visibility,FCollisionShape::MakeBox(Space.GetExtent()),Query);
 	if(Blocked) { Item->Destroy(); return nullptr; }
 	Item->ForceNetUpdate();
 	return Item;
@@ -87,7 +134,11 @@ void UTBItemSpawnDirector::StartRound()
 	ON_SCOPE_EXIT { if(!IsSameRound()) ResetRound(); };
 	TGuardValue<bool> Guard(bSpawning,true);
 	const FTBItemSpawnRules Rules=TB::Rules().RandomItems;
-	if(!Rules.bEnabled || Rules.SpawnCount<=0 || !FMath::IsFinite(Rules.MinimumSeparation) || !FMath::IsFinite(Rules.FloorProbeDistance)) return;
+	if(!Rules.bEnabled || Rules.SpawnCount<=0 || !FMath::IsFinite(Rules.MinimumSeparation) || Rules.MinimumSeparation<0 ||
+	   !FMath::IsFinite(Rules.FloorProbeDistance) || Rules.FloorProbeDistance<1 ||
+	   !FMath::IsFinite(Rules.ObstacleClearance) || Rules.ObstacleClearance<0 ||
+	   !FMath::IsFinite(Rules.FloorHeightTolerance) || Rules.FloorHeightTolerance<0 ||
+	   !FMath::IsFinite(Rules.FloorGap) || Rules.FloorGap<.1f || Rules.FloorGap>2) return;
 	// 同じクラスのON/OFFが競合しないよう、重複設定されたクラスは全件除外する。
 	TMap<UClass*,int32> ClassCounts;
 	for(const auto& Entry:Rules.Entries) if(Entry.ItemClass) ++ClassCounts.FindOrAdd(Entry.ItemClass.Get());

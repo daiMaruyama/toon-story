@@ -9,6 +9,7 @@
 #include "Core/TBGameState.h"
 #include "Data/TBRuleData.h"
 #include "Components/BoxComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "Engine/OverlapResult.h"
@@ -56,7 +57,7 @@ bool FTBItemSpawnTest::RunTest(const FString&)
 	};
 	Rules=FTBItemSpawnRules(); Rules.SpawnCount=3;
 	FTBItemSpawnEntry Radio; Radio.ItemClass=ATBNoiseRadio::StaticClass(); Radio.Placements.Add(TEXT("Wall"),FTransform(FVector(40,0,0)));
-	FTBItemSpawnEntry Switch; Switch.ItemClass=ATBLightSwitch::StaticClass(); Switch.Placements.Add(TEXT("Wall"),FTransform(FVector(0,0,70)));
+	FTBItemSpawnEntry Switch; Switch.ItemClass=ATBLightSwitch::StaticClass(); Switch.bPlaceOnFloor=false; Switch.Placements.Add(TEXT("Wall"),FTransform(FVector(0,0,70)));
 	Rules.Entries={Radio,Switch};
 	State->Phase=ETBPhase::Lobby; Director->StartRound(); TestEqual(TEXT("Lobby never spawns"),Director->GetSpawnedCount(),0);
 	Playing.Hold();
@@ -138,6 +139,26 @@ bool FTBItemSpawnTest::RunTest(const FString&)
 	Rules.Entries[0].Placements[TEXT("Wall")]=FTransform(FVector(40,0,-200));
 	Director->StartRound(); TestEqual(TEXT("Offset beneath supporting floor is rejected"),Director->GetSpawnedCount(),0); Director->ResetRound();
 	Rules.Entries[0].Placements[TEXT("Wall")]=FTransform(FVector(40,0,0));
+	// 原点が床の上でも、大きなモデルの端が落ちる・壁に寄る・段差をまたぐ候補は不適格。
+	Points[0]->SetActorLocation(FVector(950,0,10003));
+	Rules.Entries[0].Placements[TEXT("Wall")]=FTransform::Identity;
+	Director->StartRound(); TestEqual(TEXT("Small model fits before floor edge"),Director->GetSpawnedCount(),1); Director->ResetRound();
+	Rules.Entries[0].Placements[TEXT("Wall")]=FTransform(FRotator(0,90,0),FVector::ZeroVector,FVector(2));
+	Director->StartRound(); TestEqual(TEXT("Scaled rotated footprint hanging over edge rejected"),Director->GetSpawnedCount(),0); Director->ResetRound();
+	Points[0]->SetActorLocation(FVector(-600,0,10003));
+	Rules.Entries[0].Placements[TEXT("Wall")]=FTransform::Identity;
+	auto* NearbyWall=SpawnBox(Points[0]->GetActorLocation()+FVector(40,0,70),FVector(5,150,100));
+	Director->StartRound(); TestEqual(TEXT("Wall inside model clearance rejected without intersection"),Director->GetSpawnedCount(),0); Director->ResetRound(); NearbyWall->Destroy();
+	auto* Step=SpawnBox(FVector(-600,30,10004),FVector(40,10,4));
+	Director->StartRound(); TestEqual(TEXT("Uneven footprint rejected"),Director->GetSpawnedCount(),0); Director->ResetRound(); Step->Destroy();
+	Rules.Entries[0].Placements[TEXT("Wall")]=FTransform(FRotator(0,90,0),FVector::ZeroVector,FVector(1.5));
+	Director->StartRound(); TestEqual(TEXT("Scaled rotated model fits open floor"),Director->GetSpawnedCount(),1);
+	for(TActorIterator<ATBNoiseRadio> It(World);It;++It)
+		if(*It!=HandPlaced && !It->IsActorBeingDestroyed() && It->GetActorLocation().Z>9000)
+			TestTrue(TEXT("Model base meets floor regardless of pivot and scale"),FMath::IsNearlyEqual(It->Mesh->Bounds.GetBox().Min.Z,10000.+Rules.FloorGap,.1));
+	Director->ResetRound(); Rules.Entries[0].Placements[TEXT("Wall")]=FTransform(FVector(40,0,0));
+	Points[1]->SetActorLocation(Points[0]->GetActorLocation()+FVector(150,0,0)); Points[1]->bEnabled=true;
+	Director->StartRound(); TestEqual(TEXT("Spacing uses model edges rather than actor origins"),Director->GetSpawnedCount(),1); Director->ResetRound(); Points[1]->bEnabled=false;
 	Rules.SpawnCount=100; Director->StartRound(); TestEqual(TEXT("Insufficient points produce only safe count"),Director->GetSpawnedCount(),1);
 	return true;
 }

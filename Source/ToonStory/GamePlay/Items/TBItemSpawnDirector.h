@@ -21,6 +21,7 @@ public:
 private:
 	bool HasFloorAt(const FVector& Location, const FTBItemSpawnRules& Rules, const AActor* Ignore) const;
 	bool CanSpawnAt(const ATBItemSpawnPoint& Point, const FTBItemSpawnRules& Rules) const;
+	bool FitOnFloor(ATBItemBase& Item, double ProbeHeight, const FTBItemSpawnRules& Rules) const;
 	ATBItemBase* TrySpawn(const ATBItemSpawnPoint& Point, const FTBItemSpawnEntry& Entry, const FTBItemSpawnRules& Rules);
 	TArray<TWeakObjectPtr<ATBItemBase>> SpawnedItems;
 	bool bStarted = false;

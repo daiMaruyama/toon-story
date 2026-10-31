@@ -43,6 +43,10 @@ EDataValidationResult UTBRuleData::IsDataValid(FDataValidationContext& Context) 
 	if(RandomItems.SpawnCount<0 || RandomItems.SpawnCount>100 || !FMath::IsFinite(RandomItems.MinimumSeparation) || RandomItems.MinimumSeparation<0 ||
 	   !FMath::IsFinite(RandomItems.FloorProbeDistance) || RandomItems.FloorProbeDistance<1)
 		Fail(LOCTEXT("InvalidRandomItemLimits", "ランダム配置の出現数は0〜100、最短距離は0cm以上、床の確認距離は1cm以上の有限の値にしてください。"));
+	if(!FMath::IsFinite(RandomItems.ObstacleClearance) || RandomItems.ObstacleClearance<0 ||
+	   !FMath::IsFinite(RandomItems.FloorHeightTolerance) || RandomItems.FloorHeightTolerance<0 ||
+	   !FMath::IsFinite(RandomItems.FloorGap) || RandomItems.FloorGap<.1f || RandomItems.FloorGap>2)
+		Fail(LOCTEXT("InvalidRandomItemSpace", "障害物との余白と設置面の許容高低差は0cm以上、底面と床の隙間は0.1〜2cmの有限の値にしてください。"));
 	TSet<UClass*> ItemClasses;
 	for(const auto& Entry:RandomItems.Entries)
 	{
