@@ -32,15 +32,19 @@ void UTBItemSpawnDirector::EndPlay(const EEndPlayReason::Type Reason)
 	Super::EndPlay(Reason);
 }
 
+bool UTBItemSpawnDirector::HasFloorAt(const FVector& Location, const FTBItemSpawnRules& Rules, const AActor* Ignore) const
+{
+	FHitResult Floor;
+	FCollisionQueryParams Query(SCENE_QUERY_STAT(RandomItemFloor),false,Ignore);
+	return GetWorld()->LineTraceSingleByChannel(Floor,Location+FVector(0,0,2),
+		Location-FVector(0,0,FMath::Max(1.f,Rules.FloorProbeDistance)),ECC_WorldStatic,Query) && Floor.ImpactNormal.Z>=.7f;
+}
+
 bool UTBItemSpawnDirector::CanSpawnAt(const ATBItemSpawnPoint& Point, const FTBItemSpawnRules& Rules) const
 {
 	if(!Point.bEnabled || Point.IsActorBeingDestroyed() || Point.GetActorTransform().ContainsNaN() ||
 	   Point.GetActorScale3D().GetMin()<=0) return false;
-	FHitResult Floor;
-	FCollisionQueryParams Query(SCENE_QUERY_STAT(RandomItemFloor),false,&Point);
-	const FVector Location=Point.GetActorLocation();
-	return GetWorld()->LineTraceSingleByChannel(Floor,Location+FVector(0,0,2),
-		Location-FVector(0,0,FMath::Max(1.f,Rules.FloorProbeDistance)),ECC_WorldStatic,Query) && Floor.ImpactNormal.Z>=.7f;
+	return HasFloorAt(Point.GetActorLocation(),Rules,&Point);
 }
 
 ATBItemBase* UTBItemSpawnDirector::TrySpawn(const ATBItemSpawnPoint& Point, const FTBItemSpawnEntry& Entry, const FTBItemSpawnRules& Rules)
@@ -49,6 +53,11 @@ ATBItemBase* UTBItemSpawnDirector::TrySpawn(const ATBItemSpawnPoint& Point, cons
 	if(!Placement) return nullptr;
 	const FTransform Transform=*Placement*Point.GetActorTransform();
 	if(Transform.ContainsNaN() || Transform.GetScale3D().GetMin()<=0) return nullptr;
+	// 地点に床があっても、オフセット先が床の外なら置かない。
+	// 壁スイッチの高さは許容するが、床より下への移動では移動後の高さから確認する。
+	FVector FloorLocation=Transform.GetLocation();
+	FloorLocation.Z=FMath::Min(FloorLocation.Z,Point.GetActorLocation().Z);
+	if(!HasFloorAt(FloorLocation,Rules,&Point)) return nullptr;
 	for(const auto& Existing:SpawnedItems)
 		if(Existing.IsValid() && FVector::DistSquared(Existing->GetActorLocation(),Transform.GetLocation())<FMath::Square(FMath::Max(0.f,Rules.MinimumSeparation))) return nullptr;
 	// 配置確定前は描画用のOwnerを付けない。全クライアントへ同じActorを複製する。

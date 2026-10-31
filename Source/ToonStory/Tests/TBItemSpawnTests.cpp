@@ -133,6 +133,11 @@ bool FTBItemSpawnTest::RunTest(const FString&)
 	Points[0]->SetActorLocation(FVector(-600,0,10003)); Points[0]->PlacementType=TEXT("Ceiling");
 	Director->StartRound(); TestEqual(TEXT("Incompatible placement skipped"),Director->GetSpawnedCount(),0); Director->ResetRound();
 	Points[0]->PlacementType=TEXT("Wall");
+	Rules.Entries[0].Placements[TEXT("Wall")]=FTransform(FVector(2000,0,0));
+	Director->StartRound(); TestEqual(TEXT("Offset beyond supporting floor is rejected"),Director->GetSpawnedCount(),0); Director->ResetRound();
+	Rules.Entries[0].Placements[TEXT("Wall")]=FTransform(FVector(40,0,-200));
+	Director->StartRound(); TestEqual(TEXT("Offset beneath supporting floor is rejected"),Director->GetSpawnedCount(),0); Director->ResetRound();
+	Rules.Entries[0].Placements[TEXT("Wall")]=FTransform(FVector(40,0,0));
 	Rules.SpawnCount=100; Director->StartRound(); TestEqual(TEXT("Insufficient points produce only safe count"),Director->GetSpawnedCount(),1);
 	return true;
 }
