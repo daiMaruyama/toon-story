@@ -6,6 +6,7 @@
 #include "Data/TBTypes.h"
 #include "Audio/TBAudioTypes.h"
 #include "Engine/EngineBaseTypes.h"
+#include "Core/TBChat.h"
 #include "TBController.generated.h"
 
 class UInputMappingContext;
@@ -99,8 +100,30 @@ public:
 	float ViewAspect = 0.f;
 	UFUNCTION(Server, Reliable)
 	void ServerSetViewAspect(float Aspect);
+	// チャット。開く・送るはEnter、閉じるはEsc。キー設定には出さない。
+	virtual bool InputKey(const FInputKeyEventArgs& Params) override;
+	bool CanUseChat() const;
+	bool IsChatOpen() const;
+	void OpenChat();
+	void CloseChat();
+	/** 間隔が短すぎるときは送らずにfalseを返す。入力欄は文を残す。 */
+	bool SendChat(const FString& Text);
+	UFUNCTION(Server, Reliable)
+	void ServerSendChat(const FString& Text);
+	UFUNCTION(Client, Reliable)
+	void ClientReceiveChat(const FString& Name, const FString& Text, int32 SenderId, const FString& SenderNetId);
+	UFUNCTION(Client, Reliable)
+	void ClientReceiveChatNotice(ETBChatNotice Kind, const FString& Name);
+	// サーバーだけで使う。ホストがキックしたら立て、Logoutでお知らせの文言を分ける。
+	bool bKickedByHost = false;
 
 private:
+	void UpdateChat();
+	UPROPERTY(Transient)
+	TObjectPtr<class UTBChatBox> ChatBox;
+	// どちらもFPlatformTime::Seconds。送った側とサーバーで別々に数える。
+	double LastChatSent = -1;
+	double LastChatAccepted = -1;
 	void ClearInputContexts();
 	TArray<TWeakObjectPtr<const UInputMappingContext>> AppliedContexts;
 	bool bPreparationTravelMask = false;
@@ -134,6 +157,8 @@ private:
 	ETBToyState LastToyState = ETBToyState::Free;
 	void UpdateLobbyCamera(bool InLobby);
 	void UpdateMenuInput(bool ShowMenu);
+	// bLobbyInputに合わせた入力モードを入れる。
+	void ApplyMenuInputMode();
 	bool bLobbyInput = false;
 	double NoticeExpires = 0;
 	bool bLeaveMenuOpen = false;

@@ -18,6 +18,7 @@ public class ToonStory : ModuleRules
 			"NavigationSystem",
 			"DeveloperSettings",
 			"InputCore",
+			"CoreOnline",
 			"OnlineSubsystem",
 			"OnlineSubsystemUtils",
 			"SignalProcessing",
@@ -31,6 +32,14 @@ public class ToonStory : ModuleRules
 		PublicIncludePaths.AddRange(new string[] {
 			"ToonStory"
 		});
+		// チャットの伏せ字にSteamのFilterTextを直接呼ぶ。
+		bool bSteam = Target.Platform == UnrealTargetPlatform.Mac || Target.Platform == UnrealTargetPlatform.Win64 ||
+		              Target.Platform == UnrealTargetPlatform.Linux;
+		if (bSteam)
+		{
+			AddEngineThirdPartyPrivateStaticDependencies(Target, "Steamworks");
+		}
+		PrivateDefinitions.Add("WITH_TB_STEAM=" + (bSteam ? "1" : "0"));
 		if (Target.ProjectFile != null)
 		{
 			foreach (string Relative in new[] { "UI/PaperClub/Fonts", "ThirdPartyNotices/PaperClub" })

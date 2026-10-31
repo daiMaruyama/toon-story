@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Mamodou. All Rights Reserved.
 
 #include "TBGameMode.h"
+#include "GamePlay/Items/TBMirror.h"
 #include "GamePlay/Events/TBEventDirector.h"
 #include "GamePlay/Items/TBItemSpawnDirector.h"
 #include "GamePlay/TBRoomLighting.h"
@@ -345,6 +346,8 @@ void ATBGameMode::PostLogin(APlayerController* PlayerController)
 {
 	Super::PostLogin(PlayerController);
 	SyncLobbyCounts();
+	// シームレストラベルでステージを移ったときはPostLoginを通らないので、部屋に入ったときだけ出る。
+	TB::Chat::BroadcastNotice(GetWorld(), ETBChatNotice::Joined, TB::Chat::DisplayName(PlayerController->PlayerState));
 	if (auto* ToyCharacter = Cast<ATBCharacter>(PlayerController->GetPawn()))
 	{
 		ToyCharacter->ApplyState();
@@ -986,6 +989,8 @@ bool ATBGameMode::Watched(ATBCharacter* Toy, ATBCharacter* Human) const
 		{
 			return true;
 		}
+		FVector MirrorHit;
+		if (ATBMirror::FindView(Human,Toy,Eye,Human->GetControlRotation(),SamplePosition,TanH,TanV,MirrorHit)) return true;
 	}
 	return false;
 }
@@ -1176,8 +1181,24 @@ void ATBGameMode::Logout(AController* Exiting)
 		Super::Logout(Exiting);
 		return;
 	}
+	const auto* Leaving = Cast<ATBController>(Exiting);
+	const ETBChatNotice LeaveKind = Leaving && Leaving->bKickedByHost ? ETBChatNotice::Kicked : ETBChatNotice::Left;
+	const FString LeaverName = TB::Chat::DisplayName(Exiting->PlayerState);
+	TB::Chat::BroadcastNotice(GetWorld(), LeaveKind, LeaverName, Exiting);
 	auto* MatchInfo = TB::GS(GetWorld());
 	const bool WasPlaying = MatchInfo && MatchInfo->Phase == ETBPhase::Playing;
+	// 試合中はチャットを出さないので、お知らせの枠にも出す。音はロビーと同じ抜けたときの音（ロビーでは人数の変化で鳴る）。
+	if (WasPlaying && !LeaverName.IsEmpty())
+	{
+		for (auto It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+		{
+			if (auto* PC = Cast<ATBController>(It->Get()); PC && PC != Leaving)
+			{
+				PC->ClientNotice(TB::Chat::NoticeText(LeaveKind, LeaverName), false);
+				PC->ClientPlaySoundEvent(ETBSoundEvent::LobbyLeave, FVector::ZeroVector);
+			}
+		}
+	}
 	auto* Pending = GetGameInstance()->GetSubsystem<UTBLobbySettings>();
 	if (Pending->bStartOnArrival && Exiting->PlayerState) Pending->bArrivalCancelled = true;
 	if (auto* ToyCharacter = Cast<ATBCharacter>(Exiting->GetPawn()))

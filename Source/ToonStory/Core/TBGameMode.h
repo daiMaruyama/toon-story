@@ -51,6 +51,7 @@ public:
 private:
 #if WITH_DEV_AUTOMATION_TESTS
 	friend class FTBRoundStartTest;
+	friend class FTBMirrorGazeTest;
 	friend class FTBHidePreparationTest;
 	friend class FTBHumanEntranceTest;
 	friend class FTBBoxEscapeTest;

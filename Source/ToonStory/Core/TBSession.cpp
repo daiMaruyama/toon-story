@@ -2,6 +2,7 @@
 
 #include "TBSession.h"
 #include "Core/TBController.h"
+#include "Core/TBChat.h"
 #include "UObject/UObjectGlobals.h"
 #include "Audio/TBAudioSubsystem.h"
 #include "Core/TBGameState.h"
@@ -150,6 +151,7 @@ void UTBSession::Host()
 	Settings.Set(GameKey, BuildTag, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
 	Settings.Set(LobbyKey, true, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
 	CurrentOperation = ESessionOperation::Creating;
+	ClearChat();
 	Message(TEXT("Creating room..."));
 	if (!Sessions->CreateSession(0, NAME_GameSession, Settings))
 	{
@@ -340,6 +342,7 @@ void UTBSession::BeginJoin(const FOnlineSessionSearchResult& SearchResult)
 		return;
 	}
 	CurrentOperation = ESessionOperation::Joining;
+	ClearChat();
 	Message(TEXT("Joining room..."));
 	if (!Sessions->JoinSession(0, NAME_GameSession, SearchResult))
 	{
@@ -602,4 +605,9 @@ void UTBSession::FinishTravelRecovery()
 		if (World->GetNetMode() == NM_ListenServer) Context->LastURL.AddOption(TEXT("listen"));
 	}
 	World->NextURL.Reset();
+}
+
+void UTBSession::ClearChat()
+{
+	if (auto* Log = GetGameInstance()->GetSubsystem<UTBChatLog>()) Log->Clear();
 }
