@@ -10,7 +10,14 @@
 #include "Core/TBLobbySettings.h"
 #include "GamePlay/TBHumanEntrance.h"
 #include "Core/TBSession.h"
+#include "Core/TBChat.h"
 #include "Core/TBGameHelpers.h"
+#include "Data/TBRuleData.h"
+#include "UI/TBChatBox.h"
+#include "UI/TBHUD.h"
+#include "HAL/PlatformTime.h"
+#include "InputKeyEventArgs.h"
+#include "Framework/Application/SlateApplication.h"
 #include "Input/TBInputSettings.h"
 #include "Input/TBKeyLabels.h"
 #include "EnhancedInputComponent.h"
@@ -93,6 +100,7 @@ void ATBController::PlayerTick(float DeltaTime)
 	UpdateScreenTransition();
 	UpdateViewAspect();
 	SyncInputContexts();
+	UpdateChat();
 	if (NoticeExpires > 0 && GetWorld()->GetTimeSeconds() > NoticeExpires)
 	{
 		Notice.Reset();
@@ -315,16 +323,21 @@ void ATBController::UpdateMenuInput(bool ShowMenu)
 		bEnableClickEvents = ShowMenu;
 		SetIgnoreLookInput(ShowMenu);
 		SetIgnoreMoveInput(ShowMenu);
-		if (ShowMenu)
-		{
-			FInputModeGameAndUI Mode;
-			Mode.SetHideCursorDuringCapture(false);
-			SetInputMode(Mode);
-		}
-		else
-		{
-			SetInputMode(FInputModeGameOnly());
-		}
+		ApplyMenuInputMode();
+	}
+}
+
+void ATBController::ApplyMenuInputMode()
+{
+	if (bLobbyInput)
+	{
+		FInputModeGameAndUI Mode;
+		Mode.SetHideCursorDuringCapture(false);
+		SetInputMode(Mode);
+	}
+	else
+	{
+		SetInputMode(FInputModeGameOnly());
 	}
 }
 
@@ -566,6 +579,142 @@ void ATBController::ClientNotice_Implementation(const FString& Message, bool bEr
 	Notice = TB::ExpandKeyTokens(this, Message);
 	NoticeExpires = GetWorld()->GetTimeSeconds() + 5;
 	if (bError) ClientPlaySoundEvent(ETBSoundEvent::UIError, FVector::ZeroVector);
+}
+
+bool ATBController::CanUseChat() const
+{
+	const auto* State = TB::GS(GetWorld());
+	if (!IsLocalController() || !State || !TB::Chat::IsAvailable(State->Phase) || ShouldHidePreparationView())
+	{
+		return false;
+	}
+	const auto* HUD = Cast<ATBHUD>(GetHUD());
+	return !HUD || !HUD->IsChatBlocked();
+}
+
+bool ATBController::IsChatOpen() const
+{
+	return ChatBox && ChatBox->IsOpen();
+}
+
+// 使える間だけ画面に置く。使えなくなったら（試合開始、設定やオプションを開いた）閉じて外す。履歴はUTBChatLogに残る。
+void ATBController::UpdateChat()
+{
+	if (!CanUseChat())
+	{
+		if (ChatBox)
+		{
+			CloseChat();
+			ChatBox->RemoveFromParent();
+			ChatBox = nullptr;
+		}
+		return;
+	}
+	if (!ChatBox)
+	{
+		ChatBox = CreateWidget<UTBChatBox>(this);
+		if (!ChatBox)
+		{
+			return;
+		}
+		// オプション画面（50）より奥。
+		ChatBox->AddToViewport(40);
+	}
+	ChatBox->SetResultsLayout(TB::GS(GetWorld())->Phase != ETBPhase::Lobby);
+}
+
+bool ATBController::InputKey(const FInputKeyEventArgs& Params)
+{
+	// 開いている間のEnterは入力欄が受け取るので、ここへは閉じているときだけ来る。
+	if (Params.Key == EKeys::Enter && Params.Event == IE_Pressed && ChatBox && !ChatBox->IsOpen())
+	{
+		OpenChat();
+		return true;
+	}
+	return Super::InputKey(Params);
+}
+
+void ATBController::OpenChat()
+{
+	if (ChatBox && !ChatBox->IsOpen())
+	{
+		ChatBox->SetOpen(true);
+	}
+}
+
+void ATBController::CloseChat()
+{
+	if (!IsChatOpen())
+	{
+		return;
+	}
+	ChatBox->SetOpen(false);
+	// 試合が始まった同じフレームで閉じることもあるので、入力モードはロビー用と決めつけない。
+	ApplyMenuInputMode();
+	// ロビー用の入力モードはフォーカスを動かさないので、隠した入力欄から画面へ戻す。戻さないとEnterやロビーのキーが効かない。
+	if (FSlateApplication::IsInitialized())
+	{
+		FSlateApplication::Get().SetAllUserFocusToGameViewport();
+	}
+}
+
+bool ATBController::SendChat(const FString& Text)
+{
+	const double Now = FPlatformTime::Seconds();
+	if (TB::Chat::IsTooSoon(LastChatSent, Now, TB::Rules().Chat.SendIntervalSeconds))
+	{
+		return false;
+	}
+	LastChatSent = Now;
+	ServerSendChat(Text);
+	return true;
+}
+
+void ATBController::ServerSendChat_Implementation(const FString& Text)
+{
+	const auto* State = TB::GS(GetWorld());
+	const FString Message = TB::Chat::Clean(Text);
+	const double Now = FPlatformTime::Seconds();
+	if (!State || !TB::Chat::IsAvailable(State->Phase) || !PlayerState || Message.IsEmpty() ||
+	    TB::Chat::IsTooSoon(LastChatAccepted, Now, TB::Rules().Chat.SendIntervalSeconds * TB::Chat::ServerSlack))
+	{
+		return;
+	}
+	LastChatAccepted = Now;
+	const FString Name = TB::Chat::DisplayName(PlayerState);
+	for (auto It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		if (auto* PC = Cast<ATBController>(It->Get()))
+		{
+			PC->ClientReceiveChat(Name, Message, PlayerState->GetPlayerId(), PlayerState->GetUniqueId().ToString());
+		}
+	}
+}
+
+void ATBController::ClientReceiveChat_Implementation(const FString& Name, const FString& Text, int32 SenderId,
+                                                     const FString& SenderNetId)
+{
+	auto* Log = GetGameInstance()->GetSubsystem<UTBChatLog>();
+	if (!Log)
+	{
+		return;
+	}
+	const bool bSelf = PlayerState && PlayerState->GetPlayerId() == SenderId;
+	Log->Add(Name, TB::Chat::Filter(GetWorld(), TB::Chat::Clean(Text), SenderNetId), bSelf);
+	// 画面のほかの所を見ていても届いたと分かるよう、ほかの人の発言だけ鳴らす。
+	if (!bSelf)
+	{
+		ClientPlaySoundEvent(ETBSoundEvent::ChatMessage, FVector::ZeroVector);
+	}
+}
+
+// 出入りの音はロビーの人数の変化で別に鳴るので、ここでは鳴らさない。
+void ATBController::ClientReceiveChatNotice_Implementation(ETBChatNotice Kind, const FString& Name)
+{
+	if (auto* Log = GetGameInstance()->GetSubsystem<UTBChatLog>())
+	{
+		Log->AddNotice(TB::Chat::NoticeText(Kind, TB::Chat::Clean(Name)));
+	}
 }
 
 void ATBController::ClientPlaySoundEvent_Implementation(ETBSoundEvent Event, FVector Location)

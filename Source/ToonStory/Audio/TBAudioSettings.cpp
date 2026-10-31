@@ -7,7 +7,7 @@ UTBAudioSettings::UTBAudioSettings()
 		auto& Clip = Music.Add(State);
 		Clip.bSpatial = false;
 	}
-	for (uint8 Index = 0; Index <= uint8(ETBSoundEvent::ToyTaunt); ++Index)
+	for (uint8 Index = 0; Index <= uint8(ETBSoundEvent::ChatMessage); ++Index)
 	{
 		const auto Event = ETBSoundEvent(Index);
 		auto& Clip = Sounds.Add(Event);

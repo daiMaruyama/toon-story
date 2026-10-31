@@ -92,7 +92,7 @@ bool FTBAudioSelectedCatalogTest::RunTest(const FString& Parameters)
 {
 	const auto* Settings = GetDefault<UTBAudioSettings>();
 	TestEqual(TEXT("Four music states registered"), Settings->Music.Num(), 4);
-	TestEqual(TEXT("All selected SE registered"), Settings->Sounds.Num(), int32(ETBSoundEvent::ToyTaunt) + 1);
+	TestEqual(TEXT("All selected SE registered"), Settings->Sounds.Num(), int32(ETBSoundEvent::ChatMessage) + 1);
 	for (const auto& Pair : Settings->Music)
 	{
 		auto* Wave = Cast<USoundWave>(Pair.Value.Sound.LoadSynchronous());

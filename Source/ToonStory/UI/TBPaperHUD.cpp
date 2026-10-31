@@ -3,6 +3,7 @@
 #include "TBHUD.h"
 #include "TBPaperStyle.h"
 #include "Core/TBLobbySettings.h"
+#include "Core/TBChat.h"
 #include "Core/TBPlayerState.h"
 #include "Core/TBGameState.h"
 #include "Core/TBController.h"
@@ -242,7 +243,7 @@ void ATBHUD::DrawLobby()
 		const float PY = 182 + Row++ * 21;
 		Panel(40, PY - 4, 666, 20, FLinearColor(.10f, .15f, .18f, Row % 2 ? .42f : .18f));
 		Panel(48, PY + 4, 4, 12, P->bReady ? Accent : Muted);
-		Text(P->GetPlayerName().Left(18), 62, PY - 5, .8f, Ink);
+		Text(TB::Chat::DisplayName(P), 62, PY - 5, .8f, Ink);
 		Text(PreferredRole, 320, PY - 5, .8f, Muted);
 		Text(P->bReady ? TEXT("準備OK") : TEXT("準備中"), 455, PY - 5, .8f, P->bReady ? Accent : Muted);
 		if (PC->HasAuthority() && P != Local)

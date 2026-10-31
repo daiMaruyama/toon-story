@@ -17,7 +17,7 @@ enum class ETBSoundEvent : uint8
 	HumanFootstep, UIHover, UIBack, UIError, UIChange, Unready, LobbyJoin, LobbyLeave,
 	TeamNotice, CaptureHard, CarryLift, CarryDrop, HumanLand, StoreCancel, RescueCancel,
 	TVButton, TVChannel, TVPowerOn, TVPowerOff, TVGlitch, TimeTick, JingleAlternate,
-	BatteryLast, BoxedTransition, CollectLoop, TVStatic, ToyTaunt
+	BatteryLast, BoxedTransition, CollectLoop, TVStatic, ToyTaunt, ChatMessage
 };
 
 UENUM(BlueprintType)

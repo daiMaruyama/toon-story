@@ -137,7 +137,7 @@ namespace
 
 bool TB::IsUsableKey(const FKey& Key)
 {
-	if (!Key.IsValid() || !Key.IsBindableToActions() || Key == EKeys::Escape || Key.IsGamepadKey() || Key.IsAxis1D() || Key.IsAxis2D() || Key.IsAxis3D() ||
+	if (!Key.IsValid() || !Key.IsBindableToActions() || Key == EKeys::Escape || Key == EKeys::Enter || Key.IsGamepadKey() || Key.IsAxis1D() || Key.IsAxis2D() || Key.IsAxis3D() ||
 	    Key == EKeys::MouseScrollUp || Key == EKeys::MouseScrollDown || Key == EKeys::LeftCommand || Key == EKeys::RightCommand)
 	{
 		return false;
