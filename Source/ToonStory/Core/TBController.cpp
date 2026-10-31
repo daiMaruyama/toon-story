@@ -17,6 +17,7 @@
 #include "UI/TBHUD.h"
 #include "HAL/PlatformTime.h"
 #include "InputKeyEventArgs.h"
+#include "Framework/Application/SlateApplication.h"
 #include "Input/TBInputSettings.h"
 #include "Input/TBKeyLabels.h"
 #include "EnhancedInputComponent.h"
@@ -648,8 +649,13 @@ void ATBController::CloseChat()
 		return;
 	}
 	ChatBox->SetOpen(false);
-	// フォーカスをゲームへ戻す。試合が始まった同じフレームで閉じることもあるので、ロビー用と決めつけない。
+	// 試合が始まった同じフレームで閉じることもあるので、入力モードはロビー用と決めつけない。
 	ApplyMenuInputMode();
+	// ロビー用の入力モードはフォーカスを動かさないので、隠した入力欄から画面へ戻す。戻さないとEnterやロビーのキーが効かない。
+	if (FSlateApplication::IsInitialized())
+	{
+		FSlateApplication::Get().SetAllUserFocusToGameViewport();
+	}
 }
 
 bool ATBController::SendChat(const FString& Text)
