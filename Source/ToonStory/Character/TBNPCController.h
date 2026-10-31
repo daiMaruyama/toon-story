@@ -28,6 +28,7 @@ public:
 	float HumanSightRangeCm = 2200.f;
 
 private:
+	bool FindVisiblePoint(const AActor* Actor, FRotator View, FVector& Aim) const;
 	void ThinkHuman(ATBCharacter* Body);
 	void CarryToBox(ATBCharacter* Body, class ATBBox* Box);
 	int32 BoxApproach = 0;

@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Mamodou. All Rights Reserved.
 
 #include "TBGameMode.h"
+#include "GamePlay/Items/TBMirror.h"
 #include "GamePlay/Events/TBEventDirector.h"
 #include "GamePlay/TBRoomLighting.h"
 #include "Camera/CameraActor.h"
@@ -982,6 +983,8 @@ bool ATBGameMode::Watched(ATBCharacter* Toy, ATBCharacter* Human) const
 		{
 			return true;
 		}
+		FVector MirrorHit;
+		if (ATBMirror::FindView(Human,Toy,Eye,Human->GetControlRotation(),SamplePosition,TanH,TanV,MirrorHit)) return true;
 	}
 	return false;
 }
