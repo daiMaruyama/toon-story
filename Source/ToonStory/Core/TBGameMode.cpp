@@ -2,6 +2,7 @@
 
 #include "TBGameMode.h"
 #include "GamePlay/Events/TBEventDirector.h"
+#include "GamePlay/Items/TBItemSpawnDirector.h"
 #include "GamePlay/TBRoomLighting.h"
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
@@ -67,6 +68,7 @@ void ATBGameMode::InitGameState()
 ATBGameMode::ATBGameMode()
 {
 	EventDirector = CreateDefaultSubobject<UTBEventDirector>(TEXT("EventDirector"));
+	ItemSpawns = CreateDefaultSubobject<UTBItemSpawnDirector>(TEXT("ItemSpawns"));
 	PrimaryActorTick.bCanEverTick = true;
 	PlayerStateClass = ATBPlayerState::StaticClass();
 	GameStateClass = ATBGameState::StaticClass();
@@ -801,6 +803,7 @@ void ATBGameMode::StartRound(APlayerController* PlayerController)
 			if (!CheckCommittedParticipants()) return;
 		}
 	}
+	ItemSpawns->StartRound();
 	MatchInfo->ForceNetUpdate();
 	if (auto* Session = GetGameInstance()->GetSubsystem<UTBSession>())
 	{
@@ -926,6 +929,7 @@ void ATBGameMode::DestroyRoundCharacters()
 
 void ATBGameMode::ResetStageInteractions()
 {
+	ItemSpawns->ResetRound();
 	for (TActorIterator<ATBRoomLighting> It(GetWorld()); It; ++It)
 	{
 		It->ResetLighting();

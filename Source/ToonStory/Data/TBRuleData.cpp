@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Mamodou. All Rights Reserved.
 
 #include "Data/TBRuleData.h"
+#include "GamePlay/Items/TBItemBase.h"
 
 #if WITH_EDITOR
 #include "Misc/DataValidation.h"
@@ -38,6 +39,21 @@ EDataValidationResult UTBRuleData::IsDataValid(FDataValidationContext& Context) 
 	if (!FMath::IsFinite(Match.HidePreparationSeconds) || Match.HidePreparationSeconds < .1f)
 	{
 		Fail(LOCTEXT("InvalidPreparationTiming", "隠れる時間は0.1秒以上の有限の値にしてください。"));
+	}
+	if(RandomItems.SpawnCount<0 || RandomItems.SpawnCount>100 || !FMath::IsFinite(RandomItems.MinimumSeparation) || RandomItems.MinimumSeparation<0 ||
+	   !FMath::IsFinite(RandomItems.FloorProbeDistance) || RandomItems.FloorProbeDistance<1)
+		Fail(LOCTEXT("InvalidRandomItemLimits", "ランダム配置の出現数は0〜100、最短距離は0cm以上、床の確認距離は1cm以上の有限の値にしてください。"));
+	TSet<UClass*> ItemClasses;
+	for(const auto& Entry:RandomItems.Entries)
+	{
+		if(!Entry.ItemClass || ItemClasses.Contains(Entry.ItemClass.Get()))
+			Fail(LOCTEXT("DuplicateRandomItemClass", "アイテム別設定にはクラスを指定し、同じクラスは1件だけ登録してください。床・壁の違いは配置種別ごとの変換で設定します。"));
+		ItemClasses.Add(Entry.ItemClass.Get());
+		if(!FMath::IsFinite(Entry.Weight) || Entry.Weight<0 || Entry.Weight>1000)
+			Fail(LOCTEXT("InvalidRandomItemWeight", "アイテムの重みは0〜1000の有限の値にしてください。"));
+		for(const auto& Placement:Entry.Placements)
+			if(Placement.Value.ContainsNaN() || Placement.Value.GetScale3D().GetMin()<=0)
+				Fail(LOCTEXT("InvalidRandomItemPlacement", "配置種別ごとの変換は有限の値、拡大率は正の値にしてください。"));
 	}
 	return Result;
 }
