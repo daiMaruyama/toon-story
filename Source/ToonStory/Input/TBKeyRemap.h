@@ -25,7 +25,7 @@ namespace TB
 	};
 
 	/**
-	 * 割り当てに使えるキーか。Invalid、Escape（メニューの固定キー）、パッド、マウスの軸、マウスホイールの上下、
+	 * 割り当てに使えるキーか。Invalid、Escape（メニューの固定キー）、Enter（チャットの固定キー）、パッド、マウスの軸、マウスホイールの上下、
 	 * Command（LeftCommand/RightCommand）、ConsoleKeysは使えない。マウスのボタン、Alt、Shift、Ctrl、Fキーは使える。
 	 */
 	TOONSTORY_API bool IsUsableKey(const FKey& Key);

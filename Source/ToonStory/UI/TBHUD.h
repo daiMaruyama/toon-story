@@ -16,6 +16,8 @@ public:
 	virtual void NotifyHitBoxClick(FName BoxName) override;
 	bool IsLobbySettingsOpen() const { return bLobbySettingsOpen; }
 	bool IsStagePickerOpen() const { return bStagePickerOpen; }
+	// 設定・参加者一覧・オプションを開いている間は、チャットを出さない。
+	bool IsChatBlocked() const;
 	virtual void NotifyHitBoxBeginCursorOver(FName BoxName) override;
 
 private:

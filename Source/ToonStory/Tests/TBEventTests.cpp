@@ -32,6 +32,7 @@ bool FTBEventTest::RunTest(const FString& Parameters)
 		State->Phase = SavedPhase;
 		UTBEventTestEvent::ReentrantDirector = nullptr;
 		UTBEventTestEvent::bEligible = UTBEventTestEvent::bSucceed = true;
+		UTBEventTestEvent::bActive = false;
 		Owner->Destroy();
 	};
 	Rules = FTBEventRules();
@@ -81,6 +82,28 @@ bool FTBEventTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("Unregistered class rejected"), Director->TryTrigger(UTBEventTestEvent::StaticClass()));
 	Director->Advance(100);
 	TestEqual(TEXT("Empty catalog is inert"), UTBEventTestEvent::Executions, 5);
+
+	Director->ResetRound();
+	Rules.EventClasses = {UTBEventTestEvent::StaticClass()};
+	Rules.ChancePerSecond = 1;
+	UTBEventTestEvent::bActive = true;
+	TestTrue(TEXT("Persistent event starts"), Director->TryTrigger(UTBEventTestEvent::StaticClass()));
+	Director->Advance(100);
+	TestEqual(TEXT("Active event blocks rolls even past cooldown"), UTBEventTestEvent::Executions, 6);
+	TestFalse(TEXT("Active event also blocks explicit triggers"), Director->TryTrigger(UTBEventTestEvent::StaticClass()));
+	UTBEventTestEvent::bActive = false;
+	TestFalse(TEXT("Ending event starts a fresh cooldown before explicit trigger"), Director->TryTrigger(UTBEventTestEvent::StaticClass()));
+	Director->Advance(2);
+	TestEqual(TEXT("Cooldown after completion blocks rolls"), UTBEventTestEvent::Executions, 6);
+	Director->Advance(1);
+	TestEqual(TEXT("Rolls resume after completion cooldown"), UTBEventTestEvent::Executions, 7);
+	Director->ResetRound();
+	UTBEventTestEvent::bActive = true;
+	TestTrue(TEXT("Another sustained event can start"), Director->TryTrigger(UTBEventTestEvent::StaticClass()));
+	State->Phase = ETBPhase::Lobby;
+	Director->Advance(1);
+	State->Phase = ETBPhase::Playing;
+	TestTrue(TEXT("Round reset removes active-event lock"), Director->TryTrigger(UTBEventTestEvent::StaticClass()));
 	return true;
 }
 #endif

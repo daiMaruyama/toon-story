@@ -6,6 +6,7 @@
 #include "Engine/Attenuation.h"
 #include "Engine/DataAsset.h"
 #include "GamePlay/TBRuleMath.h"
+#include "GamePlay/Items/TBItemSpawnTypes.h"
 #include "TBRuleData.generated.h"
 
 USTRUCT(BlueprintType)
@@ -198,7 +199,40 @@ struct FTBToyRules
 	     1}};
 };
 
+/** ロビーと結果画面のチャット */
+USTRUCT(BlueprintType)
+struct FTBChatRules
+{
+	GENERATED_BODY()
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "チャット",
+	          meta = (DisplayName = "1回の文字数", ClampMin = "1", ClampMax = "200"))
+	int32 MaxLength = 60;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "チャット",
+	          meta = (DisplayName = "続けて送れるまで", Units = "s", ClampMin = "0"))
+	float SendIntervalSeconds = 1.f;
+	/** 閉じている間、新しい発言を出しておく時間。最後の1秒で薄れて消える */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "チャット",
+	          meta = (DisplayName = "発言を出しておく時間", Units = "s", ClampMin = "1"))
+	float ShowSeconds = 8.f;
+};
+
 class UTBRandomEvent;
+
+/** ママが来る！の制限時間と説得エリア。位置はマップのTBMomArrivalZoneで指定。 */
+USTRUCT(BlueprintType)
+struct FTBMomEventRules
+{
+	GENERATED_BODY()
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="ママが来る！", meta=(DisplayName="ママ到着までの秒数", ClampMin="1", Units="s"))
+	float ArrivalSeconds = 45;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="ママが来る！", meta=(DisplayName="説得に必要な連続滞在秒数", ClampMin="0.1", Units="s"))
+	float PersuadeSeconds = 5;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="ママが来る！", meta=(DisplayName="指定範囲の半径", ClampMin="20", Units="cm"))
+	float Radius = 60;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="ママが来る！", meta=(DisplayName="足元の許容高さ", ClampMin="1", Units="cm"))
+	float Height = 120;
+	bool IsValid() const;
+};
 
 USTRUCT(BlueprintType)
 struct FTBEventRules
@@ -214,6 +248,8 @@ struct FTBEventRules
 	/** 実行可能な候補から等確率で1つ選ぶ。重複登録は無視。試合開始時に読み込む。 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "イベント", meta = (DisplayName = "イベント候補"))
 	TArray<TSubclassOf<UTBRandomEvent>> EventClasses;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="イベント", meta=(DisplayName="ママが来る！"))
+	FTBMomEventRules Mom;
 };
 
 /** 作る側が決めるルールの値。試合中は読むだけ */
@@ -222,6 +258,8 @@ class TOONSTORY_API UTBRuleData : public UDataAsset
 {
 	GENERATED_BODY()
 public:
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="ランダム配置", meta=(ShowOnlyInnerProperties))
+	FTBItemSpawnRules RandomItems;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "イベント", meta = (ShowOnlyInnerProperties))
 	FTBEventRules Events;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "視界", meta = (ShowOnlyInnerProperties))
@@ -238,6 +276,8 @@ public:
 	FTBVoiceRules Voice;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "人形の見た目", meta = (ShowOnlyInnerProperties))
 	FTBToyRules Toys;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "チャット", meta = (ShowOnlyInnerProperties))
+	FTBChatRules Chat;
 
 #if WITH_EDITOR
 	// 1つずつの範囲は ClampMin/Max で守り、ここでは値どうしの関係だけを確かめる。

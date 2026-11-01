@@ -67,6 +67,7 @@ void ATBController::ServerKickPlayer_Implementation(int32 PlayerId)
 			}
 			Body->DropToy();
 		}
+		Target->bKickedByHost = true;
 		if (Mode->GameSession->KickPlayer(Target, FText::FromString(TEXT("Removed by host"))))
 		{
 			ClientNotice(Name + TEXT(" を部屋から退出させました。"), false);
