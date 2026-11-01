@@ -7,6 +7,7 @@
 #include "Blueprint/WidgetTree.h"
 #include "Components/Button.h"
 #include "Core/TBController.h"
+#include "Core/TBSession.h"
 #include "Core/TBTitleStory.h"
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
@@ -54,7 +55,7 @@ namespace
 	}
 }
 
-// 物語は最初の1回だけ。寸劇が無ければすぐメニュー。飛ばす入力で黒から明けてメニューへ。メニューを触るとループが止まり、放置すると寸劇。「ストーリーを見る」で戻る。
+// 物語は最初の1回だけ。寸劇が無ければすぐメニュー。飛ばす入力で黒から明けてメニューへ。触ってもループは止めず、放置すると寸劇（オプションや検索の途中は流さない）。「ストーリーを見る」で戻る。
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBTitleStoryTest, "ToonStory.Title.Story",
                                  EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
 bool FTBTitleStoryTest::RunTest(const FString& Parameters)
@@ -86,8 +87,6 @@ bool FTBTitleStoryTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("The room cards are hidden"), Menu->AreRoomCardsShown());
 	PressStoryButton(Menu, TEXT("Story"));
 	TestTrue(TEXT("The story button does nothing without a sequence"), Menu->GetState() == UTBTitleMenu::EState::Menu);
-	PressStoryButton(Menu, TEXT("Find"));
-	TestTrue(TEXT("Finding rooms shows the cards"), Menu->AreRoomCardsShown());
 	Menu->RemoveFromParent();
 
 	// 寸劇があれば、最初の1回だけStory。どのキーでも飛ばせて、飛ばすと後ろのループが始まる。
@@ -113,7 +112,7 @@ bool FTBTitleStoryTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Skipping starts from black"), Menu->GetBlackoutOpacity(), 1.f);
 	TestFalse(TEXT("The menu lets clicks through to the buttons"), Menu->IsCatchingClicks());
 
-	// メニューを触っても、ループ全体は止めない（止まるのは光を当てたおもちゃだけ）。触ると放置の数え直し。
+	// メニューを触っても、ループは止めない。触ると放置の数え直し。
 	Menu->AdvanceIdleForTest(40.f);
 	TestFalse(TEXT("Keys in the menu are left to the buttons"), Menu->SendKeyDownForTest(AnyKey).IsEventHandled());
 	TestTrue(TEXT("Touching the menu keeps the loop playing"), Loop->GetSequencePlayer()->IsPlaying());
@@ -146,6 +145,15 @@ bool FTBTitleStoryTest::RunTest(const FString& Parameters)
 	// 試合から戻ったとき（もう見せた）は、寸劇があってもすぐメニュー。
 	Menu = Open();
 	TestTrue(TEXT("Coming back goes straight to the menu"), Menu->GetState() == UTBTitleMenu::EState::Menu);
+
+	// 部屋をさがすとカードが出る。探している間は、放っておいても寸劇で割り込まない。検索は終わるのを待たないので最後に。
+	PressStoryButton(Menu, TEXT("Find"));
+	TestTrue(TEXT("Finding rooms shows the cards"), Menu->AreRoomCardsShown());
+	if (PC->GetGameInstance()->GetSubsystem<UTBSession>()->IsBusy())
+	{
+		Menu->AdvanceIdleForTest(60.f);
+		TestTrue(TEXT("Searching holds off the story"), Menu->GetState() == UTBTitleMenu::EState::Menu);
+	}
 	Menu->RemoveFromParent();
 	return true;
 }

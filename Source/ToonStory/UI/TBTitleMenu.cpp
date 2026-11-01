@@ -183,8 +183,8 @@ void UTBTitleMenu::NoteInput()
 
 bool UTBTitleMenu::IsBusyInMenu() const
 {
-	// 部屋を探している途中、ヘルプやオプションを読んでいる途中に、寸劇で割り込まない。
-	return bRoomCardsShown || (HelpOverlay && HelpOverlay->GetVisibility() == ESlateVisibility::Visible) ||
+	// 部屋を探している・入ろうとしている途中、ヘルプやオプションを読んでいる途中に、寸劇で割り込まない。
+	return (Session && Session->IsBusy()) || (HelpOverlay && HelpOverlay->GetVisibility() == ESlateVisibility::Visible) ||
 	       (Options.IsValid() && Options->IsInViewport());
 }
 
