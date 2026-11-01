@@ -11,9 +11,11 @@ public:
 	inline static int32 Executions = 0;
 	inline static bool bEligible = true;
 	inline static bool bSucceed = true;
+	inline static bool bActive = false;
 	inline static UTBEventDirector* ReentrantDirector = nullptr;
 	inline static bool bNestedSucceeded = false;
 	virtual bool CanExecute_Implementation(UWorld* World) const override { return bEligible; }
+	virtual bool IsActive_Implementation(UWorld* World) const override { return bActive; }
 	virtual bool Execute_Implementation(UWorld* World) override
 	{
 		++Executions;

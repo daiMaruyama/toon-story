@@ -10,4 +10,5 @@ class TOONSTORY_API UTBMomArrivalEvent : public UTBRandomEvent
 public:
 	virtual bool CanExecute_Implementation(UWorld* World) const override;
 	virtual bool Execute_Implementation(UWorld* World) override;
+	virtual bool IsActive_Implementation(UWorld* World) const override;
 };

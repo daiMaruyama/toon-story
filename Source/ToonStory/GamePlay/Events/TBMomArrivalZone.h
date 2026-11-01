@@ -44,6 +44,8 @@ public:
 	void ResetEvent();
 	bool ContainsHuman(const ATBCharacter& Human) const;
 	static ATBMomArrivalZone* FindActive(UWorld* World);
+	/** NPCだけでは対処不能になるため、人間陣営を操作中のプレイヤーが必要。 */
+	static bool HasHumanPlayer(UWorld* World);
 private:
 	UPROPERTY() TObjectPtr<UStaticMeshComponent> Marker;
 	UPROPERTY() TObjectPtr<UInstancedStaticMeshComponent> Boundary;

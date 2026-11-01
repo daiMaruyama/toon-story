@@ -3,6 +3,7 @@
 #include "Core/TBGameHelpers.h"
 #include "Core/TBGameMode.h"
 #include "Core/TBGameState.h"
+#include "Core/TBPlayerState.h"
 #include "Data/TBRuleData.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/InstancedStaticMeshComponent.h"
@@ -11,6 +12,7 @@
 #include "Materials/MaterialInterface.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
+#include "GameFramework/Controller.h"
 #include "Net/UnrealNetwork.h"
 #include "UObject/ConstructorHelpers.h"
 
@@ -92,7 +94,7 @@ bool ATBMomArrivalZone::StartEvent()
 	const auto* Match=TB::GS(GetWorld());
 	const auto& Rules=TB::Rules().Events.Mom;
 	if (!HasAuthority() || !bEnabled || !TB::Playing(GetWorld()) || !Match || Match->IsPreparing() ||
-	    !Rules.IsValid() || FindActive(GetWorld())) return false;
+	    !Rules.IsValid() || !HasHumanPlayer(GetWorld()) || FindActive(GetWorld())) return false;
 	Round=Match->HidePreparation.Round;
 	State=FTBMomArrivalState();
 	State.bActive=true;
@@ -122,11 +124,26 @@ bool ATBMomArrivalZone::ContainsHuman(const ATBCharacter& Human) const
 	    TB::ClearPath(this,&Human,GetActorLocation()+FVector(0,0,60),Feet+FVector(0,0,60));
 }
 
+bool ATBMomArrivalZone::HasHumanPlayer(UWorld* World)
+{
+	if (!World) return false;
+	for (TActorIterator<ATBCharacter> It(World);It;++It)
+	{
+		const auto* Controller = It->GetController();
+		const auto* Player = It->TBPS();
+		if (!It->IsActorBeingDestroyed() && It->IsHuman() && Controller &&
+		    !Controller->IsActorBeingDestroyed() && Controller->IsPlayerController() &&
+		    Player && !Player->IsABot() && !Player->IsInactive()) return true;
+	}
+	return false;
+}
+
 void ATBMomArrivalZone::Advance(float DeltaSeconds)
 {
 	if (!HasAuthority() || !State.bActive) return;
 	const auto* Match=TB::GS(GetWorld());
-	if (!TB::Playing(GetWorld()) || !Match || Match->IsPreparing() || Match->HidePreparation.Round!=Round)
+	if (!TB::Playing(GetWorld()) || !Match || Match->IsPreparing() || Match->HidePreparation.Round!=Round ||
+	    !HasHumanPlayer(GetWorld()))
 	{
 		ResetEvent();
 		return;
