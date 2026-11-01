@@ -14,6 +14,15 @@ class UMaterialInstanceDynamic;
 class UStaticMeshComponent;
 class UTBTVButton;
 
+USTRUCT()
+struct FTBRemotePressState
+{
+	GENERATED_BODY()
+	// Component names are stable across server/client BP instances; array ordering is not.
+	UPROPERTY() FName Button;
+	UPROPERTY() uint32 Round = 0;
+};
+
 /** 箱内テレビのリモコン。ボタンはBPで、アクタのスケールで全体の大きさを変えられる。 */
 UCLASS(Blueprintable)
 class TOONSTORY_API ATBTVRemote : public AActor
@@ -24,10 +33,11 @@ public:
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaSeconds) override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Remote")
 	TObjectPtr<UStaticMeshComponent> Mesh;
-	UPROPERTY(EditInstanceOnly, Category = "Remote")
+	UPROPERTY(EditInstanceOnly, Replicated, Category = "Remote")
 	TObjectPtr<ATBBoxTV> TV;
 	// 続けて押せるまでの時間はマスターデータ（TB::PresentationData().Remote）にある。
 
@@ -49,6 +59,12 @@ private:
 		double LeftSince = -1;
 	};
 	TMap<TWeakObjectPtr<ATBCharacter>, FContact> Contacts;
+	UPROPERTY(ReplicatedUsing = OnRep_PressState)
+	FTBRemotePressState PressState;
+	UFUNCTION()
+	void OnRep_PressState();
+	void SetConfirmedButton(const UTBTVButton* Button);
+	const UTBTVButton* ConfirmedButton() const;
 	TWeakObjectPtr<ATBGameState> ContactState;
 	TWeakObjectPtr<ATBBoxTV> ContactTV;
 	uint32 ContactRound = 0;
@@ -73,6 +89,7 @@ private:
 	UTBTVButton* PreviewButton(ATBCharacter*& Viewer) const;
 	void EvaluateContacts(double Now);
 	bool IsEligible(const ATBCharacter* Viewer) const;
+	bool IsPresentationEligible(const ATBCharacter* Viewer) const;
 	bool SupportPoint(const ATBCharacter* Viewer, FVector& Point) const;
 	bool InButton(const UTBTVButton* Button, const FVector& Point, float Margin) const;
 	UTBTVButton* SelectButton(const ATBCharacter* Viewer, const FVector& Point) const;

@@ -429,12 +429,19 @@ bool ATBCharacter::GetEmoteSample(FTBEmoteSample& Out) const
 		return false;
 	}
 	if (!FMath::IsFinite(Now) || !FMath::IsFinite(Emote.StartsAt) || !FMath::IsFinite(Emote.EndsAt) ||
-	    Emote.EndsAt <= Emote.StartsAt || EmoteDuration(Emote.Kind) <= 0 || Now >= Emote.EndsAt || !EmoteGameplayEligible())
+	    Emote.EndsAt <= Emote.StartsAt || EmoteDuration(Emote.Kind) <= 0 || Now >= Emote.EndsAt)
 	{
 		if (NewerEmoteRevision(Emote.Revision, BlockedEmoteRevision)) BlockedEmoteRevision = Emote.Revision;
 		return false;
 	}
 	if (Now < Emote.StartsAt) return false; // Clock smoothing is not a cancellation.
+	if (!EmoteGameplayEligible())
+	{
+		// Movement/role replication may trail the first emote payload. Once presented,
+		// a local interruption remains final even if eligibility later recovers.
+		if (PresentedEmoteRevision == Emote.Revision) BlockedEmoteRevision = Emote.Revision;
+		return false;
+	}
 	if (Emote.Visual != EmoteVisualIndex() || !SupportsEmotes())
 	{
 		// A first relevance snapshot can precede child-actor/mesh creation. Do not poison it.

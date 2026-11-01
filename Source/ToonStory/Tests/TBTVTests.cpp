@@ -327,6 +327,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBTVRemoteTest, "ToonStory.Television.RemoteSe
 
 bool FTBTVRemoteTest::RunTest(const FString&)
 {
+	auto* AuthoredClass = LoadClass<ATBTVRemote>(nullptr, TEXT("/Game/Television/BP_TBTVRemote.BP_TBTVRemote_C"));
+	if (!TestNotNull(TEXT("Authored remote class"), AuthoredClass)) return false;
+	TestTrue(TEXT("Authored BP inherits replicated remote behavior"), AuthoredClass->GetDefaultObject<ATBTVRemote>()->GetIsReplicated());
 	// Native geometry/real overlaps and traces; the match state, Walking mode and observation clock are fixture seams.
 	UWorld::InitializationValues Values;
 	Values.AllowAudioPlayback(false).CreatePhysicsScene(true).CreateNavigation(false).CreateAISystem(false).ShouldSimulatePhysics(false).EnableTraceCollision(true);
@@ -362,6 +365,7 @@ bool FTBTVRemoteTest::RunTest(const FString&)
 	if (!TestNotNull(TEXT("Viewer"), Viewer) || !TestNotNull(TEXT("Other viewer"), Other) ||
 	    !TestNotNull(TEXT("TV"), TV) || !TestNotNull(TEXT("Remote"), Remote) || !TestNotNull(TEXT("Native support cube"), Cube)) return false;
 	Remote->Mesh->SetStaticMesh(Cube); Remote->Mesh->SetCollisionProfileName(TEXT("BlockAll"));
+	Remote->Mesh->SetMaterial(0, LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Television/M_RemoteGlow.M_RemoteGlow")));
 	Remote->TV = TV;
 	TArray<UTBTVButton*> Keys;
 	auto AddButton = [&](ETBRemoteKey Key, int32 Digit, FVector2D XY, FVector Extent)
@@ -420,6 +424,32 @@ bool FTBTVRemoteTest::RunTest(const FString&)
 	TestEqual(TEXT("Short contact does not press"), TV->GetChannel().Number, 0);
 	Observe();
 	TestEqual(TEXT("Stationary dwell selects digit two only"), TV->GetChannel().Number, 2);
+	TestTrue(TEXT("Remote replicates authoritative press state"), Remote->GetIsReplicated());
+	TestEqual(TEXT("Accepted contact publishes the confirmed button"), Remote->ConfirmedButton(), static_cast<const UTBTVButton*>(Two));
+	const auto AcceptedPress = Remote->PressState;
+	auto* PressController = Viewer->GetController(); auto* PressPlayer = Viewer->TBPS();
+	PressController->UnPossess(); Viewer->SetPlayerState(PressPlayer);
+	Remote->SetRole(ROLE_SimulatedProxy);
+	TestFalse(TEXT("No remote controller still forbids authority dispatch"), Remote->IsEligible(Viewer));
+	TestEqual(TEXT("Remote player's controller is unnecessary for preview"), Remote->PreviewButton(PreviewViewer), Two);
+	Viewer->GetCharacterMovement()->Velocity = FVector(20, 0, 0);
+	TestNull(TEXT("Stale client motion suppresses only preview"), Remote->PreviewButton(PreviewViewer));
+	Remote->PressState = AcceptedPress; Remote->OnRep_PressState();
+	if (TestNotNull(TEXT("Authored glow material is available"), Remote->GlowMaterial.Get()))
+	{
+		TestEqual(TEXT("Confirmed client glow survives absent controller and stale velocity"),
+		    Remote->GlowMaterial->K2_GetScalarParameterValue(Two->GetGlowParameterName()), 2.f);
+		++State->HidePreparation.Round; Remote->UpdateGlow();
+		TestEqual(TEXT("Previous round press cannot light a new round"),
+		    Remote->GlowMaterial->K2_GetScalarParameterValue(Two->GetGlowParameterName()), 1.f);
+		--State->HidePreparation.Round;
+		Remote->PressState.Button = NAME_None; Remote->OnRep_PressState();
+		TestEqual(TEXT("Replicated release clears the pressed appearance"),
+		    Remote->GlowMaterial->K2_GetScalarParameterValue(Two->GetGlowParameterName()), 1.f);
+	}
+	Remote->PressState = AcceptedPress;
+	Remote->SetRole(ROLE_Authority); PressController->Possess(Viewer);
+	Viewer->GetCharacterMovement()->Velocity = FVector::ZeroVector;
 	const double FirstPress = Remote->LastPressTime;
 	Observe(20);
 	TestEqual(TEXT("Held contact is latched rather than repeated"), Remote->LastPressTime, FirstPress);
@@ -433,6 +463,7 @@ bool FTBTVRemoteTest::RunTest(const FString&)
 	Move(Viewer, PositionFor(Two)); Observe();
 	TestEqual(TEXT("Adjacent boundary jitter does not repeat a latched key"), Remote->LastPressTime, FirstPress);
 	Leave();
+	TestTrue(TEXT("Departure clears server confirmation"), Remote->PressState.Button.IsNone());
 	Move(Viewer, PositionFor(Two)); Observe();
 	TestTrue(TEXT("Clear departure rearms a new dwell"), Remote->LastPressTime > FirstPress);
 	Leave();

@@ -51,6 +51,7 @@ private:
 	};
 	TMap<TWeakObjectPtr<ATBCharacter>, FCaptureAttempt> Attempts;
 	bool Contains(const UBoxComponent* Volume, const ATBCharacter* Toy, float Margin = 0) const;
+	bool ValidateWithSupports(FString& Error, bool CheckSafety, TArray<UPrimitiveComponent*>& Supports) const;
 	bool ResolveFinalSupports(TArray<UPrimitiveComponent*>& Out, FString& Error) const;
 	bool IsFinalLanding(const ATBCharacter* Toy, const TArray<UPrimitiveComponent*>& Supports) const;
 	bool Eligible(const ATBCharacter* Toy) const;

@@ -27,7 +27,7 @@ namespace
 {
 	constexpr double OfflineReturnTimeoutSeconds = 30.0;
 	const FName GameKey(TEXT("TOYBOX_BUILD"));
-	const FString BuildTag(TEXT("ToonStory_LobbyEmotes_20261102"));
+	const FString BuildTag(TEXT("ToonStory_RemoteFeedback_20261102"));
 	const FName LobbyKey(TEXT("LOBBY_OPEN"));
 } // namespace
 void UTBSession::Initialize(FSubsystemCollectionBase& Collection)
@@ -682,17 +682,18 @@ bool FTBSessionBuildCompatibilityTest::RunTest(const FString&)
 	const auto ItemsOnly=MakeResult(TEXT("ToonStory_RandomItemSpawns_20261031"));
 	const auto MomOnly=MakeResult(TEXT("ToonStory_MomEvent_20261101"));
 	const auto BeforeLobbyEmotes=MakeResult(TEXT("ToonStory_RandomItems_MomEvent_20261101"));
+	const auto BeforeRemoteFeedback=MakeResult(TEXT("ToonStory_LobbyEmotes_20261102"));
 	auto Missing=Current;
 	Missing.Session.SessionSettings.Remove(GameKey);
 	Session->Search=MakeShared<FOnlineSessionSearch>();
-	Session->Search->SearchResults={Old,ItemsOnly,MomOnly,BeforeLobbyEmotes,Missing,Current};
+	Session->Search->SearchResults={Old,ItemsOnly,MomOnly,BeforeLobbyEmotes,BeforeRemoteFeedback,Missing,Current};
 	Session->CurrentOperation=UTBSession::ESessionOperation::Finding;
 	Session->Found(true);
 	TestEqual(TEXT("Search exposes only matching build"),Session->Rooms.Num(),1);
 	FString SelectedTag;
 	if (Session->Results.Num()==1) Session->Results[0].Session.SessionSettings.Get(GameKey,SelectedTag);
 	TestEqual(TEXT("Search retained the current build"),SelectedTag,BuildTag);
-	for (const auto& Incompatible:{Old,ItemsOnly,MomOnly,BeforeLobbyEmotes,Missing})
+	for (const auto& Incompatible:{Old,ItemsOnly,MomOnly,BeforeLobbyEmotes,BeforeRemoteFeedback,Missing})
 	{
 		Session->Status.Reset();
 		Session->BeginJoin(Incompatible);

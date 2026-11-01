@@ -48,7 +48,14 @@ ATBBoxEscapeCourse* ATBBoxEscapeCourse::Find(const UWorld* World, const ATBBox* 
 
 bool ATBBoxEscapeCourse::Validate(FString& Error, bool CheckSafety) const
 {
+	TArray<UPrimitiveComponent*> Supports;
+	return ValidateWithSupports(Error, CheckSafety, Supports);
+}
+
+bool ATBBoxEscapeCourse::ValidateWithSupports(FString& Error, bool CheckSafety, TArray<UPrimitiveComponent*>& Supports) const
+{
 	Error.Reset();
+	Supports.Reset();
 	if (!IsValid(Box) || Box->GetWorld() != GetWorld() || !IsValid(Goal) || Goal->GetWorld() != GetWorld() ||
 	    Goal->GetActorLocation().ContainsNaN() || ExitPoints.IsEmpty() || ExitPoints.Num() > ATBBox::StorageSlotCount)
 	{ Error = TEXT("箱・最終到達領域・出口を設定してください。"); return false; }
@@ -59,7 +66,6 @@ bool ATBBoxEscapeCourse::Validate(FString& Error, bool CheckSafety) const
 	if (CourseBounds->GetScaledBoxExtent().GetMin() <= 0 ||
 	    !CourseBounds->GetComponentRotation().Equals(FRotator::ZeroRotator, .001f))
 	{ Error = TEXT("コース範囲の大きさまたは回転が無効です。"); return false; }
-	TArray<UPrimitiveComponent*> Supports;
 	if (!ResolveFinalSupports(Supports, Error)) return false;
 	for (const auto& Exit : ExitPoints)
 	{
@@ -209,9 +215,8 @@ void ATBBoxEscapeCourse::Tick(float DeltaSeconds)
 	if (!State || State->Phase != ETBPhase::Playing || State->IsPreparing())
 	{ Attempts.Reset(); return; }
 	FString Error;
-	if (!Validate(Error, false)) return;
 	TArray<UPrimitiveComponent*> Supports;
-	if (!ResolveFinalSupports(Supports, Error)) return;
+	if (!ValidateWithSupports(Error, false, Supports)) return;
 	for (auto It = Attempts.CreateIterator(); It; ++It)
 		if (!Eligible(It.Key().Get())) It.RemoveCurrent();
 	for (TActorIterator<ATBCharacter> It(GetWorld()); It; ++It)

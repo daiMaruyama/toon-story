@@ -17,6 +17,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/Controller.h"
 #include "Materials/MaterialInstanceDynamic.h"
+#include "Net/UnrealNetwork.h"
 
 namespace
 {
@@ -37,9 +38,43 @@ constexpr float NearestMargin = .25f;
 
 ATBTVRemote::ATBTVRemote()
 {
+	bReplicates = true;
 	PrimaryActorTick.bCanEverTick = true;
 	Mesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Mesh"));
 	SetRootComponent(Mesh);
+}
+
+void ATBTVRemote::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	DOREPLIFETIME(ATBTVRemote, TV);
+	DOREPLIFETIME(ATBTVRemote, PressState);
+}
+
+void ATBTVRemote::OnRep_PressState()
+{
+	UpdateGlow();
+}
+
+void ATBTVRemote::SetConfirmedButton(const UTBTVButton* Button)
+{
+	if (!HasAuthority()) return;
+	const auto* State = TB::GS(GetWorld());
+	const FName Name = Button ? Button->GetFName() : NAME_None;
+	const uint32 Round = State ? State->HidePreparation.Round : 0;
+	if (PressState.Button == Name && PressState.Round == Round) return;
+	PressState.Button = Name; PressState.Round = Round;
+	ForceNetUpdate();
+}
+
+const UTBTVButton* ATBTVRemote::ConfirmedButton() const
+{
+	const auto* State = TB::GS(GetWorld());
+	if (PressState.Button.IsNone() || !State || State->Phase != ETBPhase::Playing || State->IsPreparing() ||
+	    State->EndTime <= State->GetServerWorldTimeSeconds() || PressState.Round != State->HidePreparation.Round) return nullptr;
+	for (const UTBTVButton* Button : Buttons)
+		if (IsValid(Button) && Button->GetFName() == PressState.Button) return Button;
+	return nullptr;
 }
 
 void ATBTVRemote::Tick(float DeltaSeconds)
@@ -82,11 +117,10 @@ void ATBTVRemote::UpdateGlow()
 {
 	ATBCharacter* Viewer = nullptr;
 	const UTBTVButton* Preview = PreviewButton(Viewer);
-	const FContact* Contact = Contacts.Find(Viewer);
-	const bool bConfirmed = HasAuthority() && Contact && Contact->Latched == Preview;
+	const UTBTVButton* Confirmed = ConfirmedButton();
 	for (int32 Index = 0; Index < Buttons.Num(); ++Index)
 	{
-		UpdateButtonGlow(Index, Preview, bConfirmed);
+		UpdateButtonGlow(Index, Preview, Confirmed && Confirmed == Buttons[Index]);
 	}
 }
 
@@ -100,7 +134,7 @@ void ATBTVRemote::UpdateButtonGlow(int32 Index, const UTBTVButton* Preview, bool
 	if (!IsValid(Button)) return;
 	// 電源OFF中に押せるのは電源ボタンだけ。押せないボタンは踏んでも沈ませない。
 	const bool bUsable = (IsValid(TV) && TV->IsPowerOn()) || Button->CurrentKey == ETBRemoteKey::Power;
-	const float State = !bUsable ? GlowUnavailable : Preview == Button ? (bConfirmed ? GlowPressed : GlowPreview) : GlowAvailable;
+	const float State = !bUsable ? GlowUnavailable : bConfirmed ? GlowPressed : Preview == Button ? GlowPreview : GlowAvailable;
 	GlowMaterial->SetScalarParameterValue(GlowParameters[Index], State);
 }
 
@@ -118,13 +152,18 @@ void ATBTVRemote::OnButtonOverlap(UPrimitiveComponent*, AActor*, UPrimitiveCompo
 
 bool ATBTVRemote::IsEligible(const ATBCharacter* Viewer) const
 {
+	const auto* Controller = IsValid(Viewer) ? Viewer->GetController() : nullptr;
+	return IsPresentationEligible(Viewer) && IsValid(Controller) && Controller->GetPawn() == Viewer &&
+	       Controller->GetPlayerState<ATBPlayerState>() == Viewer->TBPS();
+}
+
+bool ATBTVRemote::IsPresentationEligible(const ATBCharacter* Viewer) const
+{
 	const auto* State = TB::GS(GetWorld());
 	const auto* Player = IsValid(Viewer) ? Viewer->TBPS() : nullptr;
-	const auto* Controller = IsValid(Viewer) ? Viewer->GetController() : nullptr;
 	return IsValid(TV) && TV->GetWorld() == GetWorld() && State &&
-	       State->Phase == ETBPhase::Playing && !State->IsPreparing() && State->EndTime > GetWorld()->GetTimeSeconds() &&
+	       State->Phase == ETBPhase::Playing && !State->IsPreparing() && State->EndTime > State->GetServerWorldTimeSeconds() &&
 	       Player && Player->Team == ETBTeam::Toy && Player->ToyState == ETBToyState::Boxed &&
-	       IsValid(Controller) && Controller->GetPawn() == Viewer && Controller->GetPlayerState<ATBPlayerState>() == Player &&
 	       Viewer->GetWorld() == GetWorld() && !Viewer->IsActorBeingDestroyed() &&
 	       Viewer->GetCapsuleComponent()->IsRegistered() && Viewer->GetCapsuleComponent()->GetGenerateOverlapEvents() &&
 	       Viewer->GetCapsuleComponent()->IsQueryCollisionEnabled();
@@ -208,7 +247,8 @@ UTBTVButton* ATBTVRemote::PreviewButton(ATBCharacter*& Viewer) const
 		if (Viewer) { Viewer = nullptr; return nullptr; }
 		Viewer = Body; Point = Hit;
 	}
-	if (!IsEligible(Viewer) || Viewer->GetVelocity().ContainsNaN() || Viewer->GetVelocity().Size2D() > MaxSpeed) return nullptr;
+	if (!(HasAuthority() ? IsEligible(Viewer) : IsPresentationEligible(Viewer)) ||
+	    Viewer->GetVelocity().ContainsNaN() || Viewer->GetVelocity().Size2D() > MaxSpeed) return nullptr;
 	auto* Button = SelectButton(Viewer, Point);
 	return Button && (TV->IsPowerOn() || Button->CurrentKey == ETBRemoteKey::Power) ? Button : nullptr;
 }
@@ -220,7 +260,7 @@ void ATBTVRemote::EvaluateContacts(double Now)
 	if (!State || State->Phase != ETBPhase::Playing || State->IsPreparing() || !IsValid(TV) ||
 	    State->EndTime <= GetWorld()->GetTimeSeconds() || !FMath::IsFinite(Now))
 	{
-		Contacts.Empty(); LastEvaluation = -1; LastPressTime = -1; return;
+		Contacts.Empty(); LastEvaluation = -1; LastPressTime = -1; SetConfirmedButton(nullptr); return;
 	}
 	const bool bNewContext = ContactState != State || ContactTV != TV || ContactRound != State->HidePreparation.Round ||
 	                         !ContactTransform.Equals(Mesh->GetComponentTransform());
@@ -287,6 +327,12 @@ void ATBTVRemote::EvaluateContacts(double Now)
 			Contact.Latched = Button; Contact.Candidate.Reset(); Contact.Since = -1;
 		}
 	}
+	// Only the server's accepted contact controls the pressed appearance. Clients do
+	// not need the rider's Controller, matching overlaps, or fresh movement to show it.
+	ATBCharacter* Viewer = nullptr;
+	const auto* Preview = PreviewButton(Viewer);
+	const auto* Contact = Contacts.Find(Viewer);
+	SetConfirmedButton(Contact && Contact->Latched == Preview ? Preview : nullptr);
 }
 
 bool ATBTVRemote::Dispatch(ATBCharacter* Viewer, const UTBTVButton* Button, double Now)

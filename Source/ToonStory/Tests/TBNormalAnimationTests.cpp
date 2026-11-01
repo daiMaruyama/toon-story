@@ -583,6 +583,11 @@ bool FTBEmoteTest::RunTest(const FString&)
 	TestFalse(TEXT("Active/cooldown request is rejected"), Source->TryEmote(ETBEmoteKind::Dance));
 	TestEqual(TEXT("Rejected requests never extend cooldown"), Source->Emote.NextAllowedAt, Cooldown);
 	TestFalse(TEXT("A proxy cannot authoritatively start an emote"), Proxy->TryEmote(ETBEmoteKind::Wave));
+	Deliver(); Proxy->GetCharacterMovement()->Velocity = FVector(3, 0, 0);
+	Proxy->UpdateEmote();
+	TestFalse(TEXT("First payload waits for replicated stop"), Proxy->GetEmoteSample(Sample));
+	Proxy->GetCharacterMovement()->Velocity = FVector::ZeroVector;
+	TestTrue(TEXT("Replicated stop allows the unseen revision to start"), Proxy->GetEmoteSample(Sample));
 	Deliver(); TestTrue(TEXT("Peer initially presents the active revision"), Proxy->GetEmoteSample(Sample));
 	Proxy->GetCharacterMovement()->Velocity = FVector(3, 0, 0); TestFalse(TEXT("Local movement immediately stops presentation"), Proxy->GetEmoteSample(Sample));
 	Proxy->GetCharacterMovement()->Velocity = FVector::ZeroVector;
@@ -601,6 +606,7 @@ bool FTBEmoteTest::RunTest(const FString&)
 	Proxy->Emote.StartsAt = State->GetServerWorldTimeSeconds() - 3.1; Proxy->Emote.EndsAt = State->GetServerWorldTimeSeconds() - .1;
 	TestFalse(TEXT("Late expired emote is not replayed"), Proxy->GetEmoteSample(Sample));
 	Start(ETBEmoteKind::Wave); Deliver();
+	Proxy->GetEmoteSample(Sample);
 	Player->bFrozen = true; Proxy->UpdateEmote(); // No pose evaluation/HUD sample between state changes.
 	Player->bFrozen = false; Proxy->UpdateEmote();
 	TestTrue(TEXT("Server payload is still active in the offscreen cancellation fixture"), Proxy->Emote.bActive);
