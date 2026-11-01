@@ -134,6 +134,9 @@ void UTBTitleMenu::EnterStory()
 		Blackout->SetVisibility(ESlateVisibility::Visible);
 	}
 	Actor->GetSequencePlayer()->OnFinished.AddUniqueDynamic(this, &ThisClass::StoryFinished);
+	// 飛ばしたあとは最後のコマにいるので、見直すときは頭から流す。
+	Actor->GetSequencePlayer()->SetPlaybackPosition(
+	    FMovieSceneSequencePlaybackParams(Actor->GetSequencePlayer()->GetStartTime().Time, EUpdatePositionMethod::Jump));
 	Actor->GetSequencePlayer()->Play();
 	SetKeyboardFocus();
 }

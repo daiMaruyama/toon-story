@@ -143,12 +143,14 @@ bool FTBTitleStoryTest::RunTest(const FString& Parameters)
 	// 放っておくと寸劇を流す。
 	Menu->AdvanceIdleForTest(60.f);
 	TestTrue(TEXT("Idling plays the story"), Menu->GetState() == UTBTitleMenu::EState::Story);
+	TestTrue(TEXT("The idle story starts from the top"), Story->GetSequencePlayer()->GetCurrentTime().Time <= Story->GetSequencePlayer()->GetStartTime().Time + 1);
 	TestFalse(TEXT("The loop stops for the idle story"), Loop->GetSequencePlayer()->IsPlaying());
 	Menu->SkipStory();
 
 	// 「ストーリーを見る」でStoryに戻る。ループは止まる。
 	PressStoryButton(Menu, TEXT("Story"));
 	TestTrue(TEXT("The story button plays the story"), Menu->GetState() == UTBTitleMenu::EState::Story);
+	TestTrue(TEXT("The replayed story starts from the top"), Story->GetSequencePlayer()->GetCurrentTime().Time <= Story->GetSequencePlayer()->GetStartTime().Time + 1);
 	TestFalse(TEXT("The loop stops during the story"), Loop->GetSequencePlayer()->IsPlaying());
 	Menu->SkipStory();
 	TestTrue(TEXT("Skipping returns to the menu"), Menu->GetState() == UTBTitleMenu::EState::Menu);
