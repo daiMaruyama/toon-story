@@ -7,7 +7,6 @@
 #include "TBTitleGameMode.generated.h"
 
 class UTBTitleMenu;
-class ATBTitleGaze;
 
 /** Offline entry point. No match state, pawn or stage actors. */
 UCLASS()
@@ -33,5 +32,4 @@ public:
 	UFUNCTION(Exec) void TBLeave();
 private:
 	UPROPERTY(Transient) TObjectPtr<UTBTitleMenu> Menu;
-	UPROPERTY(Transient) TObjectPtr<ATBTitleGaze> Gaze;
 };

@@ -3,7 +3,6 @@
 #include "Core/TBTitleGameMode.h"
 #include "Input/TBInputSettings.h"
 #include "Core/TBSession.h"
-#include "Core/TBTitleGaze.h"
 #include "UI/TBTitleMenu.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
@@ -39,9 +38,6 @@ void ATBTitleController::BeginPlay()
 	if (Menu)
 	{
 		Menu->AddToViewport();
-		// カーソルの先を照らし、光の当たったおもちゃだけ固める。
-		Gaze = GetWorld()->SpawnActor<ATBTitleGaze>();
-		if (Gaze) Gaze->Menu = Menu;
 		FInputModeGameAndUI Input;
 		Input.SetWidgetToFocus(Menu->TakeWidget());
 		Input.SetHideCursorDuringCapture(false);
@@ -66,7 +62,6 @@ void ATBTitleController::ReceivedPlayer()
 void ATBTitleController::EndPlay(const EEndPlayReason::Type Reason)
 {
 	if (Menu) Menu->RemoveFromParent();
-	if (Gaze) Gaze->Destroy();
 	Super::EndPlay(Reason);
 }
 
