@@ -120,6 +120,7 @@ private:
 	// オプション画面（UTBOptionsMenu）を開く。ロビー・試合中のメニューと同じ画面。
 	UFUNCTION() void OpenOptions();
 	UPROPERTY(Transient) TObjectPtr<UButton> OptionsButton;
+	TWeakObjectPtr<class UTBOptionsMenu> Options;
 	UFUNCTION()
 	class UWidget* RoomLabel(FString Item);
 	UPROPERTY(Transient)

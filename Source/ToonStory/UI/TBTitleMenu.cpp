@@ -183,8 +183,9 @@ void UTBTitleMenu::NoteInput()
 
 bool UTBTitleMenu::IsBusyInMenu() const
 {
-	// 部屋を探している途中やヘルプを読んでいる途中に、寸劇で割り込まない。
-	return bRoomCardsShown || (HelpOverlay && HelpOverlay->GetVisibility() == ESlateVisibility::Visible);
+	// 部屋を探している途中、ヘルプやオプションを読んでいる途中に、寸劇で割り込まない。
+	return bRoomCardsShown || (HelpOverlay && HelpOverlay->GetVisibility() == ESlateVisibility::Visible) ||
+	       (Options.IsValid() && Options->IsInViewport());
 }
 
 void UTBTitleMenu::UpdateIdle(float DeltaTime)
@@ -321,8 +322,10 @@ void UTBTitleMenu::OpenOptions()
 {
 	PlayMenuClick(GetGameInstance());
 	TWeakObjectPtr<UButton> Button = OptionsButton;
-	UTBOptionsMenu::Open(GetOwningPlayer(), [Button]
+	TWeakObjectPtr<UTBTitleMenu> Self = this;
+	Options = UTBOptionsMenu::Open(GetOwningPlayer(), [Button, Self]
 	{
+		if (Self.IsValid()) Self->NoteInput();
 		if (Button.IsValid()) Button->SetKeyboardFocus();
 	});
 }

@@ -3,6 +3,7 @@
 #include "Misc/AutomationTest.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
+#include "Blueprint/WidgetBlueprintLibrary.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/Button.h"
 #include "Core/TBController.h"
@@ -15,6 +16,7 @@
 #include "LevelSequencePlayer.h"
 #include "Misc/ScopeExit.h"
 #include "MovieScene.h"
+#include "UI/TBOptionsMenu.h"
 #include "UI/TBTitleMenu.h"
 
 namespace
@@ -117,6 +119,15 @@ bool FTBTitleStoryTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Touching the menu keeps the loop playing"), Loop->GetSequencePlayer()->IsPlaying());
 	Menu->AdvanceIdleForTest(40.f);
 	TestTrue(TEXT("Touching restarts the idle count"), Menu->GetState() == UTBTitleMenu::EState::Menu);
+
+	// オプションを開いている間は、放っておいても寸劇で割り込まない。
+	PressStoryButton(Menu, TEXT("Options"));
+	Menu->AdvanceIdleForTest(60.f);
+	TestTrue(TEXT("Reading the options holds off the story"), Menu->GetState() == UTBTitleMenu::EState::Menu);
+	TArray<UUserWidget*> Opened;
+	UWidgetBlueprintLibrary::GetAllWidgetsOfClass(World, Opened, UTBOptionsMenu::StaticClass(), false);
+	TestEqual(TEXT("The options opened"), Opened.Num(), 1);
+	for (UUserWidget* Widget : Opened) Widget->RemoveFromParent();
 
 	// 放っておくと寸劇を流す。
 	Menu->AdvanceIdleForTest(60.f);
