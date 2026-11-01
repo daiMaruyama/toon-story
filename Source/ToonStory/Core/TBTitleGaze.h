@@ -43,6 +43,7 @@ private:
 	void Release(int32 Index);
 	void ReleaseAll();
 	AActor* MakeProxy(AActor* Toy);
+	bool IsBlocked(const FVector& Target) const;
 	UPROPERTY(VisibleAnywhere) TObjectPtr<USpotLightComponent> Light;
 	UPROPERTY(Transient) TArray<FTBFrozenToy> Frozen;
 	bool bHasRay = false;

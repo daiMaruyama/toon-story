@@ -86,7 +86,8 @@ void ATBTitleGaze::UpdateGaze(float DeltaTime)
 			if (!Box.IsValid) Box = It->GetComponentsBoundingBox(true);
 			FVector Hit, Normal;
 			float Time;
-			if (FMath::LineExtentBoxIntersection(Box, RayOrigin, End, FVector::ZeroVector, Hit, Normal, Time) && Time < Nearest)
+			if (FMath::LineExtentBoxIntersection(Box, RayOrigin, End, FVector::ZeroVector, Hit, Normal, Time) && Time < Nearest &&
+			    (!IsBlocked(Hit) || !IsBlocked(Box.GetCenter())))
 			{
 				Nearest = Time;
 				Lit = *It;
@@ -100,6 +101,30 @@ void ATBTitleGaze::UpdateGaze(float DeltaTime)
 		F.UnlitSeconds = F.Toy == Lit ? 0.f : F.UnlitSeconds + DeltaTime;
 		if (!F.Toy || F.UnlitSeconds >= ReleaseSeconds) Release(i);
 	}
+}
+
+// 手前の壁や家具に隠れていれば照らさない。おもちゃ同士と、見えない物（字幕の板など）は素通しにする。
+bool ATBTitleGaze::IsBlocked(const FVector& Target) const
+{
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(TitleGaze), true, this);
+	for (TActorIterator<AActor> It(GetWorld()); It; ++It)
+	{
+		if (It->ActorHasTag(ToyTag)) Params.AddIgnoredActor(*It);
+	}
+	for (const FTBFrozenToy& F : Frozen)
+	{
+		if (F.Proxy) Params.AddIgnoredActor(F.Proxy);
+	}
+	for (int32 Try = 0; Try < 8; ++Try)
+	{
+		FHitResult Hit;
+		if (!GetWorld()->LineTraceSingleByChannel(Hit, RayOrigin, Target, ECC_Visibility, Params)) return false;
+		const UPrimitiveComponent* Comp = Hit.GetComponent();
+		const AActor* Owner = Hit.GetActor();
+		if (!Comp || (Comp->IsVisible() && !(Owner && Owner->IsHidden()))) return true;
+		Params.AddIgnoredComponent(Comp);
+	}
+	return false;
 }
 
 AActor* ATBTitleGaze::MakeProxy(AActor* Toy)

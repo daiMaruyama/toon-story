@@ -72,6 +72,28 @@ bool FTBTitleGazeTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("Then it dances again"), Gaze->IsFrozen(Lit));
 	TestFalse(TEXT("The real toy is shown again"), Lit->IsHidden());
 	TestEqual(TEXT("Nothing is left frozen"), Gaze->NumFrozen(), 0);
+
+	// 手前に壁があれば、奥のおもちゃは照らさない。見えない板は素通しにする。
+	auto* Board = World->SpawnActor<AStaticMeshActor>(FVector(200, 0, 50), FRotator::ZeroRotator);
+	Board->GetStaticMeshComponent()->SetMobility(EComponentMobility::Movable);
+	Board->GetStaticMeshComponent()->SetStaticMesh(Cube);
+	Board->SetActorHiddenInGame(true);
+	Gaze->SetGazeRay(FVector(0, 0, 50), FVector(1, 0, 0));
+	Gaze->UpdateGaze(.016f);
+	TestTrue(TEXT("An invisible board lets the light through"), Gaze->IsFrozen(Lit));
+	Gaze->ClearGaze();
+	Gaze->UpdateGaze(1.f);
+	auto* Wall = World->SpawnActor<AStaticMeshActor>(FVector(300, 0, 50), FRotator::ZeroRotator);
+	Wall->GetStaticMeshComponent()->SetMobility(EComponentMobility::Movable);
+	Wall->GetStaticMeshComponent()->SetStaticMesh(Cube);
+	ON_SCOPE_EXIT
+	{
+		Board->Destroy();
+		Wall->Destroy();
+	};
+	Gaze->SetGazeRay(FVector(0, 0, 50), FVector(1, 0, 0));
+	Gaze->UpdateGaze(.016f);
+	TestFalse(TEXT("A toy behind a wall is not lit"), Gaze->IsFrozen(Lit));
 	return true;
 }
 #endif
