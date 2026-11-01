@@ -285,3 +285,28 @@ A	Cinematics/TitleStory/T_V9_mama9.uasset
 A	Maps/TB_TitleStage.umap
 A	Maps/TB_TitleStage2.umap
 M	Maps/Title.umap
+
+[追記: 子どもメッシュのGC対策]
+M	Source/ToonStory/Character/TBCharacter.cpp
+M	Source/ToonStory/Character/TBCharacter.h
+A	Source/ToonStory/Tests/TBHumanAppearanceGCTests.cpp
+M	docs/CHANGE_REVIEW_20261101.md
+M	docs/CHANGE_FILES_20261101.txt
+
+[追記: ロビー移動・エモート、鏡と母親イベント（2026-11-02）]
+M	Source/ToonStory/Character/TBCharacter.cpp
+M	Source/ToonStory/Character/TBCharacter.h
+M	Source/ToonStory/Core/TBController.cpp
+M	Source/ToonStory/Core/TBSession.cpp
+M	Source/ToonStory/UI/TBPaperHUD.cpp
+A	Source/ToonStory/Tests/TBLobbyExplorationTests.cpp
+A	Source/ToonStory/Tests/TBAuthoredMomTests.cpp
+M	Source/ToonStory/Tests/TBMirrorTests.cpp
+M	Content/Maps/TB_StylizedHouse.umap (Content/main、既存未コミット変更を保持)
+M	Content/Maps/TB_ToyWorldDemoExpanded.umap (Content/main、既存未コミット変更を保持)
+M	docs/MIRROR.md
+M	docs/MOM_EVENT.md
+M	docs/CHANGE_REVIEW_20261101.md
+M	docs/CHANGE_FILES_20261101.txt
+M	Config/DefaultEngine.ini (以前のSteamモード設定を含めて共有)
+M	Content (今回のContent/mainコミットへの参照更新)

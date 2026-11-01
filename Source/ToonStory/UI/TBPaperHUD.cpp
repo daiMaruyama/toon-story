@@ -201,11 +201,14 @@ void ATBHUD::DrawLobby()
 		       Local && Local->bReady ? FString::Printf(TEXT("準備をやめる [%s]"), *ReadyKey) : FString::Printf(TEXT("準備OK [%s]"), *ReadyKey),
 		       48, Bottom, 240, Local != nullptr && !State->bTravelPending, Local && Local->bReady);
 		Text(FString::Printf(TEXT("%d / %d人 準備OK"), ReadyCount, PlayerCount), 308, Bottom + 8, 1.05f, Ink);
-		Button(TEXT("OpenSettings"), TEXT("設定を開く"), 622, Bottom, 216);
+		Button(TEXT("OpenSettings"), TEXT("設定 [Esc]"), 622, Bottom, 216);
 		Button(TEXT("Start"),
 		       PC->HasAuthority() ? FString::Printf(TEXT("あそびはじめる [%s]"), *StartKey) : FString(TEXT("ホストを待っています")),
 		       858, Bottom, 294, CanStart, CanStart);
 		DrawNotice(Bottom - 166, 1144, 110);
+		Text(FString::Printf(TEXT("移動キーで歩く / エモート %s・%s・%s / Escで設定"),
+		    *TB::KeyLabel(PC, TB::Keys::EmoteWave), *TB::KeyLabel(PC, TB::Keys::EmoteCheer),
+		    *TB::KeyLabel(PC, TB::Keys::EmoteDance)), 48, Bottom - 76, .8f, Ink);
 		return;
 	}
 	DrawRect(FLinearColor(.009f, .018f, .027f, .48f), 0, 0, Canvas->ClipX, Canvas->ClipY);

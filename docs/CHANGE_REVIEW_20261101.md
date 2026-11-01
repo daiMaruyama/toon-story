@@ -67,3 +67,32 @@ Saved以下のログはローカル診断用でコミット対象外。過去の
 - 実タイトルマップ・寸劇・入室失敗の後始末・タイトル往復・既存エモートの計5テスト成功。最終レポートは `Saved/MainIntegration20261101/Acceptance/index.json`（4件）と `Emotes/index.json`（1件）。旧RoundTrip失敗は現在のマップ移動仕様にテストを合わせた後の成功で置き換える。
 - RoundTripではタイトルステージ2のStaticMeshActor_368/369/370/373/374に「Scale3D is (nearly) zero」の物理初期化警告が計10件出た。タイトル演出アセットは今回変更せず、手動で見た目を確認する際の注意点として残す。
 - 今回の統合でHEADが変わるため、以前のquiz合格記録は新しいコミットのpushには使えない。PRは作成しない。
+
+## 追記: 子どもがCubeになる問題のGC対策
+
+- `BeginPlay`で`ChildMesh`/`ChildAnimation`をロードしても、ソフト参照はGCから保護しない。PlayerState到着前やおもちゃ表示中にはSkeletalMeshComponentも子どものメッシュを保持しないため、後の`Get()`がnullになる経路があった。
+- `TBCharacter.h`にTransientの強参照を追加し、メッシュとアニメーションクラスをキャラクターの生存期間中保持する。`UpdateAppearance`も保持した参照を使用し、BeginPlay前のPossession経由では必要なアセットをロードして保持する。
+- `TBHumanAppearanceGCTests.cpp`を追加。独立した一時メッシュを使い、PlayerState未到着→GC→人間表示、おもちゃ表示→GC→人間への復帰を検証する。保持しない対照メッシュはGCで消えることも確認し、他のキャラクターやEditorの参照で偶然成功するのを避ける。
+- Editorビルド成功。HumanAssetsSurviveGC・RandomRound・Emotesが成功（`Saved/HumanAppearanceGC/Tests/index.json`）。
+- Steam対応Developmentパッケージのビルドも成功（`Saved/HumanAppearanceGC/Package.log`）。パッケージexeをNull接続の検証モードで実行し、同じ3テストがエラー・警告0で成功。保持しない対照メッシュのGC回収も確認した（`Saved/HumanAppearanceGC/PackagedTests/index.json`）。
+- 修正版は `Builds/HumanAppearanceGC/Windows/ToonStory.exe`。起動中の既存 `Builds/Windows` パッケージは上書きしていないため、修正版で遊ぶ場合はこちらを起動する。
+- 実際のプレイ中のGCタイミングを捕捉したものではないが、コード上の寿命問題を修正し、強制GCで検証する。見た目・動き・マップアセットはこの修正では変更しない。
+
+## 追記: ロビー移動・エモート、鏡と母親イベントの設定（2026-11-02）
+
+- ロビーで常に入力を止め、固定カメラへ切り替えていた処理を変更。設定・ステージ選択・オプション・プレイヤー一覧・チャット操作中とステージ移動中だけ移動を止める。設定を閉じるとWASDとマウスで探索でき、Escで設定を再表示する。チャットを開く際の入力モード変更は入力欄へフォーカスする前に行う。
+- 陣営未確定のロビーでも子どもの見た目でエモートを使えるようにした。標準キーは1・2・3、既存の隠し0も同じ制限で使用可能。設定・チャット操作中はキー入力からエモートを発火しない。試合中の捕獲・収納などの行動条件は変更していない。
+- エモートの同期スナップショットへフェーズを追加し、試合開始・ステージ移動でロビーのエモートを持ち越さない。BuildTagを `ToonStory_LobbyEmotes_20261102` へ更新し、旧同期形式の版を検索・参加・招待時に拒否する。全員が同じ新しい配布物を使うこと。
+- Houseの既存鏡 `Mirror_Hallway` はX=456から446へ10cm戻し、既存家具に鏡面が埋まる状態を修正。Demo寝室の西壁に `Mirror_Bedroom` を追加（座標 `-805,50,151`、Yaw=0、Scale=1）。家具より上の壁に置き、鏡面の中央・上下・左右の遮蔽と正面に立てる床を確認した。既存家具は移動・削除していない。
+- 母親イベントの共有DBは既に有効・イベント候補登録済みだった。不足していた地点をHouse `(-300,-650,20.95)`、Demo `(-450,-175,-7)` に各1つ配置し、床と人間の入れる範囲を確認した。赤い境界線用素材も設定済み。母親本体のモデルは既存仕様の仮キューブのまま。
+- Contentはmainのまま。以前から未コミットだったHouse/Demoの内容を保持し、その上へ依頼された配置を追加した。作業前バックアップは `Saved/MirrorMomLobby/*.before.umap`。今回の変更は未コミット・未push。
+- Editorビルド成功: `Saved/MirrorMomLobby/BuildAcceptance.log`。ロビーで実際の移動入力による位置変化・エモートの骨姿勢生成・試合移行時の失効・設定/チャット開閉後の入力復帰を検証。GC対策、既存エモート、旧版拒否も成功: `Acceptance/index.json`（4件）。チャットの既存4テストは `Lobby/index.json` に成功記録あり。
+- Houseの母親イベント開始/説得進捗、鏡の配置・反射判定・素材を確認: `House/index.json`（7件）。Demoの最終配置も成功: `DemoFinal/index.json`（2件）。タイトル→ロビー→試合→ロビーの往復も成功: `Title/index.json`（1件）。タイトルステージ2の既存Scale3D警告10件は前回と同じもの。実機間Steam通信と手動プレイでの見た目確認は別途必要。
+- Steam対応Developmentパッケージも成功: `Saved/MirrorMomLobby/Package.log`。修正版exeは `Builds/MirrorMomLobby/Windows/ToonStory.exe`。子どもメッシュのGC対策も含む。既存の配布フォルダーは上書きしていない。
+- 完成したexeをNull接続の自動テストモードで実行し、ロビー移動・エモート・GC対策・旧版拒否（`PackagedLobby/index.json`、4件）、House配置（`PackagedHouse/index.json`、2件）、Demo配置（`PackagedDemo/index.json`、2件）がすべて成功。8件ともエラー・警告0。Steam実機間接続を検証したという意味ではない。
+
+## 追記: コミット前レビュー（2026-11-02）
+
+- 差分のコード、呼び出し元、入力モードの切り替え、GC保持、エモート同期と旧版拒否を再確認。今回の範囲で追加修正が必要な不具合は見つからなかった。
+- 同じコード・アセットで成功済みのEditorビルドとパッケージ版8テストを確認。レビュー中は実装を変更していないため、同一テストの再実行は省略した。Steam実機間通信は未検証。
+- ユーザーの明示承認により、以前からの編集を含むHouse/Demoの2マップもContent/mainへコミット・pushする。親は現在のfeature/20261028_addAnimationへコミットし、Steamモードの設定を含める。PRは作成しない。上記の「未コミット・未push」は作業完了直後の状態を示す。

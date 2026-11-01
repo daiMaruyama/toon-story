@@ -233,7 +233,8 @@ bool FTBMirrorPlacementTest::RunTest(const FString&)
 {
 	UWorld* World=nullptr;
 	for(const auto& Context:GEngine->GetWorldContexts()) if(Context.WorldType==EWorldType::Game) World=Context.World();
-	if (!World || !World->GetMapName().Contains(TEXT("TB_StylizedHouse"))) { AddInfo(TEXT("Placement requires TB_StylizedHouse")); return true; }
+	if (!World || (!World->GetMapName().Contains(TEXT("TB_StylizedHouse")) &&
+	    !World->GetMapName().Contains(TEXT("TB_ToyWorldDemoExpanded")))) { AddInfo(TEXT("Placement requires House or Demo")); return true; }
 	int32 Count=0;
 	for(TActorIterator<ATBMirror> It(World);It;++It)
 	{
@@ -242,13 +243,16 @@ bool FTBMirrorPlacementTest::RunTest(const FString&)
 		TestTrue(TEXT("Saved mirror exposes no interaction"),It->GetInteractionActions().IsEmpty());
 		FHitResult Floor; const FVector Front=It->GetActorLocation()+It->GetActorForwardVector()*150;
 		FCollisionQueryParams Query(SCENE_QUERY_STAT(MirrorPlacement));
+		Query.AddIgnoredActor(*It);
+		TestFalse(TEXT("Authored mirror surface is not hidden inside a wall or furniture"),
+		    World->LineTraceTestByChannel(Front, It->GetActorLocation()+It->GetActorForwardVector(), ECC_Visibility, Query));
 		if(TestTrue(TEXT("Floor in front of authored mirror"),World->LineTraceSingleByChannel(Floor,Front,Front-FVector(0,0,250),ECC_Visibility,Query)))
 		{
 			const FVector Standing=Floor.ImpactPoint+FVector(0,0,TBCharacterGeometry::HumanHalfHeight+2);
 			TestTrue(TEXT("Human can stand in front of mirror"),TB::SupportsCapsule(World,Standing,TBCharacterGeometry::HumanRadius,TBCharacterGeometry::HumanHalfHeight,ECC_Pawn,Query,.71f));
 		}
 	}
-	TestEqual(TEXT("One authored hallway mirror"),Count,1);
+	TestEqual(TEXT("One authored mirror per stage"),Count,1);
 	return true;
 }
 #endif

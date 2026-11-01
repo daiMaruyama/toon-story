@@ -94,13 +94,16 @@ void ATBController::PlayerTick(float DeltaTime)
 	const auto* State = TB::GS(GetWorld());
 	const bool InLobby = State && State->Phase == ETBPhase::Lobby;
 	if (!State || State->Phase != ETBPhase::Playing) bLeaveMenuOpen = false;
-	const bool ShowMenu = State && (State->Phase != ETBPhase::Playing || bLeaveMenuOpen);
-	UpdateLobbyCamera(InLobby || ShouldHidePreparationView());
+	UpdateChat();
+	const auto* HUD = Cast<ATBHUD>(GetHUD());
+	const bool BlockingPanel = HUD && (HUD->IsChatBlocked() || HUD->IsStagePickerOpen());
+	const bool ShowMenu = State && (InLobby ? (BlockingPanel || IsChatOpen() || State->bTravelPending) :
+	    (State->Phase != ETBPhase::Playing || bLeaveMenuOpen || BlockingPanel));
+	UpdateLobbyCamera((InLobby && ShowMenu && !IsChatOpen()) || ShouldHidePreparationView());
 	UpdateMenuInput(ShowMenu);
 	UpdateScreenTransition();
 	UpdateViewAspect();
 	SyncInputContexts();
-	UpdateChat();
 	if (NoticeExpires > 0 && GetWorld()->GetTimeSeconds() > NoticeExpires)
 	{
 		Notice.Reset();
@@ -284,7 +287,7 @@ void ATBController::UpdateScreenTransition()
 
 void ATBController::UpdateLobbyCamera(bool InLobby)
 {
-	// ロビー中はマップに置いたTBLobbyCameraから見せる。Pawnの所持で視点が戻されても毎フレーム掛け直す。
+	// ロビーの設定画面と準備中だけ固定カメラを使う。探索中はPawnの視点へ戻す。
 	if (InLobby)
 	{
 		if (!bLobbyCameraSearched)
@@ -452,6 +455,16 @@ void ATBController::SetupInputComponent()
 void ATBController::ToggleLeaveMenu()
 {
 	const auto* State = TB::GS(GetWorld());
+	if (State && State->Phase == ETBPhase::Lobby && !State->bTravelPending && !IsChatOpen())
+	{
+		if (auto* HUD = Cast<ATBHUD>(GetHUD()))
+		{
+			if (HUD->IsStagePickerOpen()) HUD->NotifyHitBoxClick(TEXT("CancelStage"));
+			else if (HUD->IsLobbySettingsOpen()) HUD->NotifyHitBoxClick(TEXT("CloseSettings"));
+			else if (!HUD->IsChatBlocked()) HUD->NotifyHitBoxClick(TEXT("OpenSettings"));
+		}
+		return;
+	}
 	if (State && State->Phase == ETBPhase::Playing) bLeaveMenuOpen = !bLeaveMenuOpen;
 }
 
@@ -638,6 +651,7 @@ void ATBController::OpenChat()
 {
 	if (ChatBox && !ChatBox->IsOpen())
 	{
+		UpdateMenuInput(true);
 		ChatBox->SetOpen(true);
 	}
 }

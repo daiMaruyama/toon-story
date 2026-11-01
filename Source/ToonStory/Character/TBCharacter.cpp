@@ -14,6 +14,7 @@
 #include "Input/TBInputSettings.h"
 #include "Input/TBKeyLabels.h"
 #include "Input/TBKeyRemap.h"
+#include "UI/TBHUD.h"
 #include "EnhancedInputComponent.h"
 #include "InputAction.h"
 #include "Character/TBMovement.h"
@@ -98,8 +99,8 @@ ATBCharacter::ATBCharacter(const FObjectInitializer& Init)
 void ATBCharacter::BeginPlay()
 {
 	Super::BeginPlay();
-	ChildMesh.LoadSynchronous();
-	ChildAnimation.LoadSynchronous();
+	LoadedChildMesh = ChildMesh.LoadSynchronous();
+	LoadedChildAnimation = ChildAnimation.LoadSynchronous();
 	GetMesh()->SetOwnerNoSee(true);
 	GetMesh()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	// 視界判定と同じ視野角・基準の画面比で映す。運ばれている間も同じにして、切り替えのたびに視野角が伸び縮みしないようにする。
@@ -128,16 +129,22 @@ void ATBCharacter::UpdateAppearance(bool bToy)
 	{
 		return;
 	}
+	// Possession can apply appearance before BeginPlay; retain assets on that path too.
+	if (!bToy)
+	{
+		if (!LoadedChildMesh) LoadedChildMesh = ChildMesh.LoadSynchronous();
+		if (!LoadedChildAnimation) LoadedChildAnimation = ChildAnimation.LoadSynchronous();
+	}
 	bAppearanceInitialized = true;
 	bShowingToy = bToy;
 	GetMesh()->SetVisibility(false);
 	Body->SetVisibility(true);
-	if (!bToy && ChildMesh.Get())
+	if (!bToy && LoadedChildMesh)
 	{
 		Body->SetVisibility(false);
 		auto* Visual = GetMesh();
-		Visual->SetSkeletalMesh(ChildMesh.Get());
-		const FBoxSphereBounds Bounds = ChildMesh->GetBounds();
+		Visual->SetSkeletalMesh(LoadedChildMesh);
+		const FBoxSphereBounds Bounds = LoadedChildMesh->GetBounds();
 		const float Scale = 125.f / FMath::Max(1.f, float(Bounds.BoxExtent.Z * 2));
 		Visual->SetRelativeScale3D(FVector(Scale));
 		// 速度の切り替えはABPに任せ、待機も含めた一律の早回しを避ける。
@@ -151,9 +158,9 @@ void ATBCharacter::UpdateAppearance(bool bToy)
 		// 他プレイヤー側の移動補間は記録済みのメッシュ位置へ毎フレーム戻すため、記録も更新しないと足が浮く。
 		StandingMeshOffset = Visual->GetRelativeLocation();
 		CacheInitialMeshOffset(StandingMeshOffset, Visual->GetRelativeRotation());
-		if (ChildAnimation.Get())
+		if (LoadedChildAnimation)
 		{
-			Visual->SetAnimInstanceClass(ChildAnimation.Get());
+			Visual->SetAnimInstanceClass(LoadedChildAnimation);
 			Visual->SetOverridePostProcessAnimBP(LoadClass<UAnimInstance>(
 			    nullptr, TEXT("/Game/Characters/ChildAnimation/ABP_TBHumanPose.ABP_TBHumanPose_C")));
 		}
@@ -276,12 +283,12 @@ namespace
 int32 ATBCharacter::EmoteVisualIndex() const
 {
 	const auto* Toy = Cast<ATBToyCharacter>(this);
-	return !IsHuman() && Toy ? Toy->SelectedToyIndex : INDEX_NONE;
+	return TBPS() && TBPS()->Team == ETBTeam::Toy && Toy ? Toy->SelectedToyIndex : INDEX_NONE;
 }
 
 bool ATBCharacter::SupportsEmotes() const
 {
-	if (IsHuman()) return TBToyPresentation::SupportsEmoteMesh(GetMesh()->GetSkeletalMeshAsset());
+	if (TBPS() && TBPS()->Team != ETBTeam::Toy) return TBToyPresentation::SupportsEmoteMesh(GetMesh()->GetSkeletalMeshAsset());
 	const auto* Toy = Cast<ATBToyCharacter>(this);
 	if (!Toy || !Toy->ToyCatalogue.IsValidIndex(Toy->SelectedToyIndex) ||
 	    !TBToyPresentation::SupportsEmoteClass(Toy->ToyCatalogue[Toy->SelectedToyIndex].Get())) return false;
@@ -302,8 +309,10 @@ bool ATBCharacter::EmoteGameplayEligible() const
 	const auto* Player = TBPS();
 	const auto* OwnerController = GetController();
 	const double Now = State ? State->GetServerWorldTimeSeconds() : 0;
-	if (!State || !IsValid(Player) || !CanAct() || IsActorBeingDestroyed() ||
-	    !State->PlayerArray.Contains(Player) || !FMath::IsFinite(Now) || !FMath::IsFinite(State->EndTime) || State->EndTime <= 0 || State->EndTime <= Now ||
+	const bool Lobby = State && State->Phase == ETBPhase::Lobby && !State->bTravelPending;
+	const bool Playing = State && CanAct() && FMath::IsFinite(State->EndTime) && State->EndTime > Now;
+	if (!State || !IsValid(Player) || (!Lobby && !Playing) || IsMovementLocked() || IsActorBeingDestroyed() ||
+	    !State->PlayerArray.Contains(Player) || !FMath::IsFinite(Now) ||
 	    !Movement || !Movement->IsMovingOnGround() || GetVelocity().ContainsNaN() || GetVelocity().Size2D() > 2.f ||
 	    Carrier || HasCarriedToy() || bHoldingInteract || bRescuing || StoreStarted >= 0) return false;
 	if ((HasAuthority() || IsLocallyControlled()) && (!IsValid(OwnerController) || OwnerController->GetPawn() != this ||
@@ -351,6 +360,7 @@ bool ATBCharacter::TryEmote(ETBEmoteKind Kind)
 	Emote.bActive = true; Emote.Kind = Kind;
 	if (++Emote.Revision == 0) ++Emote.Revision;
 	Emote.Player = TBPS(); Emote.Team = TBPS()->Team; Emote.Round = State->HidePreparation.Round;
+	Emote.Phase = State->Phase;
 	Emote.Possession = HumanLookPossession; Emote.Visual = EmoteVisualIndex();
 	Emote.StartsAt = State->GetServerWorldTimeSeconds(); Emote.EndsAt = Emote.StartsAt + Duration;
 	Emote.NextAllowedAt = Emote.StartsAt + 4.;
@@ -378,13 +388,15 @@ void ATBCharacter::UpdateEmote()
 	const auto* State = TB::GS(GetWorld());
 	const uint32 Round = State ? State->HidePreparation.Round : 0;
 	const ETBTeam Team = TBPS() ? TBPS()->Team : ETBTeam::None;
+	const ETBPhase Phase = State ? State->Phase : ETBPhase::Lobby;
 	const bool Changed = Emote.Player != TBPS() || Emote.Team != Team || Emote.Round != Round ||
-	    Emote.Possession != HumanLookPossession || Emote.Visual != EmoteVisualIndex();
+	    Emote.Phase != Phase || Emote.Possession != HumanLookPossession || Emote.Visual != EmoteVisualIndex();
 	if (Emote.bActive && (Changed || !EmoteEligible() || !State || State->GetServerWorldTimeSeconds() >= Emote.EndsAt)) CancelEmote();
 	if (Changed)
 	{
 		if (++Emote.Revision == 0) ++Emote.Revision;
 		Emote.Player = TBPS(); Emote.Team = Team; Emote.Round = Round; Emote.Possession = HumanLookPossession;
+		Emote.Phase = Phase;
 		Emote.Visual = EmoteVisualIndex(); Emote.NextAllowedAt = 0;
 		ForceNetUpdate();
 	}
@@ -407,7 +419,8 @@ bool ATBCharacter::GetEmoteSample(FTBEmoteSample& Out) const
 	const bool Ready = State && IsValid(TBPS()) && State->PlayerArray.Contains(TBPS()) && IsValid(Emote.Player) && Emote.Player == TBPS() &&
 	    Emote.Team == TBPS()->Team && Emote.Round == State->HidePreparation.Round &&
 	    Emote.Possession != 0 && (HasAuthority() ? Emote.Possession == HumanLookPossession : Emote.Possession == HumanLook.Possession) &&
-	    State->Phase == ETBPhase::Playing && !State->IsPreparing();
+	    Emote.Phase == State->Phase && !State->IsPreparing() &&
+	    (State->Phase == ETBPhase::Playing || (State->Phase == ETBPhase::Lobby && !State->bTravelPending));
 	if (!Ready)
 	{
 		// Actor/PS/round properties may arrive in either order. Wait before first presentation,
@@ -464,6 +477,7 @@ bool ATBCharacter::IsPhysicsLocked() const
 {
 	const auto* MatchInfo = TB::GS(GetWorld());
 	const auto* ToyPlayerInfo = TBPS();
+	if (MatchInfo && MatchInfo->Phase == ETBPhase::Lobby && MatchInfo->bTravelPending) return true;
 	if (MatchInfo && MatchInfo->IsPreparing() && (!ToyPlayerInfo || ToyPlayerInfo->Team != ETBTeam::Toy)) return true;
 	if (MatchInfo && (MatchInfo->Phase == ETBPhase::Results || MatchInfo->Phase == ETBPhase::Aborted))
 	{
@@ -1071,6 +1085,7 @@ void ATBCharacter::EmotePressed(ETBEmoteKind Kind)
 	auto* PC = Cast<ATBController>(GetController());
 	if (!PC || !PC->IsLocalController() || PC->GetPawn() != this || PC->IsChatOpen() ||
 	    PC->IsLeaveMenuOpen() || !CanRequestEmote()) return;
+	if (const auto* HUD = Cast<ATBHUD>(PC->GetHUD()); HUD && (HUD->IsChatBlocked() || HUD->IsStagePickerOpen())) return;
 	if (Kind == ETBEmoteKind::WildDance)
 	{
 		// Secret fixed shortcut. Respect any existing player binding on zero.

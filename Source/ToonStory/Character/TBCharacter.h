@@ -49,6 +49,7 @@ struct FTBEmoteSnapshot
 	UPROPERTY() uint32 Possession = 0;
 	UPROPERTY() TObjectPtr<ATBPlayerState> Player;
 	UPROPERTY() ETBTeam Team = ETBTeam::None;
+	UPROPERTY() ETBPhase Phase = ETBPhase::Lobby;
 	UPROPERTY() int32 Visual = INDEX_NONE;
 	UPROPERTY() double StartsAt = 0;
 	UPROPERTY() double EndsAt = 0;
@@ -169,9 +170,15 @@ public:
 	bool bRescuing = false;
 
 private:
+	// Soft references select assets but do not keep them alive before presentation or while showing a toy.
+	UPROPERTY(Transient)
+	TObjectPtr<USkeletalMesh> LoadedChildMesh;
+	UPROPERTY(Transient)
+	TSubclassOf<UAnimInstance> LoadedChildAnimation;
 #if WITH_DEV_AUTOMATION_TESTS
 	friend class FTBHumanLookTest;
 	friend class FTBEmoteTest;
+	friend class FTBLobbyExplorationTest;
 #endif
 	UPROPERTY(ReplicatedUsing = OnRep_Emote)
 	FTBEmoteSnapshot Emote;
