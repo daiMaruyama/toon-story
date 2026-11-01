@@ -368,18 +368,31 @@ void UTBSession::Joined(FName Name, EOnJoinSessionCompleteResult::Type Result)
 	CurrentOperation = ESessionOperation::Idle;
 	if (Result != EOnJoinSessionCompleteResult::Success)
 	{
-		Message(TEXT("Join failed. If a local session remains, TBLeave then retry."), true);
+		DropFailedJoin(TEXT("Join failed."));
 		return;
 	}
 	FString URL;
 	APlayerController* PlayerController = GetGameInstance()->GetFirstLocalPlayerController();
 	if (!PlayerController || !Sessions->GetResolvedConnectString(NAME_GameSession, URL) || URL.IsEmpty())
 	{
-		Message(TEXT("Could not resolve connection. TBLeave to clean up."), true);
+		DropFailedJoin(TEXT("Could not resolve connection."));
 		return;
 	}
 	Message(TEXT("Connecting to host..."));
 	PlayerController->ClientTravel(URL, TRAVEL_Absolute);
+}
+
+// 入れなかったときに残ったセッションを、タイトルに留まったまま片付ける。残すと作る・探す・入るが全部断られる。
+void UTBSession::DropFailedJoin(const FString& Text)
+{
+	const bool bRemains = Sessions->GetNamedSession(NAME_GameSession) != nullptr;
+	if (bRemains) CurrentOperation = ESessionOperation::Dropping;
+	Message(Text, true);
+	if (bRemains && !Sessions->DestroySession(NAME_GameSession))
+	{
+		CurrentOperation = ESessionOperation::Idle;
+		Changed.Broadcast();
+	}
 }
 
 void UTBSession::Accepted(bool bSucceeded, int32 LocalUser, TSharedPtr<const FUniqueNetId> Id,
@@ -446,6 +459,12 @@ void UTBSession::Leave()
 
 void UTBSession::Destroyed(FName Name, bool bSucceeded)
 {
+	if (Name == NAME_GameSession && CurrentOperation == ESessionOperation::Dropping)
+	{
+		CurrentOperation = ESessionOperation::Idle;
+		Changed.Broadcast();
+		return;
+	}
 	if (Name != NAME_GameSession || CurrentOperation != ESessionOperation::Closing)
 	{
 		return;
@@ -685,6 +704,46 @@ bool FTBSessionBuildCompatibilityTest::RunTest(const FString&)
 	Session->Status=TEXT("No online connection in this test");
 	Session->BeginJoin(Current);
 	TestEqual(TEXT("Same-build join passes version guard"),Session->Status,FString(TEXT("No online connection in this test")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBSessionJoinCleanupTest, "ToonStory.Session.JoinCleanup",
+                                 EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+bool FTBSessionJoinCleanupTest::RunTest(const FString&)
+{
+	// 入れなかったときに残ったセッションは、タイトルに留まったまま片付き、また作る・探す・入るができる。
+	UWorld* World = nullptr;
+	for (const auto& Context : GEngine->GetWorldContexts())
+	{
+		if (Context.WorldType == EWorldType::Game && Context.World()) World = Context.World();
+	}
+	if (!TestNotNull(TEXT("Game world"), World)) return false;
+	auto* Session = World->GetGameInstance()->GetSubsystem<UTBSession>();
+	if (!TestNotNull(TEXT("Session"), Session) || !TestTrue(TEXT("Online sessions"), Session->Acquire())) return false;
+	if (Session->Sessions->GetNamedSession(NAME_GameSession) || Session->IsBusy())
+	{
+		AddInfo(TEXT("A real session is in use; skipped."));
+		return true;
+	}
+	for (const bool bResolveFails : {false, true})
+	{
+		FOnlineSessionSettings Settings;
+		Settings.bIsLANMatch = true;
+		Settings.NumPublicConnections = 2;
+		Session->Sessions->CreateSession(0, NAME_GameSession, Settings);
+		if (!TestNotNull(TEXT("A local session remains"), Session->Sessions->GetNamedSession(NAME_GameSession))) return false;
+		Session->CurrentOperation = UTBSession::ESessionOperation::Joining;
+		if (bResolveFails)
+		{
+			Session->DropFailedJoin(TEXT("Could not resolve connection."));
+		}
+		else
+		{
+			Session->Joined(NAME_GameSession, EOnJoinSessionCompleteResult::UnknownError);
+		}
+		TestNull(TEXT("The leftover session is cleaned up"), Session->Sessions->GetNamedSession(NAME_GameSession));
+		TestFalse(TEXT("Back to idle so rooms can be made or found"), Session->IsBusy());
+	}
 	return true;
 }
 #endif

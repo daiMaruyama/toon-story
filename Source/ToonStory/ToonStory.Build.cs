@@ -24,6 +24,8 @@ public class ToonStory : ModuleRules
 			"SignalProcessing",
 			"AudioMixer",
 			"EnhancedInput",
+			"LevelSequence",
+			"MovieScene",
 			"UMG",
 			"Slate",
 			"SlateCore"

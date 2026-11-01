@@ -51,6 +51,7 @@ private:
 #if WITH_DEV_AUTOMATION_TESTS
 	friend class FTBOfflineReturnTest;
 	friend class FTBSessionBuildCompatibilityTest;
+	friend class FTBSessionJoinCleanupTest;
 #endif
 	enum class ESessionOperation : uint8
 	{
@@ -58,7 +59,9 @@ private:
 		Creating,
 		Finding,
 		Joining,
-		Closing
+		Closing,
+		// 入れなかったセッションを、タイトルに留まったまま片付けている
+		Dropping
 	};
 	ESessionOperation CurrentOperation = ESessionOperation::Idle;
 	IOnlineSessionPtr Sessions;
@@ -96,6 +99,7 @@ private:
 	void Found(bool bSucceeded);
 	void Joined(FName Name, EOnJoinSessionCompleteResult::Type Result);
 	void Destroyed(FName Name, bool bSucceeded);
+	void DropFailedJoin(const FString& Text);
 	void Accepted(bool bSucceeded, int32 LocalUser, TSharedPtr<const FUniqueNetId> Id,
 	              const FOnlineSessionSearchResult& Result);
 	void BeginJoin(const FOnlineSessionSearchResult& Result);

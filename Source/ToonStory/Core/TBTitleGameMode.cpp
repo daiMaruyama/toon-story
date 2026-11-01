@@ -21,10 +21,18 @@ void ATBTitleController::BeginPlay()
 {
 	Super::BeginPlay();
 	if (!IsLocalController()) return;
-	if (TActorIterator<ACameraActor> It(GetWorld()); It)
+	// 子ども部屋には寸劇用のカメラも並ぶので、タイトル用の印が付いたカメラを先に選ぶ。
+	ACameraActor* Camera = nullptr;
+	for (TActorIterator<ACameraActor> It(GetWorld()); It; ++It)
 	{
-		SetViewTarget(*It);
+		if (It->ActorHasTag(TEXT("TitleCamera")))
+		{
+			Camera = *It;
+			break;
+		}
+		if (!Camera) Camera = *It;
 	}
+	if (Camera) SetViewTarget(Camera);
 	GetGameInstance()->GetSubsystem<UTBSession>()->Activate();
 	Menu = CreateWidget<UTBTitleMenu>(this, UTBTitleMenu::StaticClass());
 	if (Menu)
