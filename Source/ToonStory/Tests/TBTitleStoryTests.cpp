@@ -52,7 +52,7 @@ namespace
 	}
 }
 
-// 物語は最初の1回だけ。寸劇が無ければすぐメニュー。飛ばす入力でメニューへ。「ストーリーを見る」で戻る。
+// 物語は最初の1回だけ。寸劇が無ければすぐメニュー。飛ばす入力で黒から明けてメニューへ。メニューを触るとループが止まり、放置すると寸劇。「ストーリーを見る」で戻る。
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBTitleStoryTest, "ToonStory.Title.Story",
                                  EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
 bool FTBTitleStoryTest::RunTest(const FString& Parameters)
@@ -101,12 +101,28 @@ bool FTBTitleStoryTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("The first time plays the story"), Menu->GetState() == UTBTitleMenu::EState::Story);
 	TestTrue(TEXT("The story is playing"), Story->GetSequencePlayer()->IsPlaying());
 	TestFalse(TEXT("The loop waits"), Loop->GetSequencePlayer()->IsPlaying());
+	TestTrue(TEXT("The story catches clicks to skip"), Menu->IsCatchingClicks());
 	const FKeyEvent AnyKey(EKeys::K, FModifierKeysState(), 0, false, 0, 0);
 	TestTrue(TEXT("The skip key is handled"), Menu->SendKeyDownForTest(AnyKey).IsEventHandled());
 	TestTrue(TEXT("Any key skips to the menu"), Menu->GetState() == UTBTitleMenu::EState::Menu);
 	TestFalse(TEXT("The story stopped"), Story->GetSequencePlayer()->IsPlaying());
 	TestTrue(TEXT("The loop starts"), Loop->GetSequencePlayer()->IsPlaying());
 	TestEqual(TEXT("The menu starts transparent"), Menu->GetMenuOpacity(), 0.f);
+	TestEqual(TEXT("Skipping starts from black"), Menu->GetBlackoutOpacity(), 1.f);
+	TestFalse(TEXT("The menu lets clicks through to the buttons"), Menu->IsCatchingClicks());
+
+	// メニューを触っても、ループ全体は止めない（止まるのは光を当てたおもちゃだけ）。触ると放置の数え直し。
+	Menu->AdvanceIdleForTest(40.f);
+	TestFalse(TEXT("Keys in the menu are left to the buttons"), Menu->SendKeyDownForTest(AnyKey).IsEventHandled());
+	TestTrue(TEXT("Touching the menu keeps the loop playing"), Loop->GetSequencePlayer()->IsPlaying());
+	Menu->AdvanceIdleForTest(40.f);
+	TestTrue(TEXT("Touching restarts the idle count"), Menu->GetState() == UTBTitleMenu::EState::Menu);
+
+	// 放っておくと寸劇を流す。
+	Menu->AdvanceIdleForTest(60.f);
+	TestTrue(TEXT("Idling plays the story"), Menu->GetState() == UTBTitleMenu::EState::Story);
+	TestFalse(TEXT("The loop stops for the idle story"), Loop->GetSequencePlayer()->IsPlaying());
+	Menu->SkipStory();
 
 	// 「ストーリーを見る」でStoryに戻る。ループは止まる。
 	PressStoryButton(Menu, TEXT("Story"));

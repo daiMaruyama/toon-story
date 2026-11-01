@@ -120,16 +120,14 @@ void UTBTitleMenu::BuildPaperLayout()
 	RoomList->OnGenerateWidgetEvent.BindDynamic(this, &ThisClass::RoomLabel);
 	Column->AddChildToVerticalBox(RoomList)->SetPadding(FMargin(0, 22, 0, 12));
 	JoinButton = AddButton(TEXT("Join"), TEXT("選んだ部屋に入る"), 745, 490, 415);
-	CleanupButton = AddButton(TEXT("Cleanup"), TEXT("部屋から退出する"), 745, 567, 415, true);
 	// 右の2枚のカードは、部屋をさがすときだけ出す。
-	RoomCardWidgets = {Card, RoomCard, JoinButton, CleanupButton};
+	RoomCardWidgets = {Card, RoomCard, JoinButton};
 	SetRoomCardsShown(false);
 	StatusText = Label(TEXT(""), 17, TBPaper::Cream);
 	Place(StatusText, 90, 757, 1100, 40);
 	HostButton->OnClicked.AddDynamic(this, &ThisClass::Host);
 	FindButton->OnClicked.AddDynamic(this, &ThisClass::Find);
 	JoinButton->OnClicked.AddDynamic(this, &ThisClass::Join);
-	CleanupButton->OnClicked.AddDynamic(this, &ThisClass::Cleanup);
 	QuitButton->OnClicked.AddDynamic(this, &ThisClass::Quit);
 	HelpButton->OnClicked.AddDynamic(this, &ThisClass::Help);
 	OptionsButton->OnClicked.AddDynamic(this, &ThisClass::OpenOptions);
@@ -226,6 +224,7 @@ FReply UTBTitleMenu::NativeOnPreviewKeyDown(const FGeometry& Geometry, const FKe
 		SkipStory();
 		return FReply::Handled();
 	}
+	NoteInput();
 	if (HelpOverlay && HelpOverlay->GetVisibility() == ESlateVisibility::Visible && KeyEvent.GetKey() == EKeys::Escape)
 	{
 		CloseHelp();

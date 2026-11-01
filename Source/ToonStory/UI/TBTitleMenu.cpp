@@ -14,12 +14,27 @@
 #include "Engine/GameInstance.h"
 #include "TBPaperStyle.h"
 #include "Blueprint/WidgetTree.h"
+#include "Components/CanvasPanel.h"
+#include "Components/CanvasPanelSlot.h"
+#include "Components/Image.h"
+#include "Framework/Application/SlateApplication.h"
 
 void UTBTitleMenu::NativeOnInitialized()
 {
 	Super::NativeOnInitialized();
 	SetIsFocusable(true);
 	BuildPaperLayout();
+	// 寸劇を飛ばしたときに一瞬挟む黒。いちばん手前に重ねる。
+	if (auto* Root = Cast<UCanvasPanel>(WidgetTree->RootWidget))
+	{
+		auto* Black = WidgetTree->ConstructWidget<UImage>();
+		Black->SetColorAndOpacity(FLinearColor::Black);
+		Black->SetVisibility(ESlateVisibility::Collapsed);
+		auto* Slot = Root->AddChildToCanvas(Black);
+		Slot->SetAnchors(FAnchors(0, 0, 1, 1));
+		Slot->SetOffsets(FMargin(0));
+		Blackout = Black;
+	}
 }
 
 void UTBTitleMenu::NativeConstruct()
@@ -45,6 +60,9 @@ namespace
 	const FName StoryTag(TEXT("TitleStory"));
 	const FName LoopTag(TEXT("TitleLoop"));
 	constexpr float MenuFadeSeconds = 0.8f;
+	constexpr float BlackoutSeconds = 0.5f;
+	// メニューを放っておくと寸劇を流す。
+	constexpr float StoryIdleSeconds = 45.f;
 
 	// タグの付いた、再生できるシーケンスのアクター。
 	ALevelSequenceActor* FindSequence(const UObject* Context, FName Tag)
@@ -108,6 +126,13 @@ void UTBTitleMenu::EnterStory()
 	HelpOverlay->SetVisibility(ESlateVisibility::Collapsed);
 	TitleContent->SetIsEnabled(true);
 	StoryActor = Actor;
+	// メニューを隠すとクリックを受ける物が無くなり、クリックで飛ばせないので、透明な板を全面に出して受ける。
+	BlackoutFade = 0.f;
+	if (Blackout)
+	{
+		Blackout->SetRenderOpacity(0.f);
+		Blackout->SetVisibility(ESlateVisibility::Visible);
+	}
 	Actor->GetSequencePlayer()->OnFinished.AddUniqueDynamic(this, &ThisClass::StoryFinished);
 	Actor->GetSequencePlayer()->Play();
 	SetKeyboardFocus();
@@ -119,9 +144,17 @@ void UTBTitleMenu::SkipStory()
 	if (ALevelSequenceActor* Actor = StoryActor.Get())
 	{
 		Actor->GetSequencePlayer()->OnFinished.RemoveDynamic(this, &ThisClass::StoryFinished);
-		Actor->GetSequencePlayer()->Stop();
+		// 寸劇は終わりの状態を残す設定なので、最後のコマ（タイトルの画）まで進めてから止める。
+		Actor->GetSequencePlayer()->GoToEndAndStop();
 	}
 	EnterMenu();
+	// 途中で切れた画をそのまま見せず、黒から明ける。
+	BlackoutFade = 1.f;
+	if (Blackout)
+	{
+		Blackout->SetRenderOpacity(1.f);
+		Blackout->SetVisibility(ESlateVisibility::HitTestInvisible);
+	}
 }
 
 void UTBTitleMenu::StoryFinished()
@@ -142,14 +175,42 @@ void UTBTitleMenu::StartLoop()
 	}
 }
 
+void UTBTitleMenu::NoteInput()
+{
+	if (State != EState::Menu) return;
+	IdleSeconds = 0.f;
+}
+
+bool UTBTitleMenu::IsBusyInMenu() const
+{
+	// 部屋を探している途中やヘルプを読んでいる途中に、寸劇で割り込まない。
+	return bRoomCardsShown || (HelpOverlay && HelpOverlay->GetVisibility() == ESlateVisibility::Visible);
+}
+
+void UTBTitleMenu::UpdateIdle(float DeltaTime)
+{
+	if (State != EState::Menu) return;
+	IdleSeconds += DeltaTime;
+	if (IdleSeconds >= StoryIdleSeconds && !IsBusyInMenu())
+	{
+		EnterStory();
+		// 寸劇が無ければ、また待ち直す。
+		if (State == EState::Menu) IdleSeconds = 0.f;
+	}
+}
+
 void UTBTitleMenu::EnterMenu()
 {
 	State = EState::Menu;
 	if (auto* Memory = GetGameInstance()->GetSubsystem<UTBTitleStory>()) Memory->bShown = true;
+	IdleSeconds = 0.f;
+	if (FSlateApplication::IsInitialized()) LastCursor = FSlateApplication::Get().GetCursorPos();
 	StartLoop();
+	if (ALevelSequenceActor* Loop = FindSequence(this, LoopTag)) Loop->GetSequencePlayer()->SetPlayRate(1.f);
 	MenuFade = 0.f;
 	MenuLayer->SetRenderOpacity(0.f);
 	MenuLayer->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+	if (Blackout && BlackoutFade <= 0.f) Blackout->SetVisibility(ESlateVisibility::Collapsed);
 	HostButton->SetKeyboardFocus();
 }
 
@@ -160,6 +221,7 @@ FReply UTBTitleMenu::NativeOnPreviewMouseButtonDown(const FGeometry& Geometry, c
 		SkipStory();
 		return FReply::Handled();
 	}
+	NoteInput();
 	return Super::NativeOnPreviewMouseButtonDown(Geometry, MouseEvent);
 }
 
@@ -170,6 +232,7 @@ FReply UTBTitleMenu::NativeOnAnalogValueChanged(const FGeometry& Geometry, const
 		SkipStory();
 		return FReply::Handled();
 	}
+	if (FMath::Abs(InputEvent.GetAnalogValue()) > .5f) NoteInput();
 	return Super::NativeOnAnalogValueChanged(Geometry, InputEvent);
 }
 
@@ -187,6 +250,19 @@ void UTBTitleMenu::NativeTick(const FGeometry& Geometry, float DeltaTime)
 		MenuFade = FMath::Min(1.f, MenuFade + DeltaTime / MenuFadeSeconds);
 		MenuLayer->SetRenderOpacity(MenuFade);
 	}
+	if (BlackoutFade > 0.f && Blackout)
+	{
+		BlackoutFade = FMath::Max(0.f, BlackoutFade - DeltaTime / BlackoutSeconds);
+		Blackout->SetRenderOpacity(BlackoutFade);
+		if (BlackoutFade <= 0.f) Blackout->SetVisibility(ESlateVisibility::Collapsed);
+	}
+	if (State == EState::Menu && FSlateApplication::IsInitialized())
+	{
+		const FVector2D Cursor = FSlateApplication::Get().GetCursorPos();
+		if (FVector2D::DistSquared(Cursor, LastCursor) > 4.f) NoteInput();
+		LastCursor = Cursor;
+	}
+	UpdateIdle(DeltaTime);
 	WidgetTree->ForEachWidget([DeltaTime](UWidget* Widget)
 	{
 		if (auto* Button = Cast<UButton>(Widget))
@@ -214,7 +290,6 @@ void UTBTitleMenu::Refresh()
 		RoomList->AddOption(FString::Printf(TEXT("%d  %s"), Index + 1, *Session->Rooms[Index]));
 	if (!Session->Rooms.IsEmpty()) RoomList->SetSelectedIndex(FMath::Clamp(Previous, 0, Session->Rooms.Num() - 1));
 	JoinButton->SetIsEnabled(Ready && Session->Rooms.IsValidIndex(RoomList->GetSelectedIndex()));
-	CleanupButton->SetIsEnabled(!Session->IsBusy());
 	StatusText->SetText(FText::FromString(TBPaper::Status(Session->Status)));
 }
 
@@ -241,7 +316,6 @@ void UTBTitleMenu::Find()
 }
 void UTBTitleMenu::Join() { PlayMenuClick(GetGameInstance()); if (Session) Session->Join(RoomList->GetSelectedIndex()); }
 void UTBTitleMenu::Hover() { PlayMenuClick(GetGameInstance(), ETBSoundEvent::UIHover); }
-void UTBTitleMenu::Cleanup() { PlayMenuClick(GetGameInstance(), ETBSoundEvent::UIBack); if (Session) Session->Leave(); }
 
 void UTBTitleMenu::OpenOptions()
 {

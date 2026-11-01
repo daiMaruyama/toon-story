@@ -40,6 +40,21 @@ public:
 	{
 		return bRoomCardsShown;
 	}
+	// 寸劇を飛ばした直後に挟む黒の濃さ。
+	float GetBlackoutOpacity() const
+	{
+		return BlackoutFade;
+	}
+	// 寸劇の間、クリックを受け止める板が出ているか。
+	bool IsCatchingClicks() const
+	{
+		return Blackout && Blackout->GetVisibility() == ESlateVisibility::Visible;
+	}
+	// 放置と、止めたループの再開を、時間を進めて確かめる。
+	void AdvanceIdleForTest(float Seconds)
+	{
+		UpdateIdle(Seconds);
+	}
 
 protected:
 	virtual FReply NativeOnPreviewMouseButtonDown(const FGeometry& Geometry, const FPointerEvent& MouseEvent) override;
@@ -55,6 +70,10 @@ private:
 	static UTexture2D* MakeSideShade(UObject* Outer);
 	void EnterMenu();
 	void StartLoop();
+	// 触ったら、放置の数え直し。
+	void NoteInput();
+	void UpdateIdle(float DeltaTime);
+	bool IsBusyInMenu() const;
 	void SetRoomCardsShown(bool bShown);
 	UFUNCTION()
 	void StoryFinished();
@@ -62,8 +81,13 @@ private:
 	void WatchStory();
 	EState State = EState::Menu;
 	float MenuFade = 1.f;
+	float BlackoutFade = 0.f;
+	// 最後の入力からの秒数。
+	float IdleSeconds = 0.f;
+	FVector2D LastCursor = FVector2D::ZeroVector;
 	bool bRoomCardsShown = false;
 	TWeakObjectPtr<class ALevelSequenceActor> StoryActor;
+	UPROPERTY(Transient) TObjectPtr<UWidget> Blackout;
 	UPROPERTY(Transient) TObjectPtr<UWidget> MenuLayer;
 	UPROPERTY(Transient) TArray<TObjectPtr<UWidget>> RoomCardWidgets;
 	UPROPERTY(Transient) TObjectPtr<UButton> StoryButton;
@@ -72,7 +96,6 @@ private:
 	UPROPERTY(Transient) TObjectPtr<UButton> HostButton;
 	UPROPERTY(Transient) TObjectPtr<UButton> FindButton;
 	UPROPERTY(Transient) TObjectPtr<UButton> JoinButton;
-	UPROPERTY(Transient) TObjectPtr<UButton> CleanupButton;
 	UPROPERTY(Transient) TObjectPtr<UComboBoxString> RoomList;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> StatusText;
 	UFUNCTION() void Refresh();
@@ -80,7 +103,6 @@ private:
 	UFUNCTION() void Host();
 	UFUNCTION() void Find();
 	UFUNCTION() void Join();
-	UFUNCTION() void Cleanup();
 	UFUNCTION()
 	void Quit();
 	UFUNCTION()
