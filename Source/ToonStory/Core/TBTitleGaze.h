@@ -2,11 +2,28 @@
 
 #pragma once
 #include "CoreMinimal.h"
+#include "Components/SkinnedMeshComponent.h"
 #include "GameFramework/Actor.h"
 #include "TBTitleGaze.generated.h"
 
+class UPoseableMeshComponent;
+class USkeletalMeshComponent;
 class USpotLightComponent;
 class UTBTitleMenu;
+
+// 人形の1パーツと、写し元の本物。
+USTRUCT()
+struct FTBFrozenMesh
+{
+	GENERATED_BODY()
+	UPROPERTY() TObjectPtr<USkeletalMeshComponent> Source;
+	// 骨の姿勢の写し元。毛並みの層は本体。
+	UPROPERTY() TObjectPtr<USkeletalMeshComponent> PoseSource;
+	UPROPERTY() TObjectPtr<UPoseableMeshComponent> Pose;
+	// 踊りへ戻り始めたときの姿。
+	FTransform StartWorld;
+	TArray<FTransform> StartBones;
+};
 
 USTRUCT()
 struct FTBFrozenToy
@@ -15,7 +32,13 @@ struct FTBFrozenToy
 	UPROPERTY() TObjectPtr<AActor> Toy;
 	// 固まった瞬間の姿を写し取った人形。本物は隠したままシーケンスで踊り続ける。
 	UPROPERTY() TObjectPtr<AActor> Proxy;
+	UPROPERTY() TArray<FTBFrozenMesh> Meshes;
+	// 隠している間も本物の骨を動かすため、元の設定を覚えておく。
+	UPROPERTY() TArray<TObjectPtr<USkeletalMeshComponent>> Ticked;
+	TArray<EVisibilityBasedAnimTickOption> OldTicks;
 	float UnlitSeconds = 0.f;
+	// 0 以上なら、固まった姿から今の踊りへ溶け込ませている途中。
+	float BlendSeconds = -1.f;
 };
 
 /** タイトル画面の「人間の視線」。カーソルの先を懐中電灯で照らし、光が当たったおもちゃだけ固める。 */
@@ -42,7 +65,9 @@ private:
 	void Freeze(AActor* Toy);
 	void Release(int32 Index);
 	void ReleaseAll();
-	AActor* MakeProxy(AActor* Toy);
+	void MakeProxy(FTBFrozenToy& F);
+	void StartBlend(FTBFrozenToy& F);
+	void Blend(FTBFrozenToy& F, float Alpha);
 	bool IsBlocked(const FVector& Target) const;
 	UPROPERTY(VisibleAnywhere) TObjectPtr<USpotLightComponent> Light;
 	UPROPERTY(Transient) TArray<FTBFrozenToy> Frozen;

@@ -14,8 +14,10 @@ namespace
 	const FName ToyTag(TEXT("TitleToy"));
 	// 視線がここまで届く。
 	constexpr float GazeLength = 5000.f;
-	// 光が外れてから踊りに戻るまで。
+	// 光が外れてから踊りに戻り始めるまで。
 	constexpr float ReleaseSeconds = .4f;
+	// 固まった姿から今の踊りへ溶け込ませる長さ。
+	constexpr float BlendTime = .3f;
 }
 
 ATBTitleGaze::ATBTitleGaze()
@@ -46,7 +48,7 @@ void ATBTitleGaze::ClearGaze()
 
 bool ATBTitleGaze::IsFrozen(const AActor* Toy) const
 {
-	return Frozen.ContainsByPredicate([Toy](const FTBFrozenToy& F) { return F.Toy == Toy; });
+	return Frozen.ContainsByPredicate([Toy](const FTBFrozenToy& F) { return F.Toy == Toy && F.BlendSeconds < 0.f; });
 }
 
 void ATBTitleGaze::Tick(float DeltaTime)
@@ -102,12 +104,62 @@ void ATBTitleGaze::UpdateGaze(float DeltaTime)
 			}
 		}
 	}
-	if (Lit && !IsFrozen(Lit)) Freeze(Lit);
+	if (Lit && !Frozen.ContainsByPredicate([Lit](const FTBFrozenToy& F) { return F.Toy == Lit; })) Freeze(Lit);
 	for (int32 i = Frozen.Num() - 1; i >= 0; --i)
 	{
 		FTBFrozenToy& F = Frozen[i];
-		F.UnlitSeconds = F.Toy == Lit ? 0.f : F.UnlitSeconds + DeltaTime;
-		if (!F.Toy || F.UnlitSeconds >= ReleaseSeconds) Release(i);
+		if (!F.Toy)
+		{
+			Release(i);
+			continue;
+		}
+		if (F.Toy == Lit)
+		{
+			// 戻りかけていたら、その姿のまま固め直す。
+			F.UnlitSeconds = 0.f;
+			F.BlendSeconds = -1.f;
+			continue;
+		}
+		F.UnlitSeconds += DeltaTime;
+		if (F.BlendSeconds < 0.f)
+		{
+			if (F.UnlitSeconds < ReleaseSeconds) continue;
+			StartBlend(F);
+		}
+		F.BlendSeconds += DeltaTime;
+		Blend(F, FMath::SmoothStep(0.f, BlendTime, F.BlendSeconds));
+		if (F.BlendSeconds >= BlendTime) Release(i);
+	}
+}
+
+void ATBTitleGaze::StartBlend(FTBFrozenToy& F)
+{
+	F.BlendSeconds = 0.f;
+	for (FTBFrozenMesh& M : F.Meshes)
+	{
+		if (!M.Pose) continue;
+		M.StartWorld = M.Pose->GetComponentTransform();
+		M.StartBones = M.Pose->GetComponentSpaceTransforms();
+	}
+}
+
+// 人形の姿を、隠れて踊り続けている本物の今の姿へ寄せる。1 で本物と同じ。
+void ATBTitleGaze::Blend(FTBFrozenToy& F, float Alpha)
+{
+	for (const FTBFrozenMesh& M : F.Meshes)
+	{
+		if (!M.Pose || !M.Source || !M.PoseSource) continue;
+		FTransform World;
+		World.Blend(M.StartWorld, M.Source->GetComponentTransform(), Alpha);
+		M.Pose->SetWorldTransform(World);
+		const TArray<FTransform>& Target = M.PoseSource->GetComponentSpaceTransforms();
+		const int32 Num = FMath::Min3(Target.Num(), M.StartBones.Num(), M.Pose->GetNumBones());
+		for (int32 b = 0; b < Num; ++b)
+		{
+			FTransform Bone;
+			Bone.Blend(M.StartBones[b], Target[b], Alpha);
+			M.Pose->SetBoneTransformByName(M.Pose->GetBoneName(b), Bone, EBoneSpaces::ComponentSpace);
+		}
 	}
 }
 
@@ -135,10 +187,12 @@ bool ATBTitleGaze::IsBlocked(const FVector& Target) const
 	return false;
 }
 
-AActor* ATBTitleGaze::MakeProxy(AActor* Toy)
+void ATBTitleGaze::MakeProxy(FTBFrozenToy& F)
 {
+	AActor* Toy = F.Toy;
 	AActor* Proxy = GetWorld()->SpawnActor<AActor>(AActor::StaticClass(), Toy->GetActorTransform());
-	if (!Proxy) return nullptr;
+	F.Proxy = Proxy;
+	if (!Proxy) return;
 	auto* Root = NewObject<USceneComponent>(Proxy);
 	Proxy->SetRootComponent(Root);
 	Root->RegisterComponent();
@@ -157,15 +211,27 @@ AActor* ATBTitleGaze::MakeProxy(AActor* Toy)
 		// クマの毛並みの層は本体の姿勢を借りて動き、自分の姿勢を持たないので、本体から写す。
 		auto* Leader = Cast<USkeletalMeshComponent>(Src->LeaderPoseComponent.Get());
 		Pose->CopyPoseFromSkeletalComponent(Leader ? Leader : Src);
+		FTBFrozenMesh& M = F.Meshes.AddDefaulted_GetRef();
+		M.Source = Src;
+		M.PoseSource = Leader ? Leader : Src;
+		M.Pose = Pose;
 	}
-	return Proxy;
 }
 
 void ATBTitleGaze::Freeze(AActor* Toy)
 {
 	FTBFrozenToy& F = Frozen.AddDefaulted_GetRef();
 	F.Toy = Toy;
-	F.Proxy = MakeProxy(Toy);
+	MakeProxy(F);
+	// 隠れている間は骨の姿勢が止まり、表示し直した瞬間に古い姿勢が映るので、隠している間も動かす。
+	TArray<USkeletalMeshComponent*> Meshes;
+	Toy->GetComponents(Meshes);
+	for (USkeletalMeshComponent* Mesh : Meshes)
+	{
+		F.Ticked.Add(Mesh);
+		F.OldTicks.Add(Mesh->VisibilityBasedAnimTickOption);
+		Mesh->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
+	}
 	Toy->SetActorHiddenInGame(true);
 }
 
@@ -173,6 +239,10 @@ void ATBTitleGaze::Release(int32 Index)
 {
 	FTBFrozenToy F = Frozen[Index];
 	Frozen.RemoveAt(Index);
+	for (int32 m = 0; m < F.Ticked.Num(); ++m)
+	{
+		if (F.Ticked[m]) F.Ticked[m]->VisibilityBasedAnimTickOption = F.OldTicks[m];
+	}
 	if (F.Toy) F.Toy->SetActorHiddenInGame(false);
 	if (F.Proxy) F.Proxy->Destroy();
 }

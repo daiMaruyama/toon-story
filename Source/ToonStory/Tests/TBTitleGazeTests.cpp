@@ -73,6 +73,24 @@ bool FTBTitleGazeTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("The real toy is shown again"), Lit->IsHidden());
 	TestEqual(TEXT("Nothing is left frozen"), Gaze->NumFrozen(), 0);
 
+	// 戻るときは、固まった姿から少しかけて溶け込む。途中でまた照らせば、その姿で固まり直す。
+	Gaze->SetGazeRay(FVector(0, 0, 50), FVector(1, 0, 0));
+	Gaze->UpdateGaze(.016f);
+	Gaze->ClearGaze();
+	Gaze->UpdateGaze(.39f);
+	Gaze->UpdateGaze(.05f);
+	TestFalse(TEXT("Blending back is no longer frozen"), Gaze->IsFrozen(Lit));
+	TestTrue(TEXT("The copy stays while blending back"), Lit->IsHidden());
+	Gaze->SetGazeRay(FVector(0, 0, 50), FVector(1, 0, 0));
+	Gaze->UpdateGaze(.016f);
+	TestTrue(TEXT("Lighting it again mid-blend freezes it again"), Gaze->IsFrozen(Lit));
+	TestEqual(TEXT("No second copy"), Gaze->NumFrozen(), 1);
+	Gaze->ClearGaze();
+	Gaze->UpdateGaze(.45f);
+	Gaze->UpdateGaze(.3f);
+	TestFalse(TEXT("The real toy is back after the blend"), Lit->IsHidden());
+	TestEqual(TEXT("The copy is gone"), Gaze->NumFrozen(), 0);
+
 	// 寸劇に切り替わったら（メニューが出ていなければ）、待たずにすぐ戻す。
 	Gaze->SetGazeRay(FVector(0, 0, 50), FVector(1, 0, 0));
 	Gaze->UpdateGaze(.016f);
