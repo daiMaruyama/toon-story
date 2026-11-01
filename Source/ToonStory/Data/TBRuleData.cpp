@@ -2,6 +2,13 @@
 
 #include "Data/TBRuleData.h"
 
+bool FTBMomEventRules::IsValid() const
+{
+	return FMath::IsFinite(ArrivalSeconds) && ArrivalSeconds>=1 &&
+	       FMath::IsFinite(PersuadeSeconds) && PersuadeSeconds>=.1f &&
+	       FMath::IsFinite(Radius) && Radius>=20 && FMath::IsFinite(Height) && Height>=1;
+}
+
 #if WITH_EDITOR
 #include "Misc/DataValidation.h"
 
@@ -39,6 +46,8 @@ EDataValidationResult UTBRuleData::IsDataValid(FDataValidationContext& Context) 
 	{
 		Fail(LOCTEXT("InvalidPreparationTiming", "隠れる時間は0.1秒以上の有限の値にしてください。"));
 	}
+	if (!Events.Mom.IsValid())
+		Fail(LOCTEXT("InvalidMomEvent", "ママの到着は1秒以上、説得は0.1秒以上、範囲半径は20cm以上、足元の許容高さは1cm以上の有限値にしてください。"));
 	return Result;
 }
 

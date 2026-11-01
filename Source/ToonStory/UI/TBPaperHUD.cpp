@@ -13,6 +13,7 @@
 #include "Character/TBCharacter.h"
 #include "Data/TBRuleData.h"
 #include "GamePlay/TBBox.h"
+#include "GamePlay/Events/TBMomArrivalZone.h"
 #include "GamePlay/TBBoxEscapeCourse.h"
 #include "Components/SceneComponent.h"
 #include "Engine/Canvas.h"
@@ -368,6 +369,29 @@ void ATBHUD::DrawMatch(const ATBGameState& MatchState, ATBController& Controller
 		DrawText(FString::Printf(TEXT("隠れよう！ あと%d秒"), FMath::CeilToInt(MatchState.HideRemaining())),
 		         TBPaper::Accent, W * .5f - 145 * S, 115 * S, PaperFont, 1.3f * S);
 	const bool Child = Player && Player->Team == ETBTeam::Human;
+	if (const auto* Mom = ATBMomArrivalZone::FindActive(GetWorld()); Mom && !MatchState.IsPreparing())
+	{
+		const auto& Event = Mom->State;
+		const FLinearColor Warning(1.f,.03f,.025f,1.f);
+		PaperPanel(Panel,W*.5f-290*S,112*S,580*S,(Child ? 82 : 48)*S);
+		DrawText(FString::Printf(TEXT("ママが来るまで%d秒！！"),FMath::CeilToInt(Event.Remaining)),
+		         Warning,W*.5f-265*S,122*S,PaperFont,1.5f*S);
+		if (Child)
+		{
+			DrawText(TEXT("指定位置に向かいママを説得しよう！"),Warning,W*.5f-265*S,157*S,PaperFont,1.1f*S);
+			if (Event.bOccupied)
+			{
+				// 箱にしまう際と同じパネル・ゲージ寸法を使う。
+				PaperPanel(Panel,W*.5f-235*S,H*.64f,470*S,64*S);
+				DrawText(FString::Printf(TEXT("説得中… %.1f / %.1f秒"),Event.Held,Event.RequiredHold),
+				         Ink,W*.5f-220*S,H*.64f+9*S,PaperFont,S);
+				DrawRect(FLinearColor(.1f,.14f,.16f,1),W*.5f-220*S,H*.64f+37*S,440*S,7*S);
+				DrawRect(Accent,W*.5f-220*S,H*.64f+37*S,440*S*FMath::Clamp(Event.Held/FMath::Max(.1f,Event.RequiredHold),0.f,1.f),7*S);
+				DrawText(TEXT("到着カウント停止中 ／ 全員が範囲を出ると説得をやり直します"),
+				         Ink,W*.5f-220*S,H*.64f+49*S,PaperFont,.7f*S);
+			}
+		}
+	}
 	if (Player && Player->Team == ETBTeam::Toy && Player->ToyState == ETBToyState::Boxed)
 	{
 		if (const auto* Course = ATBBoxEscapeCourse::Find(GetWorld(), MatchState.Box))
