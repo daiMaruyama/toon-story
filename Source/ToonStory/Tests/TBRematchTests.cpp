@@ -13,6 +13,8 @@
 #include "GamePlay/TBBox.h"
 #include "GamePlay/TBBoxTV.h"
 #include "GamePlay/TBPickup.h"
+#include "GamePlay/Items/TBItemSpawnDirector.h"
+#include "GamePlay/Items/TBItemSpawnPoint.h"
 #include "Components/BoxComponent.h"
 #include "Components/SphereComponent.h"
 #include "Engine/Engine.h"
@@ -74,14 +76,19 @@ bool FTBRematchTest::RunTest(const FString& Parameters)
 	HostInfo->Preference = ETBTeam::Human;
 	ToyInfo->Preference = ETBTeam::Toy;
 	const FString MapName = World->GetMapName();
+	auto* ItemSpawns = Mode->FindComponentByClass<UTBItemSpawnDirector>();
+	const bool HasItemPoints = !!TActorIterator<ATBItemSpawnPoint>(World);
 	for (int32 Round = 0; Round < 3; ++Round)
 	{
 		Mode->StartRound(Host);
 		TestEqual(TEXT("Ready is required each round"), State->Phase, ETBPhase::Lobby);
+		if (ItemSpawns) TestEqual(TEXT("Failed start never spawns random items"), ItemSpawns->GetSpawnedCount(), 0);
 		HostInfo->bReady = true;
 		ToyInfo->bReady = true;
 		Mode->StartRound(Host);
 		TestEqual(TEXT("Round starts"), State->Phase, ETBPhase::Playing);
+		if (TestNotNull(TEXT("Round owns item spawner"), ItemSpawns) && HasItemPoints && TB::Rules().RandomItems.bEnabled)
+			TestEqual(TEXT("Successful start creates configured random items"), ItemSpawns->GetSpawnedCount(), TB::Rules().RandomItems.SpawnCount);
 		Mode->AdvancePreparationClockForTest(0);
 		TestFalse(TEXT("Server released preparation before normal round fixture"), State->IsPreparing());
 		Mode->ReturnToLobby(Host);
@@ -122,6 +129,7 @@ bool FTBRematchTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("Unauthorised reset rejected"), State->Phase, FinishedPhase);
 		Host->TBLobby();
 		TestEqual(TEXT("Returns to lobby"), State->Phase, ETBPhase::Lobby);
+		if (ItemSpawns) TestEqual(TEXT("Returning to lobby removes random items"), ItemSpawns->GetSpawnedCount(), 0);
 		TestEqual(TEXT("Map retained"), World->GetMapName(), MapName);
 		TestEqual(TEXT("Members retained"), State->PlayerArray.Num(), 2);
 		TestTrue(TEXT("Host identity retained"), Host->GetPlayerState<ATBPlayerState>() == HostInfo);
