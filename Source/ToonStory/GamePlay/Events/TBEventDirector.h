@@ -20,10 +20,13 @@ public:
 
 private:
 	void PrepareRound();
+	void RefreshActiveEvent();
 	bool CanRun() const;
 	bool ExecuteEvent(UTBRandomEvent* Event);
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UTBRandomEvent>> Events;
+	UPROPERTY(Transient)
+	TObjectPtr<UTBRandomEvent> ActiveEvent;
 	double Elapsed = 0;
 	double NextRollAt = 1;
 	double CooldownUntil = 0;

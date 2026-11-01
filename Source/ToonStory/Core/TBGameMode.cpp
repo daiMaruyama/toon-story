@@ -3,6 +3,7 @@
 #include "TBGameMode.h"
 #include "GamePlay/Items/TBMirror.h"
 #include "GamePlay/Events/TBEventDirector.h"
+#include "GamePlay/Events/TBMomArrivalZone.h"
 #include "GamePlay/Items/TBItemSpawnDirector.h"
 #include "GamePlay/TBRoomLighting.h"
 #include "Camera/CameraActor.h"
@@ -932,6 +933,7 @@ void ATBGameMode::DestroyRoundCharacters()
 
 void ATBGameMode::ResetStageInteractions()
 {
+	for (TActorIterator<ATBMomArrivalZone> It(GetWorld());It;++It) It->ResetEvent();
 	ItemSpawns->ResetRound();
 	for (TActorIterator<ATBRoomLighting> It(GetWorld()); It; ++It)
 	{
@@ -1059,9 +1061,13 @@ void ATBGameMode::Tick(float DeltaSeconds)
 	if (!TB::Playing(GetWorld()))
 	{
 		EventDirector->ResetRound();
+		for (TActorIterator<ATBMomArrivalZone> It(GetWorld());It;++It)
+			if (It->State.bActive) It->ResetEvent();
 		return;
 	}
 	if (AdvanceHidePreparation()) return;
+	for (TActorIterator<ATBMomArrivalZone> It(GetWorld());It;++It) It->Advance(DeltaSeconds);
+	if (!TB::Playing(GetWorld())) return;
 	EvaluateGaze();
 	CheckWin();
 	EventDirector->Advance(DeltaSeconds);

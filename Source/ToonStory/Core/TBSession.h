@@ -50,6 +50,7 @@ public:
 private:
 #if WITH_DEV_AUTOMATION_TESTS
 	friend class FTBOfflineReturnTest;
+	friend class FTBSessionBuildCompatibilityTest;
 #endif
 	enum class ESessionOperation : uint8
 	{

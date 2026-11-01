@@ -7,12 +7,13 @@
 bool UTBEventDirector::CanRun() const
 {
 	return GetOwner() && GetOwner()->HasAuthority() && TB::Playing(GetWorld()) &&
-	       TB::Rules().Events.bEnabled && !bExecuting;
+	       TB::Rules().Events.bEnabled && !bExecuting && !ActiveEvent;
 }
 
 void UTBEventDirector::ResetRound()
 {
 	Events.Reset();
+	ActiveEvent = nullptr;
 	Elapsed = CooldownUntil = 0;
 	NextRollAt = 1;
 	bPrepared = false;
@@ -31,12 +32,25 @@ void UTBEventDirector::PrepareRound()
 	}
 }
 
+void UTBEventDirector::RefreshActiveEvent()
+{
+	if (!ActiveEvent || bExecuting) return;
+	TGuardValue<bool> Guard(bExecuting, true);
+	if (!ActiveEvent->IsActive(GetWorld()))
+	{
+		ActiveEvent = nullptr;
+		CooldownUntil = Elapsed + FMath::Max(0.f, TB::Rules().Events.CooldownSeconds);
+		NextRollAt = Elapsed + 1;
+	}
+}
+
 bool UTBEventDirector::ExecuteEvent(UTBRandomEvent* Event)
 {
 	if (!CanRun() || Elapsed < CooldownUntil || !IsValid(Event)) return false;
 	// Eligibility and execution callbacks cannot recursively trigger other events.
 	TGuardValue<bool> Guard(bExecuting, true);
 	if (!Event->CanExecute(GetWorld()) || !Event->Execute(GetWorld())) return false;
+	if (Event->IsActive(GetWorld())) ActiveEvent = Event;
 	CooldownUntil = Elapsed + FMath::Max(0.f, TB::Rules().Events.CooldownSeconds);
 	UE_LOG(LogTemp, Log, TEXT("[ToonStoryEvents] Executed %s"), *Event->GetClass()->GetName());
 	return true;
@@ -44,6 +58,7 @@ bool UTBEventDirector::ExecuteEvent(UTBRandomEvent* Event)
 
 bool UTBEventDirector::TryTrigger(TSubclassOf<UTBRandomEvent> EventClass)
 {
+	if (GetOwner() && GetOwner()->HasAuthority() && TB::Playing(GetWorld())) RefreshActiveEvent();
 	if (!CanRun()) return false;
 	PrepareRound();
 	for (UTBRandomEvent* Event : Events)
@@ -64,6 +79,8 @@ void UTBEventDirector::Advance(float DeltaSeconds)
 	PrepareRound();
 	if (!FMath::IsFinite(DeltaSeconds) || DeltaSeconds <= 0) return;
 	Elapsed += DeltaSeconds;
+	RefreshActiveEvent();
+	if (!CanRun()) return;
 	if (Elapsed < NextRollAt) return;
 	// At most one attempt per frame; never burst after a hitch.
 	NextRollAt += FMath::FloorToDouble(Elapsed - NextRollAt) + 1;

@@ -27,7 +27,7 @@ namespace
 {
 	constexpr double OfflineReturnTimeoutSeconds = 30.0;
 	const FName GameKey(TEXT("TOYBOX_BUILD"));
-	const FString BuildTag(TEXT("ToonStory_RandomItemSpawns_20261031"));
+	const FString BuildTag(TEXT("ToonStory_RandomItems_MomEvent_20261101"));
 	const FName LobbyKey(TEXT("LOBBY_OPEN"));
 } // namespace
 void UTBSession::Initialize(FSubsystemCollectionBase& Collection)
@@ -325,10 +325,17 @@ void UTBSession::Join(int32 Index)
 
 void UTBSession::BeginJoin(const FOnlineSessionSearchResult& SearchResult)
 {
-	if (CurrentOperation != ESessionOperation::Idle || !SearchResult.IsValid() || !Sessions.IsValid())
+	if (CurrentOperation != ESessionOperation::Idle || !SearchResult.IsValid())
 	{
 		return;
 	}
+	FString Tag;
+	if (!SearchResult.Session.SessionSettings.Get(GameKey, Tag) || Tag != BuildTag)
+	{
+		Message(TEXT("Room build mismatch. TBFind to refresh."), true);
+		return;
+	}
+	if (!Sessions.IsValid()) return;
 	if (Sessions->GetNamedSession(NAME_GameSession))
 	{
 		Message(TEXT("TBLeave before joining another room."), true);
@@ -378,7 +385,7 @@ void UTBSession::Joined(FName Name, EOnJoinSessionCompleteResult::Type Result)
 void UTBSession::Accepted(bool bSucceeded, int32 LocalUser, TSharedPtr<const FUniqueNetId> Id,
                           const FOnlineSessionSearchResult& SearchResult)
 {
-	if (!bSucceeded || LocalUser != 0 || !Acquire())
+	if (!bSucceeded || LocalUser != 0)
 	{
 		return;
 	}
@@ -388,7 +395,7 @@ void UTBSession::Accepted(bool bSucceeded, int32 LocalUser, TSharedPtr<const FUn
 		Message(TEXT("Invite build mismatch."), true);
 		return;
 	}
-	BeginJoin(SearchResult);
+	if (Acquire()) BeginJoin(SearchResult);
 }
 
 // 処理中の非同期操作は取り消さず、完了を待ってから退出してもらう。
@@ -611,3 +618,73 @@ void UTBSession::ClearChat()
 {
 	if (auto* Log = GetGameInstance()->GetSubsystem<UTBChatLog>()) Log->Clear();
 }
+
+#if WITH_DEV_AUTOMATION_TESTS
+#include "Misc/AutomationTest.h"
+#include "UObject/StrongObjectPtr.h"
+
+namespace
+{
+class FBuildTestSessionInfo : public FOnlineSessionInfo
+{
+	FUniqueNetIdStringRef Id = FUniqueNetIdString::Create(TEXT("BuildCompatibility"), FName(TEXT("NULL")));
+public:
+	virtual const uint8* GetBytes() const override { return Id->GetBytes(); }
+	virtual int32 GetSize() const override { return Id->GetSize(); }
+	virtual bool IsValid() const override { return true; }
+	virtual FString ToString() const override { return Id->ToString(); }
+	virtual FString ToDebugString() const override { return Id->ToDebugString(); }
+	virtual const FUniqueNetId& GetSessionId() const override { return *Id; }
+};
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBSessionBuildCompatibilityTest,"ToonStory.Session.BuildCompatibility",
+    EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+bool FTBSessionBuildCompatibilityTest::RunTest(const FString&)
+{
+	// 実際の検索結果・招待・参加入口を通す。オンライン接続や既存セッションは変更しない。
+	TStrongObjectPtr<UGameInstance> Instance(NewObject<UGameInstance>());
+	TStrongObjectPtr<UTBSession> Session(NewObject<UTBSession>(Instance.Get()));
+	auto MakeResult=[](const FString& Tag)
+	{
+		FOnlineSessionSearchResult Result;
+		Result.Session.SessionInfo=MakeShared<FBuildTestSessionInfo>();
+		Result.Session.OwningUserId=FUniqueNetIdString::Create(TEXT("BuildHost"),FName(TEXT("NULL")));
+		Result.Session.NumOpenPublicConnections=1;
+		Result.Session.SessionSettings.NumPublicConnections=2;
+		Result.Session.SessionSettings.Set(GameKey,Tag,EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
+		Result.Session.SessionSettings.Set(LobbyKey,true,EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
+		return Result;
+	};
+	const FString OldTag(TEXT("ToonStory_ResidentialStages_20261028"));
+	TestNotEqual(TEXT("Network schema change separates old build"),BuildTag,OldTag);
+	const auto Current=MakeResult(BuildTag);
+	const auto Old=MakeResult(OldTag);
+	const auto ItemsOnly=MakeResult(TEXT("ToonStory_RandomItemSpawns_20261031"));
+	const auto MomOnly=MakeResult(TEXT("ToonStory_MomEvent_20261101"));
+	auto Missing=Current;
+	Missing.Session.SessionSettings.Remove(GameKey);
+	Session->Search=MakeShared<FOnlineSessionSearch>();
+	Session->Search->SearchResults={Old,ItemsOnly,MomOnly,Missing,Current};
+	Session->CurrentOperation=UTBSession::ESessionOperation::Finding;
+	Session->Found(true);
+	TestEqual(TEXT("Search exposes only matching build"),Session->Rooms.Num(),1);
+	FString SelectedTag;
+	if (Session->Results.Num()==1) Session->Results[0].Session.SessionSettings.Get(GameKey,SelectedTag);
+	TestEqual(TEXT("Search retained the current build"),SelectedTag,BuildTag);
+	for (const auto& Incompatible:{Old,ItemsOnly,MomOnly,Missing})
+	{
+		Session->Status.Reset();
+		Session->BeginJoin(Incompatible);
+		TestTrue(TEXT("Join rechecks build before connecting"),Session->Status.Contains(TEXT("Room build mismatch")));
+		TestFalse(TEXT("Rejected join stays idle"),Session->IsBusy());
+		Session->Accepted(true,0,{},Incompatible);
+		TestTrue(TEXT("Invitation rejects old or missing build"),Session->Status.Contains(TEXT("Invite build mismatch")));
+		TestFalse(TEXT("Rejected invitation stays idle"),Session->IsBusy());
+	}
+	Session->Status=TEXT("No online connection in this test");
+	Session->BeginJoin(Current);
+	TestEqual(TEXT("Same-build join passes version guard"),Session->Status,FString(TEXT("No online connection in this test")));
+	return true;
+}
+#endif
