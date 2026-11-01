@@ -9,6 +9,7 @@
 class ATBCharacter;
 class ATBBox;
 class UTBEventDirector;
+class UTBItemSpawnDirector;
 class ATBHumanEntrance;
 
 /** サーバー専用の試合管理。開始条件・視線凍結・勝敗を判断する。 */
@@ -79,6 +80,8 @@ private:
 	void FailRoundStart(const FString& Reason, bool bRecovered);
 	UPROPERTY(VisibleAnywhere, Category = "Events")
 	TObjectPtr<UTBEventDirector> EventDirector;
+	UPROPERTY(VisibleAnywhere, Category="Items")
+	TObjectPtr<UTBItemSpawnDirector> ItemSpawns;
 	int32 LobbyPlayerCount() const;
 	void DestroyRoundCharacters();
 	void ResetStageInteractions();
