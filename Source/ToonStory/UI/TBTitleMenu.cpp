@@ -191,8 +191,14 @@ bool UTBTitleMenu::IsBusyInMenu() const
 void UTBTitleMenu::UpdateIdle(float DeltaTime)
 {
 	if (State != EState::Menu) return;
+	// 通信やオプションの途中は数えず、終わってから45秒を数え直す。
+	if (IsBusyInMenu())
+	{
+		IdleSeconds = 0.f;
+		return;
+	}
 	IdleSeconds += DeltaTime;
-	if (IdleSeconds >= StoryIdleSeconds && !IsBusyInMenu())
+	if (IdleSeconds >= StoryIdleSeconds)
 	{
 		EnterStory();
 		// 寸劇が無ければ、また待ち直す。
@@ -322,10 +328,8 @@ void UTBTitleMenu::OpenOptions()
 {
 	PlayMenuClick(GetGameInstance());
 	TWeakObjectPtr<UButton> Button = OptionsButton;
-	TWeakObjectPtr<UTBTitleMenu> Self = this;
-	Options = UTBOptionsMenu::Open(GetOwningPlayer(), [Button, Self]
+	Options = UTBOptionsMenu::Open(GetOwningPlayer(), [Button]
 	{
-		if (Self.IsValid()) Self->NoteInput();
 		if (Button.IsValid()) Button->SetKeyboardFocus();
 	});
 }

@@ -6,12 +6,13 @@
 #include "Blueprint/WidgetBlueprintLibrary.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/Button.h"
-#include "Core/TBController.h"
+#include "GameFramework/PlayerController.h"
 #include "Core/TBSession.h"
 #include "Core/TBTitleStory.h"
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
 #include "LevelSequence.h"
 #include "LevelSequenceActor.h"
 #include "LevelSequencePlayer.h"
@@ -22,13 +23,14 @@
 
 namespace
 {
-	ATBController* StoryTestController()
+	// 試合のマップでもタイトル（ATBTitleController）でも動くよう、型は問わない。
+	APlayerController* StoryTestController()
 	{
 		for (const auto& Context : GEngine->GetWorldContexts())
 		{
 			if (Context.WorldType == EWorldType::Game && Context.World())
 			{
-				return Cast<ATBController>(Context.World()->GetFirstPlayerController());
+				return Context.World()->GetFirstPlayerController();
 			}
 		}
 		return nullptr;
@@ -67,10 +69,20 @@ bool FTBTitleStoryTest::RunTest(const FString& Parameters)
 	if (!TestNotNull(TEXT("Story memory"), Memory)) return false;
 	const bool bWasShown = Memory->bShown;
 	TArray<ALevelSequenceActor*> Spawned;
+	// タイトルのマップで回すときは、本物の寸劇とループを仮のものと取り違えないよう、テストの間だけ印を外す。
+	TArray<TPair<ALevelSequenceActor*, FName>> Untagged;
+	for (TActorIterator<ALevelSequenceActor> It(World); It; ++It)
+	{
+		for (const FName Tag : {FName(TEXT("TitleStory")), FName(TEXT("TitleLoop"))})
+		{
+			if (It->Tags.Remove(Tag) > 0) Untagged.Emplace(*It, Tag);
+		}
+	}
 	ON_SCOPE_EXIT
 	{
 		Memory->bShown = bWasShown;
 		for (ALevelSequenceActor* Actor : Spawned) Actor->Destroy();
+		for (const auto& [Actor, Tag] : Untagged) Actor->Tags.Add(Tag);
 	};
 	auto Open = [&]
 	{
@@ -155,6 +167,53 @@ bool FTBTitleStoryTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("Searching holds off the story"), Menu->GetState() == UTBTitleMenu::EState::Menu);
 	}
 	Menu->RemoveFromParent();
+	return true;
+}
+
+// 本物のタイトル: 寸劇とループとタイトル用カメラがそろい、寸劇を飛ばすと最後のコマで止まって、ループとメニューに移る。
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBTitleMapTest, "ToonStory.Title.Map",
+                                 EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+bool FTBTitleMapTest::RunTest(const FString& Parameters)
+{
+	auto* PC = StoryTestController();
+	if (!TestNotNull(TEXT("Player controller"), PC)) return false;
+	UWorld* World = PC->GetWorld();
+	if (!World->GetMapName().EndsWith(TEXT("Title")))
+	{
+		AddInfo(TEXT("Run with /Game/Maps/Title -game to check the real title."));
+		return true;
+	}
+	auto Find = [World](FName Tag) -> ALevelSequenceActor*
+	{
+		for (TActorIterator<ALevelSequenceActor> It(World); It; ++It)
+		{
+			if (It->ActorHasTag(Tag)) return *It;
+		}
+		return nullptr;
+	};
+	ALevelSequenceActor* Story = Find(TEXT("TitleStory"));
+	ALevelSequenceActor* Loop = Find(TEXT("TitleLoop"));
+	if (!TestNotNull(TEXT("Story actor"), Story) || !TestNotNull(TEXT("Loop actor"), Loop)) return false;
+	TestNotNull(TEXT("Story sequence"), Story->GetSequence());
+	TestNotNull(TEXT("Loop sequence"), Loop->GetSequence());
+	TestTrue(TEXT("The story keeps its last frame"),
+	         Story->PlaybackSettings.FinishCompletionStateOverride == EMovieSceneCompletionModeOverride::ForceKeepState);
+	bool bTitleCamera = false;
+	for (TActorIterator<AActor> It(World); It; ++It) bTitleCamera |= It->ActorHasTag(TEXT("TitleCamera"));
+	TestTrue(TEXT("A camera is tagged for the title"), bTitleCamera);
+	TArray<UUserWidget*> Menus;
+	UWidgetBlueprintLibrary::GetAllWidgetsOfClass(World, Menus, UTBTitleMenu::StaticClass(), false);
+	if (!TestEqual(TEXT("One title menu"), Menus.Num(), 1)) return false;
+	auto* Menu = Cast<UTBTitleMenu>(Menus[0]);
+	if (Menu->GetState() == UTBTitleMenu::EState::Menu) Menu->EnterStory();
+	TestTrue(TEXT("The real story plays"), Menu->GetState() == UTBTitleMenu::EState::Story && Story->GetSequencePlayer()->IsPlaying());
+	Menu->SkipStory();
+	ULevelSequencePlayer* Player = Story->GetSequencePlayer();
+	TestFalse(TEXT("Skipping stops the story"), Player->IsPlaying());
+	TestTrue(TEXT("Skipping lands on the last frame"),
+	         Player->GetCurrentTime().Time.FrameNumber >= Player->GetEndTime().Time.FrameNumber - 1);
+	TestTrue(TEXT("The real loop plays behind the menu"), Loop->GetSequencePlayer()->IsPlaying());
+	TestTrue(TEXT("The menu is up"), Menu->GetState() == UTBTitleMenu::EState::Menu);
 	return true;
 }
 #endif
