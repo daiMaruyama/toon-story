@@ -46,6 +46,14 @@ namespace TBPaper
 		{
 			return TEXT("部屋をさがせませんでした。もう一度試してください。");
 		}
+		if (Value == TEXT("Join failed."))
+		{
+			return TEXT("部屋に入れませんでした。もう一度試してください。");
+		}
+		if (Value == TEXT("Could not resolve connection."))
+		{
+			return TEXT("部屋につなげませんでした。もう一度試してください。");
+		}
 		if (Value == TEXT("Offline. Last match ended; TBHost / TBFind for a new lobby."))
 		{
 			return TEXT("おかえりなさい。次はどの部屋であそぶ？");

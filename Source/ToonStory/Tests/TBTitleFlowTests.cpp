@@ -4,6 +4,7 @@
 
 #if WITH_DEV_AUTOMATION_TESTS
 #include "Core/TBTitleGameMode.h"
+#include "Core/TBLobbySettings.h"
 #include "Core/TBSession.h"
 #include "Core/TBGameMode.h"
 #include "Core/TBGameState.h"
@@ -104,7 +105,10 @@ namespace
 					++Step;
 					break;
 				case 2:
-					if (!World->GetAuthGameMode<ATBGameMode>() || Session->IsBusy())
+					// Hosting can pass through a transition world that already has a game mode.
+					// Wait for the destination before creating participants or clicking Ready/Start.
+					if (World->IsInSeamlessTravel() || !World->GetAuthGameMode<ATBGameMode>() ||
+					    !State || State->bTravelPending || Session->IsBusy())
 					{
 						return false;
 					}
@@ -121,17 +125,26 @@ namespace
 						Test->AddError(TEXT("Second local controller missing"));
 						return true;
 					}
-					RoundWorld = World;
 					Host->TBRules(1, 1, 10.f, 5);
 					HUD->NotifyHitBoxClick(TEXT("Ready"));
 					Second->TBReady();
 					HUD->NotifyHitBoxClick(TEXT("Start"));
+					Step = 20;
+					break;
+				case 20:
+					// Start in the lobby travels to the selected stage before starting the match.
+					if (World->IsInSeamlessTravel() || !State || State->bTravelPending || !Host || !HUD)
+						return false;
 					if (!Test->TestEqual(TEXT("Start action begins match"), State->Phase, ETBPhase::Playing))
 					{
 						return true;
 					}
+					// Seamless travel may replace controllers; retain the participant, not the old controller.
+					if (auto* Player = GI->GetLocalPlayerByIndex(1))
+						Second = Cast<ATBController>(Player->GetPlayerController(World));
+					if (!Test->TestTrue(TEXT("Second participant arrives at the stage"), Second.IsValid())) return true;
 					Host->ToggleLeaveMenu();
-					++Step;
+					Step = 3;
 					break;
 				case 3:
 					if (!Host || !HUD)
@@ -170,20 +183,33 @@ namespace
 					Test->TestEqual(TEXT("Match ends through the game timer"), State->Reason,
 					                FString(TEXT("Time expired")));
 					HUD->NotifyHitBoxClick(TEXT("ReturnToLobby"));
+					Step = 21;
+					break;
+				case 21:
+					if (World->IsInSeamlessTravel() || !State || State->bTravelPending ||
+					    !TBLobbySettings::IsLobby(World) || !Host || !HUD) return false;
+					if (auto* Player = GI->GetLocalPlayerByIndex(1))
+						Second = Cast<ATBController>(Player->GetPlayerController(World));
+					if (!Test->TestTrue(TEXT("Second participant returns to the lobby"), Second.IsValid())) return true;
 					Test->TestEqual(TEXT("Rematch action returns to lobby"), State->Phase, ETBPhase::Lobby);
-					Test->TestTrue(TEXT("Rematch retains world, players and session"),
-					               World == RoundWorld.Get() && State->PlayerArray.Num() == 2 && HasSession(World));
+					Test->TestTrue(TEXT("Rematch retains players and session across lobby travel"),
+					               State->PlayerArray.Num() == 2 && HasSession(World));
 					Test->TestFalse(TEXT("Host ready reset"), Host->GetPlayerState<ATBPlayerState>()->bReady);
 					Test->TestFalse(TEXT("Second ready reset"), Second->GetPlayerState<ATBPlayerState>()->bReady);
 					HUD->NotifyHitBoxClick(TEXT("Ready"));
 					Second->TBReady();
 					HUD->NotifyHitBoxClick(TEXT("Start"));
+					Step = 22;
+					break;
+				case 22:
+					if (World->IsInSeamlessTravel() || !State || State->bTravelPending || !Host || !HUD)
+						return false;
 					if (!Test->TestEqual(TEXT("Can start the rematch"), State->Phase, ETBPhase::Playing))
 					{
 						return true;
 					}
 					Host->ToggleLeaveMenu();
-					++Step;
+					Step = 6;
 					break;
 				case 6:
 					if (!Host || !HUD)
@@ -284,7 +310,6 @@ namespace
 		FAutomationTestBase* Test;
 		TWeakObjectPtr<UGameInstance> GI;
 		TWeakObjectPtr<ATBController> Second;
-		TWeakObjectPtr<UWorld> RoundWorld;
 		double Deadline;
 		int32 Step = 0;
 	};
