@@ -73,6 +73,25 @@ bool FTBTitleGazeTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("The real toy is shown again"), Lit->IsHidden());
 	TestEqual(TEXT("Nothing is left frozen"), Gaze->NumFrozen(), 0);
 
+	// 寸劇に切り替わったら（メニューが出ていなければ）、待たずにすぐ戻す。
+	Gaze->SetGazeRay(FVector(0, 0, 50), FVector(1, 0, 0));
+	Gaze->UpdateGaze(.016f);
+	TestTrue(TEXT("Lit again"), Gaze->IsFrozen(Lit));
+	Gaze->Tick(.016f);
+	TestEqual(TEXT("Leaving the menu releases at once"), Gaze->NumFrozen(), 0);
+	TestFalse(TEXT("The real toy is back for the story"), Lit->IsHidden());
+
+	// 壁の端: おもちゃの中心は見えていても、カーソルが壁を指していれば照らさない。
+	auto* Edge = World->SpawnActor<AStaticMeshActor>(FVector(300, 15, 50), FRotator::ZeroRotator);
+	Edge->GetStaticMeshComponent()->SetMobility(EComponentMobility::Movable);
+	Edge->GetStaticMeshComponent()->SetStaticMesh(Cube);
+	Edge->SetActorScale3D(FVector(.2f));
+	Gaze->SetGazeRay(FVector(0, 8, 50), FVector(1, 0, 0));
+	Gaze->UpdateGaze(.016f);
+	TestEqual(TEXT("Pointing at the wall edge lights nothing"), Gaze->NumFrozen(), 0);
+	Edge->Destroy();
+	Gaze->ClearGaze();
+
 	// 手前に壁があれば、奥のおもちゃは照らさない。見えない板は素通しにする。
 	auto* Board = World->SpawnActor<AStaticMeshActor>(FVector(200, 0, 50), FRotator::ZeroRotator);
 	Board->GetStaticMeshComponent()->SetMobility(EComponentMobility::Movable);

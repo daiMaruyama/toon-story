@@ -54,10 +54,18 @@ void ATBTitleGaze::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 	// メニューを出している間だけ。寸劇の最中は照らさない。
 	const bool bActive = Menu.IsValid() && Menu->GetState() == UTBTitleMenu::EState::Menu;
+	if (!bActive)
+	{
+		// 寸劇に切り替わったら、固めた姿を待たずに片付ける。
+		ClearGaze();
+		Light->SetVisibility(false);
+		ReleaseAll();
+		return;
+	}
 	APlayerController* PC = GetWorld()->GetFirstPlayerController();
 	float X, Y;
 	FVector Origin, Direction;
-	if (bActive && PC && PC->GetMousePosition(X, Y) && PC->DeprojectScreenPositionToWorld(X, Y, Origin, Direction))
+	if (PC && PC->GetMousePosition(X, Y) && PC->DeprojectScreenPositionToWorld(X, Y, Origin, Direction))
 	{
 		SetGazeRay(Origin, Direction);
 	}
@@ -87,7 +95,7 @@ void ATBTitleGaze::UpdateGaze(float DeltaTime)
 			FVector Hit, Normal;
 			float Time;
 			if (FMath::LineExtentBoxIntersection(Box, RayOrigin, End, FVector::ZeroVector, Hit, Normal, Time) && Time < Nearest &&
-			    (!IsBlocked(Hit) || !IsBlocked(Box.GetCenter())))
+			    !IsBlocked(Hit))
 			{
 				Nearest = Time;
 				Lit = *It;
@@ -103,7 +111,7 @@ void ATBTitleGaze::UpdateGaze(float DeltaTime)
 	}
 }
 
-// 手前の壁や家具に隠れていれば照らさない。おもちゃ同士と、見えない物（字幕の板など）は素通しにする。
+// カーソルが指した位置までに壁や家具があれば照らさない。おもちゃ同士と、見えない物（字幕の板など）は素通しにする。
 bool ATBTitleGaze::IsBlocked(const FVector& Target) const
 {
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(TitleGaze), true, this);
