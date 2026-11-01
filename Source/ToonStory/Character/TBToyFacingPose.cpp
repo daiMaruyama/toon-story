@@ -1,5 +1,6 @@
 #include "TBToyFacingPose.h"
 #include "TBCharacter.h"
+#include "TBToyPresentation.h"
 #include "Animation/AnimInstanceProxy.h"
 #include "Animation/AnimNode_LinkedInputPose.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -10,6 +11,7 @@ namespace
 	{
 		FAnimNode_LinkedInputPose* Input = nullptr;
 		float StepYaw = 0;
+		FTBEmotePose EmotePose;
 
 	public:
 		explicit FToyFacingProxy(UAnimInstance* Instance) : FAnimInstanceProxy(Instance)
@@ -21,6 +23,7 @@ namespace
 			Input = Instance->GetLinkedInputPoseNode();
 			auto* Visual = Instance->GetOwningActor();
 			const auto* Pawn = Visual ? Cast<ATBCharacter>(Visual->GetOwner()) : nullptr;
+			TBToyPresentation::BuildEmotePose(Instance->GetSkelMeshComponent(), Pawn, EmotePose);
 			float Desired = 0;
 			if (Pawn && !Pawn->IsMovementLocked() && Pawn->GetVelocity().SizeSquared2D() > 1)
 			{
@@ -46,6 +49,7 @@ namespace
 				return false;
 			}
 			Input->Evaluate_AnyThread(Output);
+			TBToyPresentation::ApplyEmotePose(Output, EmotePose);
 			if (FMath::Abs(StepYaw) < .01f)
 			{
 				return true;

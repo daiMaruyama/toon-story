@@ -34,7 +34,7 @@ namespace
 
 const TArray<FName>& TB::Keys::All()
 {
-	static const TArray<FName> Names = {MoveForward, MoveBack, MoveLeft, MoveRight, Jump, HumanCrouch, HumanInteract,
+	static const TArray<FName> Names = {MoveForward, MoveBack, MoveLeft, MoveRight, Jump, EmoteWave, EmoteCheer, EmoteDance, HumanCrouch, HumanInteract,
 	                                    HumanDrop, ToySprint, ToyInteract, ToyTaunt, LobbyReady, LobbyStart};
 	return Names;
 }
@@ -47,7 +47,10 @@ const TArray<TB::FKeySection>& TB::KeySections()
 	      {Keys::MoveBack, TEXT("後ろへ")},
 	      {Keys::MoveLeft, TEXT("左へ")},
 	      {Keys::MoveRight, TEXT("右へ")},
-	      {Keys::Jump, TEXT("ジャンプ")}}},
+	      {Keys::Jump, TEXT("ジャンプ")},
+	      {Keys::EmoteWave, TEXT("手ふり")},
+	      {Keys::EmoteCheer, TEXT("よろこび")},
+	      {Keys::EmoteDance, TEXT("ダンス")}}},
 	    {TEXT("にんげん"),
 	     {{Keys::HumanCrouch, TEXT("しゃがむ")},
 	      {Keys::HumanInteract, TEXT("つかむ・収納")},

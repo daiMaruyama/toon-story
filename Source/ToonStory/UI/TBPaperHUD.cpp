@@ -201,11 +201,14 @@ void ATBHUD::DrawLobby()
 		       Local && Local->bReady ? FString::Printf(TEXT("準備をやめる [%s]"), *ReadyKey) : FString::Printf(TEXT("準備OK [%s]"), *ReadyKey),
 		       48, Bottom, 240, Local != nullptr && !State->bTravelPending, Local && Local->bReady);
 		Text(FString::Printf(TEXT("%d / %d人 準備OK"), ReadyCount, PlayerCount), 308, Bottom + 8, 1.05f, Ink);
-		Button(TEXT("OpenSettings"), TEXT("設定を開く"), 622, Bottom, 216);
+		Button(TEXT("OpenSettings"), TEXT("設定 [Esc]"), 622, Bottom, 216);
 		Button(TEXT("Start"),
 		       PC->HasAuthority() ? FString::Printf(TEXT("あそびはじめる [%s]"), *StartKey) : FString(TEXT("ホストを待っています")),
 		       858, Bottom, 294, CanStart, CanStart);
 		DrawNotice(Bottom - 166, 1144, 110);
+		Text(FString::Printf(TEXT("移動キーで歩く / エモート %s・%s・%s / Escで設定"),
+		    *TB::KeyLabel(PC, TB::Keys::EmoteWave), *TB::KeyLabel(PC, TB::Keys::EmoteCheer),
+		    *TB::KeyLabel(PC, TB::Keys::EmoteDance)), 48, Bottom - 76, .8f, Ink);
 		return;
 	}
 	DrawRect(FLinearColor(.009f, .018f, .027f, .48f), 0, 0, Canvas->ClipX, Canvas->ClipY);
@@ -405,6 +408,10 @@ void ATBHUD::DrawMatch(const ATBGameState& MatchState, ATBController& Controller
 	const TCHAR* Objective = Child ? TEXT("おもちゃを見つけて、箱へ。") : TEXT("電池を集めて、仲間を救助。");
 	if (MatchState.IsPreparing() && Player && Player->Team == ETBTeam::Toy)
 		Objective = TEXT("物かげに隠れよう。電池は開始後！");
+	FTBEmoteSample Emote;
+	if (const auto* EmoteCharacter = Controller.GetPawn<ATBCharacter>(); EmoteCharacter && EmoteCharacter->GetEmoteSample(Emote))
+		Objective = Emote.Kind == ETBEmoteKind::Wave ? TEXT("手ふり中。移動するとやめます。") :
+		    Emote.Kind == ETBEmoteKind::Cheer ? TEXT("よろこび中。移動するとやめます。") : TEXT("ダンス中。移動するとやめます。");
 	if (Player && Player->Team == ETBTeam::Toy)
 	{
 		switch (Player->ToyState)

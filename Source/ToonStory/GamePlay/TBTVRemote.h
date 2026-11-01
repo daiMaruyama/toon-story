@@ -7,9 +7,21 @@
 #include "TBTVRemote.generated.h"
 
 class ATBBoxTV;
+class ATBCharacter;
+class ATBGameState;
+class ATBPlayerState;
 class UMaterialInstanceDynamic;
 class UStaticMeshComponent;
 class UTBTVButton;
+
+USTRUCT()
+struct FTBRemotePressState
+{
+	GENERATED_BODY()
+	// Component names are stable across server/client BP instances; array ordering is not.
+	UPROPERTY() FName Button;
+	UPROPERTY() uint32 Round = 0;
+};
 
 /** 箱内テレビのリモコン。ボタンはBPで、アクタのスケールで全体の大きさを変えられる。 */
 UCLASS(Blueprintable)
@@ -19,14 +31,45 @@ class TOONSTORY_API ATBTVRemote : public AActor
 public:
 	ATBTVRemote();
 	virtual void BeginPlay() override;
+	virtual void Tick(float DeltaSeconds) override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Remote")
 	TObjectPtr<UStaticMeshComponent> Mesh;
-	UPROPERTY(EditInstanceOnly, Category = "Remote")
+	UPROPERTY(EditInstanceOnly, Replicated, Category = "Remote")
 	TObjectPtr<ATBBoxTV> TV;
 	// 続けて押せるまでの時間はマスターデータ（TB::PresentationData().Remote）にある。
 
 private:
+#if WITH_DEV_AUTOMATION_TESTS
+	friend class FTBTVTest;
+	friend class FTBTVRemoteTest;
+#endif
+	struct FContact
+	{
+		TWeakObjectPtr<ATBPlayerState> Player;
+		TWeakObjectPtr<UTBTVButton> Candidate;
+		TWeakObjectPtr<UTBTVButton> Latched;
+		FVector Anchor = FVector::ZeroVector;
+		FTransform ButtonTransform;
+		uint8 Key = 0;
+		int32 Digit = 0;
+		double Since = -1;
+		double LeftSince = -1;
+	};
+	TMap<TWeakObjectPtr<ATBCharacter>, FContact> Contacts;
+	UPROPERTY(ReplicatedUsing = OnRep_PressState)
+	FTBRemotePressState PressState;
+	UFUNCTION()
+	void OnRep_PressState();
+	void SetConfirmedButton(const UTBTVButton* Button);
+	const UTBTVButton* ConfirmedButton() const;
+	TWeakObjectPtr<ATBGameState> ContactState;
+	TWeakObjectPtr<ATBBoxTV> ContactTV;
+	uint32 ContactRound = 0;
+	double LastEvaluation = -1;
+	FTransform ContactTransform;
 	double LastPressTime = -1;
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UTBTVButton>> Buttons;
@@ -42,5 +85,13 @@ private:
 	                        int32 OtherBodyIndex);
 	// 押せる・踏まれている・押せない をボタンごとにマテリアルへ反映する。
 	void UpdateGlow();
-	void UpdateButtonGlow(int32 Index);
+	void UpdateButtonGlow(int32 Index, const UTBTVButton* Preview, bool bConfirmed);
+	UTBTVButton* PreviewButton(ATBCharacter*& Viewer) const;
+	void EvaluateContacts(double Now);
+	bool IsEligible(const ATBCharacter* Viewer) const;
+	bool IsPresentationEligible(const ATBCharacter* Viewer) const;
+	bool SupportPoint(const ATBCharacter* Viewer, FVector& Point) const;
+	bool InButton(const UTBTVButton* Button, const FVector& Point, float Margin) const;
+	UTBTVButton* SelectButton(const ATBCharacter* Viewer, const FVector& Point) const;
+	bool Dispatch(ATBCharacter* Viewer, const UTBTVButton* Button, double Now);
 };

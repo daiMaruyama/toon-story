@@ -57,6 +57,14 @@ void ATBHUD::NotifyHitBoxClick(FName Name)
 		PC->TBLobby();
 		return;
 	}
+	const ETBEmoteKind Emote = Name == TEXT("EmoteWave") ? ETBEmoteKind::Wave :
+	    Name == TEXT("EmoteCheer") ? ETBEmoteKind::Cheer : Name == TEXT("EmoteDance") ? ETBEmoteKind::Dance : ETBEmoteKind::None;
+	if (Emote != ETBEmoteKind::None)
+	{
+		if (PC->IsLeaveMenuOpen() && State->Phase == ETBPhase::Playing)
+			if (auto* EmoteCharacter = PC->GetPawn<ATBCharacter>(); EmoteCharacter && EmoteCharacter->RequestEmote(Emote)) PC->ToggleLeaveMenu();
+		return;
+	}
 	if (State->Phase != ETBPhase::Lobby)
 	{
 		return;
@@ -148,7 +156,7 @@ void ATBHUD::DrawHUD()
 			const float S = FMath::Min(Canvas->ClipX / 1280.f, Canvas->ClipY / 800.f);
 			const float X = Canvas->ClipX * .5f - 260 * S, Y = Canvas->ClipY * .5f - 180 * S;
 			DrawRect(FLinearColor(0, 0, 0, .45f), 0, 0, Canvas->ClipX, Canvas->ClipY);
-			PaperPanel(FLinearColor::White, X, Y, 520 * S, 430 * S);
+			PaperPanel(FLinearColor::White, X, Y, 520 * S, 510 * S);
 			DrawText(TEXT("ひとやすみ"), TBPaper::Accent, X + 32 * S, Y + 24 * S, PaperFont, 1.5f * S);
 			DrawText(TEXT("オンラインの試合は進み続けます。"), TBPaper::Muted, X + 32 * S, Y + 69 * S, PaperFont,
 			         .85f * S);
@@ -168,6 +176,17 @@ void ATBHUD::DrawHUD()
 				DrawText(Buttons[I].Label, TBPaper::Ink, X + 45 * S, Y + (117 + I * 60) * S, PaperFont, S);
 				AddHitBox(FVector2D(X + 25 * S, Y + (105 + I * 60) * S), FVector2D(470 * S, 50 * S), Buttons[I].Id,
 				          true);
+			}
+			auto* EmoteCharacter = PC->GetPawn<ATBCharacter>();
+			const bool CanEmote = EmoteCharacter && EmoteCharacter->CanRequestEmote();
+			DrawText(EmoteCharacter && !EmoteCharacter->SupportsEmotes() ? TEXT("この見た目はエモート未対応です") : TEXT("エモート（安全な場所で止まってから）"),
+			    TBPaper::Muted, X + 30 * S, Y + 416 * S, PaperFont, .8f * S);
+			const FMenuButton Emotes[] = {{TEXT("EmoteWave"), TEXT("手ふり")}, {TEXT("EmoteCheer"), TEXT("よろこび")}, {TEXT("EmoteDance"), TEXT("ダンス")}};
+			for (int32 I = 0; I < UE_ARRAY_COUNT(Emotes); ++I)
+			{
+				PaperPanel(TBPaper::Cream, X + (25 + I * 160) * S, Y + 450 * S, 145 * S, 42 * S);
+				DrawText(Emotes[I].Label, CanEmote ? TBPaper::Ink : TBPaper::Muted, X + (45 + I * 160) * S, Y + 461 * S, PaperFont, .95f * S);
+				if (CanEmote) AddHitBox(FVector2D(X + (25 + I * 160) * S, Y + 450 * S), FVector2D(145 * S, 42 * S), Emotes[I].Id, true);
 			}
 		}
 	}

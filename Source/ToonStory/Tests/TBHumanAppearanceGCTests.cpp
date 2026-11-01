@@ -1,0 +1,79 @@
+// Copyright (c) 2026 Mamodou. All Rights Reserved.
+
+#include "Misc/AutomationTest.h"
+
+#if WITH_DEV_AUTOMATION_TESTS
+#include "AIController.h"
+#include "Character/TBToyCharacter.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "Core/TBPlayerState.h"
+#include "Engine/Engine.h"
+#include "Engine/SkeletalMesh.h"
+#include "Engine/World.h"
+#include "Misc/ScopeExit.h"
+#include "UObject/GarbageCollection.h"
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBHumanAppearanceGCTest, "ToonStory.Appearance.HumanAssetsSurviveGC",
+    EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+
+bool FTBHumanAppearanceGCTest::RunTest(const FString&)
+{
+	UWorld* World = nullptr;
+	for (const auto& Context : GEngine->GetWorldContexts())
+		if (Context.WorldType == EWorldType::Game && Context.World() && Context.World()->GetNetMode() == NM_Standalone)
+			World = Context.World();
+	if (!TestNotNull(TEXT("Standalone game world"), World)) return false;
+
+	const FTransform SpawnTransform(FVector(-10000, -10000, 500));
+	auto* Character = World->SpawnActorDeferred<ATBToyCharacter>(ATBToyCharacter::StaticClass(), SpawnTransform,
+	    nullptr, nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+	if (!TestNotNull(TEXT("Deferred character"), Character)) return false;
+	AAIController* Controller = nullptr;
+	ATBPlayerState* Info = nullptr;
+	ON_SCOPE_EXIT
+	{
+		if (Controller) Controller->Destroy();
+		if (Info) Info->Destroy();
+		Character->Destroy();
+	};
+
+	USkeletalMesh* SourceMesh = Character->ChildMesh.LoadSynchronous();
+	if (!TestNotNull(TEXT("Configured child mesh is available"), SourceMesh)) return false;
+	// A unique transient copy prevents other players or editor assets from accidentally keeping it alive.
+	TWeakObjectPtr<USkeletalMesh> WeakMesh = DuplicateObject<USkeletalMesh>(SourceMesh, GetTransientPackage());
+	TWeakObjectPtr<USkeletalMesh> UnretainedMesh = DuplicateObject<USkeletalMesh>(SourceMesh, GetTransientPackage());
+	Character->ChildMesh = WeakMesh.Get();
+	Character->FinishSpawning(SpawnTransform);
+	TestNull(TEXT("No player state has arrived yet"), Character->GetPlayerState());
+	TestNull(TEXT("Child mesh is not yet held by the display component"), Character->GetMesh()->GetSkeletalMeshAsset());
+	CollectGarbage(RF_NoFlags);
+	TestFalse(TEXT("Control mesh without a strong reference is collected"), UnretainedMesh.IsValid());
+	if (!TestTrue(TEXT("Loaded child mesh survives GC before team assignment"), WeakMesh.IsValid())) return false;
+	TestTrue(TEXT("Loaded animation class survives GC before team assignment"), Character->ChildAnimation.IsValid());
+
+	Controller = World->SpawnActor<AAIController>();
+	Info = World->SpawnActor<ATBPlayerState>();
+	if (!TestNotNull(TEXT("Controller"), Controller) || !TestNotNull(TEXT("Player state"), Info)) return false;
+	Controller->SetPlayerState(Info);
+	Info->SetOwner(Controller);
+	Info->Team = ETBTeam::Human;
+	Controller->Possess(Character);
+	Character->ApplyState();
+	TestTrue(TEXT("Late human assignment displays the retained mesh"), Character->GetMesh()->GetSkeletalMeshAsset() == WeakMesh.Get());
+	TestFalse(TEXT("Human does not use the fallback cube"), Character->Body->IsVisible());
+	TestNotNull(TEXT("Human animation is initialized"), Character->GetMesh()->GetAnimInstance());
+
+	Info->Team = ETBTeam::Toy;
+	Character->ApplyState();
+	TestNull(TEXT("Toy appearance releases the displayed child mesh"), Character->GetMesh()->GetSkeletalMeshAsset());
+	CollectGarbage(RF_NoFlags);
+	if (!TestTrue(TEXT("Child mesh survives GC while displaying a toy"), WeakMesh.IsValid())) return false;
+	Info->Team = ETBTeam::Human;
+	Character->ApplyState();
+	TestTrue(TEXT("Returning to human restores the same mesh"), Character->GetMesh()->GetSkeletalMeshAsset() == WeakMesh.Get());
+	TestTrue(TEXT("Returning human mesh is visible"), Character->GetMesh()->IsVisible());
+	TestFalse(TEXT("Returning human does not use the fallback cube"), Character->Body->IsVisible());
+	return true;
+}
+#endif

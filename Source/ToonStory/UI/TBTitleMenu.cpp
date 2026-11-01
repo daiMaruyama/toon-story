@@ -30,9 +30,9 @@ void UTBTitleMenu::NativeOnInitialized()
 		auto* Black = WidgetTree->ConstructWidget<UImage>();
 		Black->SetColorAndOpacity(FLinearColor::Black);
 		Black->SetVisibility(ESlateVisibility::Collapsed);
-		auto* Slot = Root->AddChildToCanvas(Black);
-		Slot->SetAnchors(FAnchors(0, 0, 1, 1));
-		Slot->SetOffsets(FMargin(0));
+		auto* BlackoutSlot = Root->AddChildToCanvas(Black);
+		BlackoutSlot->SetAnchors(FAnchors(0, 0, 1, 1));
+		BlackoutSlot->SetOffsets(FMargin(0));
 		Blackout = Black;
 	}
 }
@@ -268,9 +268,9 @@ void UTBTitleMenu::NativeTick(const FGeometry& Geometry, float DeltaTime)
 	}
 	if (State == EState::Menu && FSlateApplication::IsInitialized())
 	{
-		const FVector2D Cursor = FSlateApplication::Get().GetCursorPos();
-		if (FVector2D::DistSquared(Cursor, LastCursor) > 4.f) NoteInput();
-		LastCursor = Cursor;
+		const FVector2D CursorPosition = FSlateApplication::Get().GetCursorPos();
+		if (FVector2D::DistSquared(CursorPosition, LastCursor) > 4.f) NoteInput();
+		LastCursor = CursorPosition;
 	}
 	UpdateIdle(DeltaTime);
 	WidgetTree->ForEachWidget([DeltaTime](UWidget* Widget)

@@ -18,6 +18,52 @@ class UAnimInstance;
 class UTBVoiceComponent;
 class ATBDummyToy;
 
+// Presentation of the server's gaze direction, independent of camera effects and root turning lag.
+USTRUCT()
+struct FTBHumanLookSnapshot
+{
+	GENERATED_BODY()
+	UPROPERTY()
+	bool bValid = false;
+	UPROPERTY()
+	FRotator View = FRotator::ZeroRotator;
+	UPROPERTY()
+	uint32 Round = 0;
+	UPROPERTY()
+	uint32 Possession = 0;
+	UPROPERTY()
+	TObjectPtr<ATBPlayerState> Player;
+};
+
+UENUM()
+enum class ETBEmoteKind : uint8 { None, Wave, Cheer, Dance, WildDance };
+
+USTRUCT()
+struct FTBEmoteSnapshot
+{
+	GENERATED_BODY()
+	UPROPERTY() bool bActive = false;
+	UPROPERTY() ETBEmoteKind Kind = ETBEmoteKind::None;
+	UPROPERTY() uint32 Revision = 0;
+	UPROPERTY() uint32 Round = 0;
+	UPROPERTY() uint32 Possession = 0;
+	UPROPERTY() TObjectPtr<ATBPlayerState> Player;
+	UPROPERTY() ETBTeam Team = ETBTeam::None;
+	UPROPERTY() ETBPhase Phase = ETBPhase::Lobby;
+	UPROPERTY() int32 Visual = INDEX_NONE;
+	UPROPERTY() double StartsAt = 0;
+	UPROPERTY() double EndsAt = 0;
+	UPROPERTY() double NextAllowedAt = 0;
+};
+
+// Game-thread snapshot for presentation; no UObject references cross into animation evaluation.
+struct FTBEmoteSample
+{
+	ETBEmoteKind Kind = ETBEmoteKind::None;
+	float Progress = 0;
+	float Weight = 0;
+};
+
 /** 人間とおもちゃ共通の本体。操作要求をサーバーで検証する。 */
 UCLASS(Config = Game)
 class TOONSTORY_API ATBCharacter : public ACharacter
@@ -26,12 +72,14 @@ class TOONSTORY_API ATBCharacter : public ACharacter
 public:
 	ATBCharacter(const FObjectInitializer& Init);
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
 	virtual void OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
 	virtual void Tick(float DeltaSeconds) override;
 	virtual void SetupPlayerInputComponent(UInputComponent* Input) override;
 	virtual void OnRep_PlayerState() override;
 	virtual void PossessedBy(AController* NewController) override;
+	virtual void UnPossessed() override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	TObjectPtr<UCameraComponent> Camera;
@@ -65,6 +113,17 @@ public:
 	void OnRep_Carrier();
 	ATBPlayerState* TBPS() const;
 	bool IsHuman() const;
+	// Game-thread read for animation. Simulated peers must have a matching resolved snapshot.
+	bool GetHumanLook(FTBHumanLookSnapshot& Out) const;
+	bool CanRequestEmote() const;
+	bool SupportsEmotes() const;
+	bool RequestEmote(ETBEmoteKind Kind);
+	bool TryEmote(ETBEmoteKind Kind);
+	bool GetEmoteSample(FTBEmoteSample& Out) const;
+	UFUNCTION(Server, Reliable)
+	void ServerEmote(ETBEmoteKind Kind, uint32 ExpectedRound, uint32 ExpectedPossession);
+	UFUNCTION()
+	void OnEmoteVisualEndPlay(AActor* Visual, EEndPlayReason::Type Reason);
 	FVector GetCarryGripLocation() const;
 	bool CanAct() const;
 	bool IsMovementLocked() const;
@@ -111,6 +170,39 @@ public:
 	bool bRescuing = false;
 
 private:
+	// Soft references select assets but do not keep them alive before presentation or while showing a toy.
+	UPROPERTY(Transient)
+	TObjectPtr<USkeletalMesh> LoadedChildMesh;
+	UPROPERTY(Transient)
+	TSubclassOf<UAnimInstance> LoadedChildAnimation;
+#if WITH_DEV_AUTOMATION_TESTS
+	friend class FTBHumanLookTest;
+	friend class FTBEmoteTest;
+	friend class FTBLobbyExplorationTest;
+#endif
+	UPROPERTY(ReplicatedUsing = OnRep_Emote)
+	FTBEmoteSnapshot Emote;
+	uint32 ObservedEmoteRevision = 0;
+	mutable uint32 BlockedEmoteRevision = 0;
+	mutable uint32 PresentedEmoteRevision = 0;
+	bool bEmoteRejected = false;
+	uint64 LastEmoteCancelFrame = MAX_uint64;
+	UFUNCTION()
+	void OnRep_Emote();
+	bool EmoteEligible() const;
+	bool EmoteGameplayEligible() const;
+	int32 EmoteVisualIndex() const;
+	void UpdateEmote();
+	void CancelEmote();
+	UPROPERTY(ReplicatedUsing = OnRep_HumanLook)
+	FTBHumanLookSnapshot HumanLook;
+	uint32 HumanLookPossession = 0;
+	uint32 ObservedHumanLookPossession = 0;
+	bool bHumanLookRejected = false;
+	UFUNCTION()
+	void OnRep_HumanLook();
+	void UpdateHumanLook();
+	void InvalidateHumanLook();
 	bool UpdateCarriedDummy();
 	void BeginDummyStorage();
 	void InitializeComfortMovement();
@@ -119,6 +211,7 @@ private:
 	void Forward(float V);
 	void Right(float V);
 	void Move(const FInputActionValue& Value);
+	void EmotePressed(ETBEmoteKind Kind);
 	void Look(const FInputActionValue& Value);
 	void Yaw(float V);
 	void Pitch(float V);

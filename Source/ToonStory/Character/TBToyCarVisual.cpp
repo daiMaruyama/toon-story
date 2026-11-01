@@ -1,5 +1,6 @@
 #include "TBToyCarVisual.h"
 #include "TBCharacter.h"
+#include "TBToyPresentation.h"
 #include "Components/ChildActorComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
@@ -23,7 +24,8 @@ ATBToyCarVisual::ATBToyCarVisual()
 
 void ATBToyCarVisual::Animate(float Speed, bool Frozen)
 {
-	const auto* Pawn = Cast<ATBCharacter>(GetOwner());
+	auto* Pawn = Cast<ATBCharacter>(GetOwner());
+	TBToyPresentation::ApplyCarEmote(Car, Pawn);
 	if (!Pawn)
 	{
 		return;

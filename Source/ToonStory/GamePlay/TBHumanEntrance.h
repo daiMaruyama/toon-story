@@ -36,6 +36,7 @@ public:
 	FTransform OpenDoorTransform;
 	void SetPreparing(bool Closed);
 	bool Validate(int32 Capacity, FString& Error) const;
+	bool ValidateGroup(int32 Capacity, FString& Error) const;
 	bool CameraPose(float Alpha, FVector& Location, FRotator& Rotation) const;
 	static ATBHumanEntrance* Find(const UWorld* World);
 private:

@@ -19,6 +19,8 @@ public:
 	virtual FNetworkPredictionData_Client* GetPredictionData_Client() const override;
 	virtual void PerformMovement(float DeltaSeconds) override;
 	virtual void PhysCustom(float DeltaTime, int32 Iterations) override;
+	virtual void ApplyImpactPhysicsForces(const FHitResult& Impact, const FVector& ImpactAcceleration,
+	    const FVector& ImpactVelocity) override;
 	virtual void MoveAutonomous(float ClientTimeStamp, float DeltaTime, uint8 CompressedFlags,
 	                            const FVector& NewAccel) override;
 };

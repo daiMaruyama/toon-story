@@ -78,6 +78,20 @@ bool FTBHumanEntranceTest::RunTest(const FString&)
 	};
 	FString Error;
 	TestTrue(TEXT("Eight supported non-overlapping slots validate"), Entrance->Validate(8, Error));
+	auto* SecondDoor = World->SpawnActor<ATBHumanEntrance>(); Actors.Add(SecondDoor);
+	if (!TestNotNull(TEXT("Duplicated door spawns"), SecondDoor)) return false;
+	SecondDoor->SetActorLocation(Origin);
+	SecondDoor->DoorSlots = Entrance->DoorSlots;
+	SecondDoor->DoorLeaf->SetStaticMesh(Entrance->DoorLeaf->GetStaticMesh());
+	SecondDoor->ClosedDoorTransform = FTransform(FVector(-400, -300, 70));
+	SecondDoor->OpenDoorTransform = FTransform(FRotator(0, -90, 0), FVector(-400, -300, 70));
+	TestTrue(TEXT("Two door leaves sharing player starts form one entrance"), Entrance->ValidateGroup(8, Error));
+	SecondDoor->DoorSlots.Swap(0, 1);
+	TestFalse(TEXT("Different player assignment order is rejected"), Entrance->ValidateGroup(8, Error));
+	SecondDoor->DoorSlots = Entrance->DoorSlots;
+	SecondDoor->DoorLeaf->SetStaticMesh(nullptr);
+	TestFalse(TEXT("Every duplicated leaf must have a configured mesh"), Entrance->ValidateGroup(8, Error));
+	SecondDoor->DoorLeaf->SetStaticMesh(Entrance->DoorLeaf->GetStaticMesh());
 	TestFalse(TEXT("Insufficient capacity is rejected"), Entrance->Validate(9, Error));
 	const FVector SlotOne = Entrance->DoorSlots[1]->GetActorLocation();
 	if (!MoveSlot(Entrance->DoorSlots[1].Get(), Entrance->DoorSlots[0]->GetActorLocation())) return false;
@@ -138,6 +152,9 @@ bool FTBHumanEntranceTest::RunTest(const FString&)
 	Mode->StartRound(Host);
 	if (!TestTrue(TEXT("Entrance placement commits preparation"), State->Phase == ETBPhase::Playing &&
 	    State->HidePreparation.bValid && State->HidePreparation.bHiding && State->IsPreparing())) return false;
+	SecondDoor->Tick(0);
+	TestEqual(TEXT("Duplicated door also blocks during preparation"), SecondDoor->DoorLeaf->GetCollisionEnabled(), ECollisionEnabled::QueryAndPhysics);
+	TestTrue(TEXT("Duplicated door retains its own closed transform"), SecondDoor->DoorLeaf->GetRelativeTransform().Equals(SecondDoor->ClosedDoorTransform));
 	const FRotator FirstFacing(0, Entrance->DoorSlots[0]->GetActorRotation().Yaw, 0);
 	TestTrue(TEXT("Committed entrance human adopts slot yaw with zero pitch and roll"), Host->GetControlRotation().Equals(FirstFacing, .01f));
 	TestTrue(TEXT("Committed entrance never changes toy view"), Guest->GetControlRotation().Equals(InitialToyView, .01f));
@@ -152,6 +169,9 @@ bool FTBHumanEntranceTest::RunTest(const FString&)
 	TestFalse(TEXT("Release leaves approach view"), Host->IsShowingEntranceApproach());
 	TestTrue(TEXT("Release does not teleport the human again"), Host->GetPawn()->GetActorLocation().Equals(Locked, 1.f));
 	TestEqual(TEXT("Release opens the actual gate"), Entrance->DoorLeaf->GetCollisionEnabled(), ECollisionEnabled::NoCollision);
+	SecondDoor->Tick(0);
+	TestEqual(TEXT("Release also opens the duplicated door"), SecondDoor->DoorLeaf->GetCollisionEnabled(), ECollisionEnabled::NoCollision);
+	TestTrue(TEXT("Duplicated door retains its own open transform"), SecondDoor->DoorLeaf->GetRelativeTransform().Equals(SecondDoor->OpenDoorTransform));
 	TestTrue(TEXT("Release retains the committed door facing"), Host->GetControlRotation().Equals(FirstFacing, .01f));
 	const FRotator PlayerChosenView(0, 67, 0);
 	Host->SetControlRotation(PlayerChosenView);
@@ -176,6 +196,7 @@ bool FTBHumanEntranceTest::RunTest(const FString&)
 	Mode->Finish(ETBWinner::None, TEXT("Entrance-free fallback view"), true);
 	Mode->ReturnToLobby(Host);
 	Entrance->Destroy();
+	SecondDoor->Destroy();
 	Mode->SpawnPoints = Starts;
 	Host->SetControlRotation(InitialHumanView);
 	Guest->SetControlRotation(InitialToyView);
@@ -187,6 +208,63 @@ bool FTBHumanEntranceTest::RunTest(const FString&)
 	Mode->AdvancePreparationClockForTest(0);
 	Host->PlayerTick(0);
 	TestTrue(TEXT("No-entrance release preserves human view"), Host->GetControlRotation().Equals(InitialHumanView, .01f));
+	return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBAuthoredEntranceGroupTest, "ToonStory.Playroom.AuthoredEntranceGroup",
+    EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+bool FTBAuthoredEntranceGroupTest::RunTest(const FString&)
+{
+	UWorld* World = nullptr;
+	for (const auto& Context : GEngine->GetWorldContexts())
+		if (Context.WorldType == EWorldType::Game) { World = Context.World(); break; }
+	if (!World) return false;
+	const auto* Entrance = ATBHumanEntrance::Find(World);
+	if (!TestNotNull(TEXT("Authored map has an entrance group"), Entrance)) return false;
+	FString Error;
+	const bool Valid = Entrance->ValidateGroup(8, Error);
+	TestTrue(FString(TEXT("All authored doors share safe starts: ")) + Error, Valid);
+	return Valid;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBAuthoredMatchStartTest, "ToonStory.Playroom.AuthoredMatchStart",
+    EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+bool FTBAuthoredMatchStartTest::RunTest(const FString&)
+{
+	UWorld* World = nullptr;
+	for (const auto& Context : GEngine->GetWorldContexts())
+		if (Context.WorldType == EWorldType::Game) { World = Context.World(); break; }
+	if (!World || World->GetNetMode() != NM_Standalone) return false;
+	auto* Mode = World->GetAuthGameMode<ATBGameMode>();
+	auto* State = World->GetGameState<ATBGameState>();
+	auto* Host = Cast<ATBController>(World->GetFirstPlayerController());
+	if (!Mode || !State || !Host || State->Phase != ETBPhase::Lobby || TBLobbySettings::StageIndex(World) == INDEX_NONE) return false;
+	const auto OriginalRules = State->Settings;
+	auto* Info = Host->GetPlayerState<ATBPlayerState>();
+	const auto OriginalPreference = Info->Preference;
+	ON_SCOPE_EXIT
+	{
+		if (State->Phase == ETBPhase::Playing) Mode->Finish(ETBWinner::None, TEXT("Authored start cleanup"), true);
+		if (State->Phase == ETBPhase::Results || State->Phase == ETBPhase::Aborted) Mode->ReturnToLobby(Host);
+		State->Settings = OriginalRules;
+		Info->Preference = OriginalPreference;
+		Mode->SyncLobbyCounts();
+	};
+	for (ETBTeam Preference : {ETBTeam::Toy, ETBTeam::Human, ETBTeam::None})
+	{
+		auto Rules = OriginalRules;
+		Rules.Humans = Rules.Toys = 1;
+		Rules.NPCHumans = Rules.NPCToys = 2;
+		Rules.RequiredItems = 5;
+		Mode->SetRules(Host, Rules);
+		Info->Preference = Preference;
+		Info->bReady = true;
+		Mode->StartRound(Host);
+		if (!TestEqual(FString(TEXT("Authored match starts with 2 human and 2 toy NPCs: ")) + State->Reason,
+		    State->Phase, ETBPhase::Playing)) return false;
+		TestEqual(TEXT("All four NPCs and host participate"), State->PlayerArray.Num(), 5);
+		TestTrue(TEXT("Normal start commits preparation"), State->IsPreparing());
+		Mode->Finish(ETBWinner::None, TEXT("Authored start rematch"), true);
+		Mode->ReturnToLobby(Host);
+	}
 	return true;
 }
 #endif

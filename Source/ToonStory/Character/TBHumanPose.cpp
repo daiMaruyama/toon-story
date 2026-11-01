@@ -1,6 +1,8 @@
 #include "TBHumanPose.h"
 #include "TBCharacter.h"
 #include "TBToyPresentation.h"
+#include "Core/TBPlayerState.h"
+#include "GamePlay/TBDummyToy.h"
 #include "Engine/SkeletalMesh.h"
 #include "Animation/AnimInstanceProxy.h"
 #include "Animation/AnimNode_LinkedInputPose.h"
@@ -16,7 +18,29 @@ namespace
 		FVector Contact[2], PalmOffset[2], ElbowDirection[2];
 		FQuat PalmBasis[2], HandRotation[2];
 		TWeakObjectPtr<USkeletalMesh> CachedMesh;
-		bool HasContacts = false;
+		TWeakObjectPtr<ATBCharacter> CachedCharacter;
+		TWeakObjectPtr<AActor> CachedCarry;
+		bool HasContacts = false, HasHandBasis = false, HadLiveContacts = false;
+		bool HasLookBasis = false, HasLook = false;
+		float LookYaw = 0, LookPitch = 0;
+		uint32 LookRound = 0, LookPossession = 0;
+		TWeakObjectPtr<ATBPlayerState> LookPlayer;
+		FVector HeadForwardRef = FVector::YAxisVector, HeadUpRef = FVector::UpVector;
+		FVector LookForwardCS = FVector::YAxisVector, LookUpCS = FVector::UpVector;
+		FTBEmotePose EmotePose;
+
+		void ResetLook()
+		{
+			HasLook = false; LookYaw = LookPitch = 0;
+			LookRound = LookPossession = 0; LookPlayer.Reset();
+		}
+
+		void ResetGrip()
+		{
+			GripAmount = 0;
+			HasContacts = HadLiveContacts = false;
+			CachedCarry.Reset();
+		}
 
 	public:
 		explicit FHumanPoseProxy(UAnimInstance* Instance) : FAnimInstanceProxy(Instance)
@@ -26,23 +50,106 @@ namespace
 		{
 			FAnimInstanceProxy::Initialize(Instance);
 			Input = Instance->GetLinkedInputPoseNode();
+			ResetGrip();
+			ResetLook();
+			CrouchAmount = 0;
+			CachedMesh.Reset();
+			CachedCharacter.Reset();
+			HasHandBasis = false;
+			HasLookBasis = false;
 		}
 		virtual void PreUpdate(UAnimInstance* Instance, float Delta) override
 		{
 			FAnimInstanceProxy::PreUpdate(Instance, Delta);
 			Input = Instance->GetLinkedInputPoseNode();
-			const auto* Character = Cast<ATBCharacter>(Instance->GetOwningActor());
-			CrouchAmount = FMath::FInterpTo(CrouchAmount, Character && Character->bIsCrouched ? 1.f : 0.f, Delta, 14.f);
-			GripAmount = FMath::FInterpTo(
-			    GripAmount, Character && (Character->CarriedToy || Character->CarriedDummy) ? 1.f : 0.f, Delta, 12.f);
-			MeshScale = FMath::Max(.01f, float(Instance->GetSkelMeshComponent()->GetComponentScale().Z));
+			auto* Character = Cast<ATBCharacter>(Instance->GetOwningActor());
 			auto* Mesh = Instance->GetSkelMeshComponent();
-			HasContacts = TBToyPresentation::CarryContacts(Character, Contact[0], Contact[1]);
-			if (HasContacts)
+			auto* Asset = Mesh ? Mesh->GetSkeletalMeshAsset() : nullptr;
+			TBToyPresentation::BuildEmotePose(Mesh, Character, EmotePose);
+			if (CachedMesh.Get() != Asset || CachedCharacter.Get() != Character)
 			{
-				if (CachedMesh != Mesh->GetSkeletalMeshAsset())
+				ResetGrip();
+				ResetLook();
+				CachedMesh = Asset;
+				CachedCharacter = Character;
+				HasHandBasis = false;
+				HasLookBasis = false;
+				if (Asset)
 				{
-					CachedMesh = Mesh->GetSkeletalMeshAsset();
+					const auto& Ref = Asset->GetRefSkeleton();
+					const int32 Spine = Ref.FindBoneIndex(TEXT("spine_03"));
+					const int32 Neck = Ref.FindBoneIndex(TEXT("neck_01"));
+					const int32 Head = Ref.FindBoneIndex(TEXT("head"));
+					HasLookBasis = Spine != INDEX_NONE && Neck != INDEX_NONE && Head != INDEX_NONE &&
+					               Ref.GetParentIndex(Head) == Neck && Ref.GetParentIndex(Neck) == Spine;
+					if (HasLookBasis)
+					{
+						FTransform HeadRef = FTransform::Identity;
+						for (int32 Bone = Head; Bone != INDEX_NONE; Bone = Ref.GetParentIndex(Bone))
+							HeadRef = HeadRef * Ref.GetRefBonePose()[Bone];
+						// This configured child faces mesh +Y. Derive its face axes from bind pose, never bone X.
+						HeadForwardRef = HeadRef.GetRotation().UnrotateVector(FVector::YAxisVector);
+						HeadUpRef = HeadRef.GetRotation().UnrotateVector(FVector::UpVector);
+					}
+					HasHandBasis = true;
+					for (const TCHAR* Side : {TEXT("l"), TEXT("r")})
+					{
+						for (const TCHAR* Bone : {TEXT("upperarm"), TEXT("lowerarm"), TEXT("hand"),
+						                          TEXT("middle_01"), TEXT("index_01"), TEXT("pinky_01")})
+						{
+							HasHandBasis &= Ref.FindBoneIndex(*FString::Printf(TEXT("%s_%s"), Bone, Side)) != INDEX_NONE;
+						}
+					}
+				}
+			}
+			if (!Character || !Character->IsHuman() || !Asset)
+			{
+				ResetGrip();
+				ResetLook();
+				CrouchAmount = 0;
+				return;
+			}
+			CrouchAmount = FMath::FInterpTo(CrouchAmount, Character->bIsCrouched ? 1.f : 0.f, Delta, 14.f);
+			MeshScale = FMath::Max(.01f, float(Mesh->GetComponentScale().Z));
+			// Read UObjects only on the game thread. Evaluate receives directions/angles and bind-pose axes only.
+			FTBHumanLookSnapshot Look;
+			if (HasLookBasis && Character->GetHumanLook(Look))
+			{
+				if (!HasLook || LookRound != Look.Round || LookPossession != Look.Possession || LookPlayer.Get() != Look.Player.Get())
+				{
+					ResetLook(); LookYaw = Character->GetActorRotation().Yaw;
+				}
+				LookRound = Look.Round; LookPossession = Look.Possession; LookPlayer = Look.Player.Get();
+				const float Step = FMath::IsFinite(Delta) ? FMath::Clamp(Delta, 0.f, .05f) : 0.f;
+				const float Alpha = 1.f - FMath::Exp(-16.f * Step);
+				LookYaw = FRotator::NormalizeAxis(LookYaw + FMath::FindDeltaAngleDegrees(double(LookYaw), Look.View.Yaw) * Alpha);
+				LookPitch = FMath::Lerp(LookPitch, float(FMath::Clamp(Look.View.Pitch, -75., 75.)), Alpha);
+				const double RelativeYaw = FMath::Clamp(FMath::FindDeltaAngleDegrees(Character->GetActorRotation().Yaw, double(LookYaw)), -85., 85.);
+				const FVector Forward = FRotator(LookPitch, Character->GetActorRotation().Yaw + RelativeYaw, 0).Vector();
+				LookForwardCS = Mesh->GetComponentTransform().InverseTransformVectorNoScale(Forward).GetSafeNormal();
+				LookUpCS = Mesh->GetComponentTransform().InverseTransformVectorNoScale(FVector::UpVector).GetSafeNormal();
+				HasLook = !LookForwardCS.IsNearlyZero() && !LookForwardCS.ContainsNaN() && !LookUpCS.ContainsNaN();
+			}
+			else ResetLook();
+			AActor* Carried = Character->CarriedToy ? static_cast<AActor*>(Character->CarriedToy.Get())
+			                                     : Character->CarriedDummy.Get();
+			FVector LiveContact[2];
+			const bool Live = IsValid(Carried) && HasHandBasis &&
+			                  TBToyPresentation::CarryContacts(Character, LiveContact[0], LiveContact[1]);
+			if (Carried && !Live)
+			{
+				// A changed/invalid visual must never use the previous object's hand targets.
+				ResetGrip();
+				return;
+			}
+			if (Live)
+			{
+				if (!HadLiveContacts || CachedCarry.Get() != Carried)
+				{
+					ResetGrip();
+				}
+				if (!HasContacts)
+				{
 					const auto& Ref = CachedMesh->GetRefSkeleton();
 					auto Pose = [&](const FString& Name)
 					{
@@ -69,11 +176,18 @@ namespace
 				const FVector Right = Transform.InverseTransformVectorNoScale(Character->GetActorRightVector());
 				for (int Side = 0; Side < 2; ++Side)
 				{
-					Contact[Side] = Transform.InverseTransformPosition(Contact[Side]);
+					Contact[Side] = Transform.InverseTransformPosition(LiveContact[Side]);
 					ElbowDirection[Side] = (Right * (Side == 0 ? -35.f : 35.f) - Forward * 5.f - Up * 25.f) / MeshScale;
 					HandRotation[Side] = FRotationMatrix::MakeFromXY(Forward, Up).ToQuat() * PalmBasis[Side].Inverse();
 				}
+				CachedCarry = Carried;
+				HasContacts = true;
 			}
+			HadLiveContacts = Live;
+			GripAmount = FMath::FInterpTo(GripAmount, Live ? 1.f : 0.f, Delta, 12.f);
+			// On release keep only the last component-space pose, not a live reference to the dropped toy.
+			// Reacquisition, owner/mesh change and missing bones invalidate it before evaluation.
+			if (!Live && GripAmount < .001f) ResetGrip();
 		}
 		virtual bool Evaluate(FPoseContext& Output) override
 		{
@@ -82,7 +196,7 @@ namespace
 				return false;
 			}
 			Input->Evaluate_AnyThread(Output);
-			if (CrouchAmount < .001f && GripAmount < .001f)
+			if (CrouchAmount < .001f && GripAmount < .001f && !HasLook && EmotePose.Bones.IsEmpty())
 			{
 				return true;
 			}
@@ -127,6 +241,38 @@ namespace
 						Output.Pose[Thigh] = T.GetRelativeTransform(P);
 						Output.Pose[Calf] = C.GetRelativeTransform(T);
 						Output.Pose[Foot] = F.GetRelativeTransform(C);
+					}
+				}
+			}
+			TBToyPresentation::ApplyEmotePose(Output, EmotePose);
+			if (HasLook)
+			{
+				const FCompactPoseBoneIndex Bones[] = {Index(TEXT("spine_03")), Index(TEXT("neck_01")), Index(TEXT("head"))};
+				// A LOD may remove a required bone even if it exists in the asset. Leave that pose untouched.
+				if (Bones[0] != INDEX_NONE && Bones[1] != INDEX_NONE && Bones[2] != INDEX_NONE)
+				{
+					FCSPose<FCompactPose> Pose;
+					Pose.InitPose(Output.Pose);
+					const FQuat HeadRotation = Pose.GetComponentSpaceTransform(Bones[2]).GetRotation();
+					const FQuat CurrentFace = FRotationMatrix::MakeFromXZ(HeadRotation.RotateVector(HeadForwardRef),
+					    HeadRotation.RotateVector(HeadUpRef)).ToQuat();
+					FQuat Correction = (FRotationMatrix::MakeFromXZ(LookForwardCS, LookUpCS).ToQuat() * CurrentFace.Inverse()).GetNormalized();
+					Correction.EnforceShortestArcWith(FQuat::Identity);
+					FVector Axis; double Angle;
+					Correction.ToAxisAndAngle(Axis, Angle);
+					// Added correction from the base pose, not absolute anatomical joint angles:
+					// torso <=19, neck <=28.5, head <=47.5 degrees.
+					if (Angle > FMath::DegreesToRadians(95.)) Correction = FQuat(Axis, FMath::DegreesToRadians(95.));
+					const double Weight[] = {.20, .30, .50};
+					for (int32 Part = 0; Part < 3; ++Part)
+					{
+						FCSPose<FCompactPose> Current;
+						Current.InitPose(Output.Pose);
+						const auto Parent = Output.Pose.GetBoneContainer().GetParentBoneIndex(Bones[Part]);
+						const FQuat ParentRotation = Parent == INDEX_NONE ? FQuat::Identity : Current.GetComponentSpaceTransform(Parent).GetRotation();
+						const FQuat Increment = FQuat::Slerp(FQuat::Identity, Correction, Weight[Part]);
+						Output.Pose[Bones[Part]].SetRotation((ParentRotation.Inverse() * Increment *
+						    Current.GetComponentSpaceTransform(Bones[Part]).GetRotation()).GetNormalized());
 					}
 				}
 			}

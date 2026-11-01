@@ -208,9 +208,14 @@ bool FTBStorageHoldTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
+	// Keep one toy free so the storage/rescue scenario remains a live match.
+	auto* Rescuer = Cast<ATBController>(UGameplayStatics::CreatePlayer(World, -1, true));
+	if (!TestNotNull(TEXT("Free toy participant created"), Rescuer)) return false;
+	Rescuer->GetPlayerState<ATBPlayerState>()->Preference = ETBTeam::Toy;
+	Rescuer->GetPlayerState<ATBPlayerState>()->bReady = true;
 	FTBSettings Rules = OriginalSettings;
 	Rules.Humans = 1;
-	Rules.Toys = 1;
+	Rules.Toys = 2;
 	Rules.Duration = 120;
 	Mode->SetRules(Host, Rules);
 	auto* HostInfo = Host->GetPlayerState<ATBPlayerState>();
@@ -229,6 +234,8 @@ bool FTBStorageHoldTest::RunTest(const FString& Parameters)
 	const FVector Approach(-80, 0, 65);
 	const FVector Near = Box->GetActorTransform().TransformPosition(Approach);
 	Human->SetActorLocation(Near, false, nullptr, ETeleportType::TeleportPhysics);
+	const FRotator StorageView = (Box->GetActorTransform().TransformPosition(FVector(-10, 0, 60)) - Human->GetPawnViewLocation()).Rotation();
+	Host->SetControlRotation(StorageView);
 	Human->CarriedToy = Toy;
 	Toy->Carrier = Human;
 	Toy->SetToyState(ETBToyState::Carried);
@@ -242,6 +249,17 @@ bool FTBStorageHoldTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Release cancels without dropping"), ToyInfo->ToyState, ETBToyState::Carried);
 	TestTrue(TEXT("Toy remains attached"), Toy->Carrier == Human && Human->CarriedToy == Toy);
 	TestEqual(TEXT("Cancelled progress cleared"), Human->StoreStarted, -1.0);
+	World->Tick(LEVELTICK_All, .2f); // Respect the real interact-request cooldown.
+	Human->RequestInteract();
+	TestEqual(TEXT("Facing box starts a new storage attempt"), ToyInfo->ToyState, ETBToyState::Storing);
+	Human->StoreStarted = World->GetTimeSeconds() - 2;
+	Host->SetControlRotation(StorageView + FRotator(0, 180, 0));
+	Human->Tick(0);
+	TestEqual(TEXT("Looking away resets storage progress"), Human->StoreStarted, -1.0);
+	TestEqual(TEXT("Looking away keeps the toy carried"), ToyInfo->ToyState, ETBToyState::Carried);
+	Human->RequestInteract();
+	TestEqual(TEXT("Cannot start storage facing away"), Human->StoreStarted, -1.0);
+	Host->SetControlRotation(StorageView);
 	World->Tick(LEVELTICK_All, .2f);
 	Human->RequestInteract();
 	Human->SetActorLocation(Box->GetActorTransform().TransformPosition(FVector(-500, 0, 65)), false, nullptr,
@@ -282,8 +300,7 @@ bool FTBStorageHoldTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Storage destination is separate from the visible chest"),
 	         FVector::Dist(Toy->GetActorLocation(), Box->GetActorLocation()) > 800.f);
 	TestFalse(TEXT("Stored toy cannot rescue itself through the chest wall"), Box->InRange(Toy));
-	// この2人テストでは収納で試合終了する。救助は進行中の試合でのみ許可される。
-	TBTest::BeginPlaying(*State);
+	TestEqual(TEXT("Free rescuer keeps the match playing after storage"), State->Phase, ETBPhase::Playing);
 	// 落下エリアとテレビがある部屋では、入った瞬間に本人の画面がテレビの方を向く。
 	// 運搬カメラの解除（視点を水平に戻す）より先にテレビがTickしても、解除の後に見上げる向きになる。
 	if (TActorIterator<ATBBoxTV> TV(World); DropArea && TV)
@@ -307,6 +324,7 @@ bool FTBStorageHoldTest::RunTest(const FString& Parameters)
 	}
 	Mode->ReturnToLobby(Host);
 	UGameplayStatics::RemovePlayer(Second, true);
+	UGameplayStatics::RemovePlayer(Rescuer, true);
 	State->Settings = OriginalSettings;
 	return !HasAnyErrors();
 }

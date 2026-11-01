@@ -75,3 +75,5 @@ KidsRoomの扉はArchVizの既存ドア素材を使用し、広い開口部に�
 ## キャラクター変更の統合状況
 
 mainの運搬カメラ変更を取り込み、TBCharacterのモデル・アニメーション・視点・移動処理を統合済みです。コード、DefaultGame.ini、TBStageTestsとContentの参照コミットを一緒に反映してください。運搬位置はモデルの縮尺・向きの補正を受けず、運搬中は自分のおもちゃも三人称カメラに表示します。
+
+House／Demoの編集時は、家具の専用衝突（`HouseCollision`）、可動小物（`PushableProps`）と皿の支持面（`PropSupports`）を維持し、通行・落下を確認してください。共有 `TB_ToyBoxRoom` の装飾は衝突なしとし、脱出に使う最終足場と支持面タグを維持してください。

@@ -8,6 +8,7 @@
 #include "GamePlay/TBPickup.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
+#include "Engine/LevelStreaming.h"
 #include "EngineUtils.h"
 #include "Engine/Engine.h"
 #include "UObject/UObjectGlobals.h"
@@ -220,6 +221,9 @@ void TBLobbySettings::TickArrival(ATBGameMode* Mode)
 	}
 	if (Pending->ArrivalDeadline == 0)
 	{
+		UE_LOG(LogTemp, Display, TEXT("[ToyBoxArrival] Observe map=%s phase=%d players=%d expected=%d ready=%d cancelled=%d seamless=%d streamLevels=%d reason=%s"),
+		    *World->GetMapName(), int32(State->Phase), State->PlayerArray.Num(), Pending->ExpectedPlayers,
+		    Ready, Pending->bArrivalCancelled, World->IsInSeamlessTravel(), World->GetStreamingLevels().Num(), *State->Reason);
 		Pending->ArrivalDeadline = FPlatformTime::Seconds() + 60;
 	}
 	Ready &= !Pending->bArrivalCancelled;
@@ -229,19 +233,33 @@ void TBLobbySettings::TickArrival(ATBGameMode* Mode)
 	}
 	Pending->bStartOnArrival = false;
 	State->bTravelPending = false;
+	UE_LOG(LogTemp, Display, TEXT("[ToyBoxArrival] Attempt map=%s phase=%d players=%d expected=%d ready=%d cancelled=%d deadlineExpired=%d reason=%s"),
+	    *World->GetMapName(), int32(State->Phase), State->PlayerArray.Num(), Pending->ExpectedPlayers,
+	    Ready, Pending->bArrivalCancelled, FPlatformTime::Seconds() >= Pending->ArrivalDeadline, *State->Reason);
+	for (const auto* Stream : World->GetStreamingLevels())
+		if (Stream) UE_LOG(LogTemp, Display, TEXT("[ToyBoxArrival] Stream package=%s loaded=%d visible=%d"),
+		    *Stream->GetWorldAssetPackageName(), Stream->IsLevelLoaded(), Stream->IsLevelVisible());
 	if (Ready)
 	{
 		for (auto It = World->GetPlayerControllerIterator(); It; ++It)
 		{
 			if (Mode->IsHost(It->Get()))
 			{
+				UE_LOG(LogTemp, Display, TEXT("[ToyBoxArrival] Before Start map=%s phase=%d players=%d reason=%s"),
+				    *World->GetMapName(), int32(State->Phase), State->PlayerArray.Num(), *State->Reason);
 				Mode->StartRound(It->Get());
+				const auto* PC = Cast<ATBController>(It->Get());
+				UE_LOG(LogTemp, Display, TEXT("[ToyBoxArrival] After Start map=%s phase=%d players=%d round=%u preparing=%d reason=%s notice=%s"),
+				    *World->GetMapName(), int32(State->Phase), State->PlayerArray.Num(), State->HidePreparation.Round,
+				    State->IsPreparing(), *State->Reason, PC ? *PC->Notice : TEXT(""));
 				break;
 			}
 		}
 	}
 	if (State->Phase != ETBPhase::Playing)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("[ToyBoxArrival] Lobby fallback map=%s phase=%d players=%d ready=%d cancelled=%d reason=%s"),
+		    *World->GetMapName(), int32(State->Phase), State->PlayerArray.Num(), Ready, Pending->bArrivalCancelled, *State->Reason);
 		if (!Travel(Mode, false))
 		{
 			CancelTravel(World);

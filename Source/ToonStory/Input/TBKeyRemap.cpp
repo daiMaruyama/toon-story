@@ -159,7 +159,8 @@ TB::FRemapResult TB::CheckRemap(const APlayerController* PC, FName MappingName, 
 	}
 	Table[MappingName] = NewKey;
 	TArray<FName> Conflicts = ConflictsFor(Table, Scopes, MappingName);
-	return Make(Conflicts.IsEmpty() ? ERemapResult::OK : ERemapResult::Conflict, MoveTemp(Conflicts));
+	const ERemapResult Result = Conflicts.IsEmpty() ? ERemapResult::OK : ERemapResult::Conflict;
+	return Make(Result, MoveTemp(Conflicts));
 }
 
 TB::FRemapResult TB::Remap(const APlayerController* PC, FName MappingName, const FKey& NewKey)

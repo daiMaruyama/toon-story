@@ -15,6 +15,12 @@
 既存の姿見の表面に重ねてあり、元の家具は移動・削除していない。
 座標 `(446, -460.68, 164.42)`、Yaw=180度、Scale=`(1, .8, 1.5)`。
 
+2026-11-02の設定依頼で、Houseの鏡面が既存家具に埋まらない位置へ戻し、
+`TB_ToyWorldDemoExpanded` にも `Gameplay/Mirrors/Mirror_Bedroom` を追加した。
+Demoは寝室の西壁、座標 `(-805, 50, 151)`、Yaw=0度、Scale=`(1,1,1)`。
+家具を動かさずに鏡面全体を見られるよう、床置きではなく壁面に配置している。
+両マップのDA・素材・正面の床と人間が立てる空間を検証済み。
+
 ## 調整
 
 `Content/Data/DA_Mirror` を編集する。配置したActorの `Mirror Data` に別のDAを指定することもできる。
@@ -54,7 +60,7 @@
 `ToonStory.Mirror.Gaze` はサーバーでの凍結・解除、反射経路の両側の遮蔽、暗室保護、NPC認識を検証する。
 上半身だけが映る小さな鏡でも、NPCが反射位置を見続けて凍結を維持することを含む。
 `ToonStory.Mirror.ConeSelection` は、矩形視野内・円形視野外の鏡を飛ばして次の有効な鏡を選べることを検証する。
-`ToonStory.Mirror.Placement` は家マップの保存済みDA・素材と、鏡の前に立てる床・空間を検証する。
+`ToonStory.Mirror.Placement` はHouseまたはDemoの保存済みDA・素材と、鏡の前に立てる床・空間、正面の遮蔽を検証する。
 `ToonStory.Mirror.Visual` は `-MirrorScreenshot` を付けた描画ありのStandalone実行で、
 背後の物体と文字を映す確認シーンを `Saved/MirrorPreview/mirror.png` に保存する。
 家マップでさらに `-MirrorHouseScreenshot` を指定すると、保存済みの鏡を `Saved/MirrorPreview/house.png` に撮影する。

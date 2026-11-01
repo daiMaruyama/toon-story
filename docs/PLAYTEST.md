@@ -7,9 +7,13 @@
 箱の救助は外側の操作位置で行い、完了すると仲間が箱外へ移動します。
 救助の進捗はおもちゃ側だけに表示します。人間側には救助開始のメッセージ・進捗・警報音を通知しません。`tb.DebugHUD`でも人間側には救助の進捗を表示しません。
 
-人間の収納操作は、おもちゃを持って箱の正面に近づき、Eを3秒間押し続けます。画面には箱の位置・距離、長押しの案内、経過秒数と進捗バーが表示されます。Eを離す、または箱から離れると進捗はリセットされますが、おもちゃは持ったままです。置きたい場合はQを押します。収納の受付は正面全体、救助は従来どおり外側の操作位置です。
+人間の収納操作は、おもちゃを持って箱の正面に近づき、箱を見ながらEを3秒間押し続けます。画面には箱の位置・距離、長押しの案内、経過秒数と進捗バーが表示されます。Eを離す、箱から離れる、箱への視線が45度の範囲を外れると進捗はリセットされますが、おもちゃは持ったままです。置きたい場合はQを押します。収納の受付は正面全体、救助は従来どおり外側の操作位置です。
+
+ロビーでは設定を閉じるとWASD・マウスで移動と視点操作ができ、Escで設定を開閉します。エモートは1・2・3、隠しダンスは0です。設定・チャット操作中は移動できません。
 
 ## ビルド
+
+既定はLANです。Steam配布時だけ切り替え、作成後はLANへ戻します。切り替え時はEditorを終了し、変更後に再起動してください。
 
 ```powershell
 .\Scripts\BuildEditor.ps1 -EngineRoot 'C:\Program Files\Epic Games\UE_5.8'
@@ -20,16 +24,16 @@
 
 | マップ | 用途 |
 | --- | --- |
-| `TB_KidsRoom` | 本番ステージ。家具付き4室と、廊下の先の箱の部屋 |
-| `TB_ArchViz` | 本番ステージ。アパート4室と、通路の先の箱の部屋 |
+| `TB_ToyWorldDemoExpanded` | Demoの家具付きステージ |
+| `TB_StylizedHouse` | Houseの家具付きステージ |
 | `Arena` | 検証用。床・壁・箱・アイテム・開始位置をPlay時にC++が生成する |
 
 部屋を作る（Host room / `TBHost`）と、ホストが本番ステージ2つから1つを選び、参加者も同じマップへ入ります。
-PIEは部屋を作らずエディタで開いているマップをそのまま使うため、本番ステージを試すときは `TB_KidsRoom` か `TB_ArchViz` を開いてからPlayします。
+PIEは部屋を作らずエディタで開いているマップをそのまま使うため、本番ステージを試すときは `TB_ToyWorldDemoExpanded` か `TB_StylizedHouse` を開いてからPlayします。
 マップに箱（TBBox）がなく、GameModeの `bBuildTestArena` が有効な場合だけ、検証用の床・箱・アイテムが生成されます。
 
 本番ステージは保存済みの `.umap` をUEエディタで直接編集します。家具・壁・ドア・照明・ロビーカメラは配置済みのActorです。
-エディタ起動時は `TB_KidsRoom` を開きます。別ステージはContent BrowserのMapsから開いてください。
+エディタ起動時は `TB_ToyWorldDemoExpanded` を開きます。別ステージはContent BrowserのMapsから開いてください。
 編集方法と維持する配置条件は [ステージ編集](STAGE_EDITING.md) を参照してください。Pythonによる生成・実行手順はありません。
 
 ## UE側で最初に用意するもの
@@ -44,7 +48,7 @@ PIEは部屋を作らずエディタで開いているマップをそのまま�
 2. Directional LightとSky Lightを1つずつ配置し、MobilityをMovableにする。Sky Lightは必要に応じてRecaptureする。
 3. World SettingsのGameMode Overrideを `TBGameMode` にする。使用するPawnは `TBCharacter`。
 4. `/Game/Maps/Arena`、つまり `Content/Maps/Arena.umap` に保存する。
-5. ArenaのWorld SettingsでGameModeがTBGameModeであることを確認する。ゲーム起動時の既定マップはTB_KidsRoomなので、Arenaの検証では明示的にArenaを開く。
+5. ArenaのWorld SettingsでGameModeがTBGameModeであることを確認する。ゲーム起動時の既定マップはTitleなので、Arenaの検証では明示的にArenaを開く。
 
 Arenaの床・壁・箱・検証用アイテム・定員分の開始位置はC++が生成します。床やPlayerStartを追加する必要はありません。キャラクターは設定された子ども／おもちゃを使い、素材がない場合だけCubeで代替します。
 
@@ -58,7 +62,7 @@ Contentはサブモジュールです。マップや素材はContent側で管理
 .\Scripts\SetOnlineMode.ps1 -Mode LAN
 ```
 
-エディタを再起動して `TB_KidsRoom` または `TB_ArchViz` を開き、Playの設定をNumber of Players=3、Net Mode=Play As Listen Server、New Editor Windowにします。単純な地形でルールを確認する場合はArenaを使います。PIEの接続を使うため、この段階ではTBHost/TBFindを呼びません。
+エディタを再起動して `TB_ToyWorldDemoExpanded` または `TB_StylizedHouse` を開き、Playの設定をNumber of Players=3、Net Mode=Play As Listen Server、New Editor Windowにします。単純な地形でルールを確認する場合はArenaを使います。PIEの接続を使うため、この段階ではTBHost/TBFindを呼びません。
 
 F10でコンソールを開き、ホストで次を入力します。
 
@@ -91,7 +95,10 @@ TBPrefer 1
 ```powershell
 .\Scripts\SetOnlineMode.ps1 -Mode Steam
 .\Scripts\PackageWindows.ps1 -EngineRoot 'C:\Program Files\Epic Games\UE_5.8'
+.\Scripts\SetOnlineMode.ps1 -Mode LAN
 ```
+
+LANへ戻しても、作成済みのSteamパッケージの設定は変わりません。
 
 4. `Builds/Windows` 以下のパッケージ全体を各PCへコピー。exeだけをコピーしない。
 5. スクリプトはDevelopmentテスト用 `steam_appid.txt`（内容480）を実行ファイルのフォルダーへ配置する。手動パッケージの場合は必要に応じて同じファイルを置く。Steamへの製品アップロードには含めない。
