@@ -405,6 +405,10 @@ void ATBHUD::DrawMatch(const ATBGameState& MatchState, ATBController& Controller
 	const TCHAR* Objective = Child ? TEXT("おもちゃを見つけて、箱へ。") : TEXT("電池を集めて、仲間を救助。");
 	if (MatchState.IsPreparing() && Player && Player->Team == ETBTeam::Toy)
 		Objective = TEXT("物かげに隠れよう。電池は開始後！");
+	FTBEmoteSample Emote;
+	if (const auto* Body = Controller.GetPawn<ATBCharacter>(); Body && Body->GetEmoteSample(Emote))
+		Objective = Emote.Kind == ETBEmoteKind::Wave ? TEXT("手ふり中。移動するとやめます。") :
+		    Emote.Kind == ETBEmoteKind::Cheer ? TEXT("よろこび中。移動するとやめます。") : TEXT("ダンス中。移動するとやめます。");
 	if (Player && Player->Team == ETBTeam::Toy)
 	{
 		switch (Player->ToyState)

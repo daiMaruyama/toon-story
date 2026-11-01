@@ -254,10 +254,10 @@ void ATBNPCController::CarryToBox(ATBCharacter* Body, ATBBox* Box)
 	PendingTarget.Reset();
 	ClearFocus(EAIFocusPriority::Gameplay);
 	if (!Box) { StopMovement(); return; }
+	SetFocalPoint(Box->GetActorTransform().TransformPosition(FVector(-10, 0, 60)));
 	if (Box->CanStoreFrom(Body))
 	{
 		StopMovement();
-		SetFocalPoint(Box->GetActorLocation());
 		if (Body->StoreStarted < 0) Body->RequestInteract();
 		return;
 	}

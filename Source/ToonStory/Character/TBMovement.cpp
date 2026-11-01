@@ -7,6 +7,27 @@
 #include "GamePlay/TBRuleMath.h"
 #include "GameFramework/PhysicsVolume.h"
 #include "Core/TBPlayerState.h"
+#include "Components/PrimitiveComponent.h"
+
+void UTBMovement::ApplyImpactPhysicsForces(const FHitResult& Impact, const FVector& ImpactAcceleration,
+    const FVector& ImpactVelocity)
+{
+	auto* Part = Impact.GetComponent();
+	if (!Part || !Part->ComponentHasTag(TEXT("TBPushable")))
+	{
+		Super::ApplyImpactPhysicsForces(Impact, ImpactAcceleration, ImpactVelocity);
+		return;
+	}
+	// Small props use a modest server-authoritative push instead of the default
+	// character force, which is tuned for much heavier physics objects.
+	if (!CharacterOwner || !CharacterOwner->HasAuthority() || !Part->IsSimulatingPhysics()) return;
+	const FVector Direction = FVector(ImpactVelocity.X, ImpactVelocity.Y, 0).GetSafeNormal();
+	const float DesiredSpeed = FMath::Clamp(float(ImpactVelocity.Size2D()) * .35f, 0.f, 100.f);
+	const float CurrentSpeed = FVector::DotProduct(Part->GetPhysicsLinearVelocity(), Direction);
+	const float DeltaSpeed = FMath::Clamp(DesiredSpeed - CurrentSpeed, 0.f, 15.f);
+	if (!Direction.IsNearlyZero() && DeltaSpeed > 0)
+		Part->AddImpulseAtLocation(Direction * Part->GetMass() * DeltaSpeed, Impact.ImpactPoint);
+}
 
 namespace
 {

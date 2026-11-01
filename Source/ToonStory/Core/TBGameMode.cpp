@@ -310,7 +310,12 @@ AActor* ATBGameMode::ChoosePlayerStart_Implementation(AController* Player)
 			auto* Start = SpawnPoints[SpawnCursor++ % SpawnPoints.Num()].Get();
 			bool DoorSlot = false;
 			for (const auto& Slot : RoundEntrance->DoorSlots) DoorSlot |= Slot.Get() == Start;
-			if (IsValid(Start) && !DoorSlot) return Start;
+			if (!IsValid(Start) || DoorSlot) continue;
+			// Select using the participant's final body size, not just marker order.
+			// Keep the exact-arrival check below: blocked starts are skipped, not forced.
+			if (const APawn* Body = Player ? Player->GetPawn() : nullptr;
+			    Body && GetWorld()->EncroachingBlockingGeometry(Body, Start->GetActorLocation(), Start->GetActorRotation())) continue;
+			return Start;
 		}
 		return nullptr;
 	}
@@ -451,6 +456,9 @@ void ATBGameMode::StartRound(APlayerController* PlayerController)
 	auto* HostController = Cast<ATBController>(PlayerController);
 	if (bStartingRound || !IsHost(PlayerController) || !MatchInfo || (MatchInfo->Phase != ETBPhase::Lobby || MatchInfo->bTravelPending))
 	{
+		UE_LOG(LogTemp, Warning, TEXT("[ToyBoxMatch] Start guard map=%s reentry=%d host=%d state=%d phase=%d pending=%d"),
+		    *GetWorld()->GetMapName(), bStartingRound, IsHost(PlayerController), MatchInfo != nullptr,
+		    MatchInfo ? int32(MatchInfo->Phase) : -1, MatchInfo && MatchInfo->bTravelPending);
 		return;
 	}
 	TGuardValue<bool> StartingGuard(bStartingRound, true);
@@ -467,6 +475,9 @@ void ATBGameMode::StartRound(APlayerController* PlayerController)
 	    MatchInfo->Settings.Toys + MatchInfo->Settings.NPCToys < 1 ||
 	    Players.Num() != MatchInfo->Settings.Humans + MatchInfo->Settings.Toys)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("[ToyBoxMatch] Start refused map=%s reason=team/player counts players=%d human=%d toy=%d npcHuman=%d npcToy=%d"),
+		    *GetWorld()->GetMapName(), Players.Num(), MatchInfo->Settings.Humans, MatchInfo->Settings.Toys,
+		    MatchInfo->Settings.NPCHumans, MatchInfo->Settings.NPCToys);
 		if (HostController)
 		{
 			HostController->ClientNotice(TEXT("At least one child and one toy are required to start."));
@@ -477,6 +488,8 @@ void ATBGameMode::StartRound(APlayerController* PlayerController)
 	{
 		if (!ToyPlayerInfo->bReady || !ToyPlayerInfo->GetPawn())
 		{
+			UE_LOG(LogTemp, Warning, TEXT("[ToyBoxMatch] Start refused map=%s reason=not ready/pawn ready=%d pawn=%d players=%d"),
+			    *GetWorld()->GetMapName(), ToyPlayerInfo->bReady, ToyPlayerInfo->GetPawn() != nullptr, Players.Num());
 			if (HostController)
 			{
 				HostController->ClientNotice(TB::Notices::ReadyRequired);
@@ -486,7 +499,12 @@ void ATBGameMode::StartRound(APlayerController* PlayerController)
 	}
 	if (TBLobbySettings::ShouldTravelToStage(GetWorld()))
 	{
-		if (!TBLobbySettings::Travel(this, true) && HostController) HostController->ClientNotice(TEXT("試合ステージへ移動できませんでした。"));
+		if (!TBLobbySettings::Travel(this, true) && HostController)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[ToyBoxMatch] Start refused map=%s reason=stage travel failed stage=%d"),
+			    *GetWorld()->GetMapName(), MatchInfo->SelectedStage);
+			HostController->ClientNotice(TEXT("試合ステージへ移動できませんでした。"));
+		}
 		return;
 	}
 	int32 Items = 0, Boxes = 0;
@@ -517,16 +535,16 @@ void ATBGameMode::StartRound(APlayerController* PlayerController)
 	if ((MatchInfo->Settings.NPCHumans > 0 || MatchInfo->Settings.NPCToys > 0) &&
 	    !TBNPCNavigation::Prepare(GetWorld()))
 	{
+		UE_LOG(LogTemp, Warning, TEXT("[ToyBoxMatch] Start refused map=%s reason=NPC navigation npcHuman=%d npcToy=%d"),
+		    *GetWorld()->GetMapName(), MatchInfo->Settings.NPCHumans, MatchInfo->Settings.NPCToys);
 		if (HostController) HostController->ClientNotice(TEXT("NPCの移動経路を準備できませんでした。"));
 		return;
 	}
 	RoundEntrance = ATBHumanEntrance::Find(GetWorld());
 	EntranceCursor = 0;
 	FString SetupError;
-	int32 Entrances = 0;
-	for (TActorIterator<ATBHumanEntrance> It(GetWorld()); It; ++It) ++Entrances;
-	if (Entrances > 1 || (TBLobbySettings::StageIndex(GetWorld()) == TBLobbySettings::HouseStageId && !RoundEntrance.IsValid()) ||
-	    (RoundEntrance.IsValid() && !RoundEntrance->Validate(GameSession ? GameSession->MaxPlayers : 8, SetupError)))
+	if ((TBLobbySettings::StageIndex(GetWorld()) == TBLobbySettings::HouseStageId && !RoundEntrance.IsValid()) ||
+	    (RoundEntrance.IsValid() && !RoundEntrance->ValidateGroup(GameSession ? GameSession->MaxPlayers : 8, SetupError)))
 	{
 		FailRoundStart(SetupError.IsEmpty() ? TEXT("ステージの入口設定が不足または重複しています。") : SetupError, true);
 		return;
@@ -691,7 +709,13 @@ void ATBGameMode::StartRound(APlayerController* PlayerController)
 		{ Rollback(TEXT("開始位置が塞がれています。ステージの配置を確認してください。")); return; }
 		// TeleportTo can succeed at a collision-adjusted location. Validate the actual arrival.
 		if (!Entry.Body->GetActorLocation().Equals(Entry.Destination.GetLocation(), 1.f))
-		{ Rollback(TEXT("開始位置から外れて配置されました。ステージの配置を確認してください。")); return; }
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[ToyBoxMatch] Start placement adjusted map=%s team=%d requested=%s actual=%s radius=%.3f half=%.3f"),
+			    *GetWorld()->GetMapName(), int32(Entry.AssignedTeam), *Entry.Destination.GetLocation().ToString(),
+			    *Entry.Body->GetActorLocation().ToString(), Entry.Body->GetCapsuleComponent()->GetScaledCapsuleRadius(),
+			    Entry.Body->GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
+			Rollback(TEXT("開始位置から外れて配置されました。ステージの配置を確認してください。")); return;
+		}
 		if (RoundEntrance.IsValid() && Entry.Info->Team == ETBTeam::Human)
 		{
 			FCollisionQueryParams Query(SCENE_QUERY_STAT(TBArrivedEntranceBody), false, Entry.Body.Get());
@@ -766,7 +790,12 @@ void ATBGameMode::StartRound(APlayerController* PlayerController)
 		// A callback may already have ended this round. Never send its old rotation/role afterward.
 		if (!IsValid(MatchInfo) || TB::GS(GetWorld()) != MatchInfo || MatchInfo->Phase != ETBPhase::Playing ||
 		    PreparationRound != CommittedRound || !MatchInfo->HidePreparation.bValid ||
-		    !MatchInfo->HidePreparation.bHiding || MatchInfo->HidePreparation.Round != CommittedRound) return false;
+		    !MatchInfo->HidePreparation.bHiding || MatchInfo->HidePreparation.Round != CommittedRound)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[ToyBoxMatch] Start notification stopped map=%s reason=commit context changed expectedRound=%u"),
+			    *GetWorld()->GetMapName(), CommittedRound);
+			return false;
+		}
 		bool Valid = LobbyPlayerCount() == Placements.Num() &&
 		    MatchInfo->PlayerArray.Num() == Placements.Num() + NPCPlacements.Num() &&
 		    (!CommittedEntrance.IsExplicitlyNull() ? CommittedEntrance.IsValid() && RoundEntrance == CommittedEntrance : !RoundEntrance.IsValid());
@@ -774,7 +803,12 @@ void ATBGameMode::StartRound(APlayerController* PlayerController)
 			Valid &= ValidParticipant(Entry) && Entry.Info->Team == Entry.AssignedTeam;
 		for (const auto& Entry : NPCPlacements)
 			Valid &= ValidParticipant(Entry) && Entry.Info->Team == Entry.AssignedTeam;
-		if (!Valid) Finish(ETBWinner::None, TEXT("開始確定後に参加者が変わりました。ロビーへ戻ってください。"), true);
+		if (!Valid)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[ToyBoxMatch] Start aborted map=%s reason=committed participants changed players=%d expected=%d"),
+			    *GetWorld()->GetMapName(), MatchInfo->PlayerArray.Num(), Placements.Num() + NPCPlacements.Num());
+			Finish(ETBWinner::None, TEXT("開始確定後に参加者が変わりました。ロビーへ戻ってください。"), true);
+		}
 		return Valid;
 	};
 	for (const auto& Entry : NPCPlacements)
@@ -818,6 +852,9 @@ void ATBGameMode::StartRound(APlayerController* PlayerController)
 void ATBGameMode::FailRoundStart(const FString& Reason, bool bRecovered)
 {
 	auto* State = TB::GS(GetWorld());
+	UE_LOG(LogTemp, Warning, TEXT("[ToyBoxMatch] Start failed map=%s phase=%d recovered=%d players=%d reason=%s"),
+	    *GetWorld()->GetMapName(), State ? int32(State->Phase) : -1, bRecovered,
+	    State ? State->PlayerArray.Num() : 0, *Reason);
 	if (!State) return;
 	State->EndTime = 0;
 	if (RoundEntrance.IsValid()) RoundEntrance->SetPreparing(false);
@@ -1285,6 +1322,19 @@ bool ATBGameMode::SpawnNPCs()
 			Info->bReady = true;
 			// RestartPlayer also provides collision-aware spawning from the normal player starts.
 			RestartPlayer(AI);
+			// An authored toy start can be occupied by a participant or furniture.
+			// Try the remaining starts with normal spawn collision checks instead of
+			// aborting the entire round after the first blocked point. Human entrance
+			// slots are assigned in order and must never be silently substituted.
+			if (Team == ETBTeam::Toy)
+			{
+				for (int32 Attempt = 1; !AI->GetPawn() && Attempt < SpawnPoints.Num(); ++Attempt)
+				{
+					AActor* Start = ChoosePlayerStart(AI);
+					if (!Start) break;
+					RestartPlayerAtPlayerStart(AI, Start);
+				}
+			}
 			auto* Body = Cast<ATBCharacter>(AI->GetPawn());
 			if (!Body) return false;
 			Body->ApplyState();

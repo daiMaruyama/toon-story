@@ -565,10 +565,16 @@ bool FTBNPCSettingsUITest::RunTest(const FString& Parameters)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBNPCTravelTest, "ToonStory.NPC.LobbyTravel",
+IMPLEMENT_COMPLEX_AUTOMATION_TEST(FTBNPCTravelTest, "ToonStory.NPC.LobbyTravel",
 	EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+void FTBNPCTravelTest::GetTests(TArray<FString>& Names, TArray<FString>& Commands) const
+{
+	Names.Add(TEXT("Demo")); Commands.Add(TEXT("1"));
+	Names.Add(TEXT("House")); Commands.Add(TEXT("3"));
+}
 bool FTBNPCTravelTest::RunTest(const FString& Parameters)
 {
+	const int32 Stage = FCString::Atoi(*Parameters);
 	auto CurrentWorld = []() -> UWorld*
 	{
 		for (const auto& Context : GEngine->GetWorldContexts())
@@ -582,27 +588,27 @@ bool FTBNPCTravelTest::RunTest(const FString& Parameters)
 	auto* PC = Cast<ATBController>(World->GetFirstPlayerController());
 	if (!Mode || !State || !PC) return false;
 	auto Rules = State->Settings;
-	Rules.NPCHumans = 1;
-	Rules.NPCToys = 1;
+	Rules.NPCHumans = 2;
+	Rules.NPCToys = 2;
 	Mode->SetRules(PC, Rules);
 	PC->GetPlayerState<ATBPlayerState>()->bReady = true;
-	TBLobbySettings::SelectStage(PC, 1);
+	TBLobbySettings::SelectStage(PC, Stage);
 	Mode->StartRound(PC);
 		TestTrue(TEXT("Supported stage starts travel"), State->bTravelPending);
 	TestEqual(TEXT("No bots in lobby arrival count"), State->PlayerArray.Num(), 1);
 	const double Deadline = FPlatformTime::Seconds() + 60;
 	auto Arrived = MakeShared<bool>(false);
-	ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([this, CurrentWorld, Deadline, Arrived]()
+	ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([this, CurrentWorld, Deadline, Arrived, Stage]()
 	{
 		auto* Current = CurrentWorld();
 		auto* Match = Current ? Current->GetGameState<ATBGameState>() : nullptr;
 		if ((!Match || Match->Phase != ETBPhase::Playing || Match->IsPreparing()) && FPlatformTime::Seconds() < Deadline) return false;
-		*Arrived = Match && Match->Phase == ETBPhase::Playing && !Match->IsPreparing() && TBLobbySettings::StageIndex(Current) == 1;
-		TestTrue(TEXT("Match starts after arriving at Demo"), *Arrived);
+		*Arrived = Match && Match->Phase == ETBPhase::Playing && !Match->IsPreparing() && TBLobbySettings::StageIndex(Current) == Stage;
+		TestTrue(TEXT("Match starts after arriving at selected stage"), *Arrived);
 		if (*Arrived)
 		{
-			TestEqual(TEXT("NPC settings survive travel"), Match->Settings.NPCToys, 1);
-			TestEqual(TEXT("NPCs spawn only on destination"), Match->PlayerArray.Num(), 3);
+			TestEqual(TEXT("NPC settings survive travel"), Match->Settings.NPCToys, 2);
+			TestEqual(TEXT("NPCs spawn only on destination"), Match->PlayerArray.Num(), 5);
 			auto* Host = Cast<ATBController>(Current->GetFirstPlayerController());
 			auto* GM = Current->GetAuthGameMode<ATBGameMode>();
 			GM->Finish(ETBWinner::Humans, TEXT("NPC travel test"));
@@ -622,7 +628,7 @@ bool FTBNPCTravelTest::RunTest(const FString& Parameters)
 			auto* Match = Current->GetGameState<ATBGameState>();
 			if (!TestNotNull(TEXT("Lobby state restored"), Match)) return true;
 			TestEqual(TEXT("Bot states removed before return travel"), Match->PlayerArray.Num(), 1);
-			TestEqual(TEXT("NPC count retained after return travel"), Match->Settings.NPCToys, 1);
+			TestEqual(TEXT("NPC count retained after return travel"), Match->Settings.NPCToys, 2);
 		}
 		return true;
 	}));

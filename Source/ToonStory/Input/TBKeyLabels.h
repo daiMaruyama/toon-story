@@ -14,6 +14,9 @@ namespace TB::Keys
 	inline const FName MoveLeft(TEXT("Common_Move_Left"));
 	inline const FName MoveRight(TEXT("Common_Move_Right"));
 	inline const FName Jump(TEXT("Common_Jump"));
+	inline const FName EmoteWave(TEXT("Common_EmoteWave"));
+	inline const FName EmoteCheer(TEXT("Common_EmoteCheer"));
+	inline const FName EmoteDance(TEXT("Common_EmoteDance"));
 	inline const FName HumanCrouch(TEXT("Human_Crouch"));
 	inline const FName HumanInteract(TEXT("Human_Interact"));
 	inline const FName HumanDrop(TEXT("Human_Drop"));
@@ -59,7 +62,7 @@ namespace TB
 		TArray<FKeyRowInfo> Rows;
 	};
 
-	/** 画面の並び。共通、にんげん、おもちゃ、ロビー。TB::Keys::Allの13名がちょうど1回ずつ出る。 */
+	/** 画面の並び。共通、にんげん、おもちゃ、ロビー。TB::Keys::Allの各名がちょうど1回ずつ出る。 */
 	TOONSTORY_API const TArray<FKeySection>& KeySections();
 
 	/** }の手前で一番近い{から始まる名前を、そのクライアントのキー名に置き換える。TB::Keys::Allにない名前は残してWarningを出す。 */

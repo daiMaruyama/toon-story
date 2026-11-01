@@ -46,8 +46,24 @@ void ATBHumanEntrance::Tick(float DeltaSeconds)
 
 ATBHumanEntrance* ATBHumanEntrance::Find(const UWorld* World)
 {
-	for (TActorIterator<ATBHumanEntrance> It(World); It; ++It) return *It;
-	return nullptr;
+	// Use the same authored leader on server and clients, independent of actor iteration order.
+	ATBHumanEntrance* First = nullptr;
+	for (TActorIterator<ATBHumanEntrance> It(World); It; ++It)
+		if (!First || It->GetName().Compare(First->GetName()) < 0) First = *It;
+	return First;
+}
+
+bool ATBHumanEntrance::ValidateGroup(int32 Capacity, FString& Error) const
+{
+	for (TActorIterator<ATBHumanEntrance> It(GetWorld()); It; ++It)
+	{
+		// Duplicated door leaves share one ordered set of player starts. Each leaf keeps
+		// its own mesh, transform and preparation animation, but does not add a spawn group.
+		if (It->DoorSlots != DoorSlots)
+		{ Error = TEXT("複数のドアは同じ順序の開始位置を設定してください。"); return false; }
+		if (!It->Validate(Capacity, Error)) return false;
+	}
+	return true;
 }
 
 bool ATBHumanEntrance::Validate(int32 Capacity, FString& Error) const

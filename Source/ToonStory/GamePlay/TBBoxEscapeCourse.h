@@ -8,8 +8,9 @@ class ATBCharacter;
 class ATriggerBox;
 class ATargetPoint;
 class UBoxComponent;
+class UPrimitiveComponent;
 
-/** Server-owned height escape. No checkpoint sequence or automatic fall reset. */
+/** Server-owned final landing escape. No checkpoint sequence or automatic fall reset. */
 UCLASS()
 class TOONSTORY_API ATBBoxEscapeCourse : public AActor
 {
@@ -24,23 +25,34 @@ public:
 	TObjectPtr<UBoxComponent> CourseBounds;
 	UPROPERTY(EditInstanceOnly, Category = "Course")
 	TObjectPtr<ATBBox> Box;
-	/** The marker's world Z is the escape line. Its XY and trigger extent do not gate escape. */
-	UPROPERTY(EditInstanceOnly, Category = "Course", meta = (DisplayName = "脱出高さマーカー"))
+	/** Explicit landing volume above the final platform. Pure query geometry; never a height-only fallback. */
+	UPROPERTY(EditInstanceOnly, Category = "Course", meta = (DisplayName = "最終到達領域"))
 	TObjectPtr<ATriggerBox> Goal;
+	// Resolve component tags in the loaded shared level; no cross-level actor/component hard reference.
+	UPROPERTY(EditInstanceOnly, Category = "Course")
+	FName FinalSupportTag = TEXT("TBBoxEscapeFinalSupport");
+	UPROPERTY(EditInstanceOnly, Category = "Course")
+	FName FinalSupportLevelPackage = TEXT("/Game/Maps/TB_ToyBoxRoom");
+	UPROPERTY(EditInstanceOnly, Category = "Course", meta = (ClampMin = "1", ClampMax = "2"))
+	int32 ExpectedFinalSupportCount = 2;
+	UPROPERTY(EditInstanceOnly, Category = "Course", meta = (ClampMin = "0", ClampMax = "5"))
+	float GoalMarginCm = 1.f;
 	UPROPERTY(EditInstanceOnly, Category = "Course")
 	TArray<TObjectPtr<ATargetPoint>> ExitPoints;
 	bool Validate(FString& Error, bool CheckSafety = true) const;
 	bool Protects(const ATBCharacter* Toy) const;
-	bool AboveEscapeHeight(const ATBCharacter* Toy) const;
+	bool ReachedGoal(const ATBCharacter* Toy) const;
 	static ATBBoxEscapeCourse* Find(const UWorld* World, const ATBBox* ForBox);
 private:
 	struct FCaptureAttempt
 	{
 		uint32 Generation = 0;
-		bool bDescendedBelowLine = false;
+		bool bDescendedBelowGoal = false;
 	};
 	TMap<TWeakObjectPtr<ATBCharacter>, FCaptureAttempt> Attempts;
-	bool Contains(const UBoxComponent* Volume, const ATBCharacter* Toy) const;
+	bool Contains(const UBoxComponent* Volume, const ATBCharacter* Toy, float Margin = 0) const;
+	bool ResolveFinalSupports(TArray<UPrimitiveComponent*>& Out, FString& Error) const;
+	bool IsFinalLanding(const ATBCharacter* Toy, const TArray<UPrimitiveComponent*>& Supports) const;
 	bool Eligible(const ATBCharacter* Toy) const;
 	bool SafeExitPoint(FVector Position, const ATBCharacter* Toy = nullptr) const;
 };

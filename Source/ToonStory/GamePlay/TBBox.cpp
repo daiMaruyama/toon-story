@@ -141,6 +141,10 @@ bool ATBBox::CanStoreFrom(const ATBCharacter* Character) const
 		return false;
 	}
 	const FVector Target = GetActorTransform().TransformPosition(FVector(-10, FMath::Clamp(Local.Y, -75.f, 75.f), 60));
+	const FVector TowardBox = (Target - Character->GetPawnViewLocation()).GetSafeNormal();
+	// Storage must remain in the player's view for the entire hold, not just in reach.
+	if (TowardBox.IsNearlyZero() || FVector::DotProduct(Character->GetViewRotation().Vector(), TowardBox) < FMath::Cos(FMath::DegreesToRadians(45.f)))
+		return false;
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(TBBoxStorage), false, Character);
 	Params.AddIgnoredActor(this);
 	return !GetWorld()->LineTraceTestByChannel(Character->GetPawnViewLocation(), Target, ECC_Visibility, Params);

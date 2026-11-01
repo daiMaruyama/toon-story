@@ -13,8 +13,10 @@
 #include "Engine/TriggerBox.h"
 #include "Engine/TargetPoint.h"
 #include "Engine/World.h"
+#include "Engine/Level.h"
 #include "EngineUtils.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "UObject/Package.h"
 
 
 ATBBoxEscapeCourse::ATBBoxEscapeCourse()
@@ -46,16 +48,19 @@ ATBBoxEscapeCourse* ATBBoxEscapeCourse::Find(const UWorld* World, const ATBBox* 
 
 bool ATBBoxEscapeCourse::Validate(FString& Error, bool CheckSafety) const
 {
+	Error.Reset();
 	if (!IsValid(Box) || Box->GetWorld() != GetWorld() || !IsValid(Goal) || Goal->GetWorld() != GetWorld() ||
 	    Goal->GetActorLocation().ContainsNaN() || ExitPoints.IsEmpty() || ExitPoints.Num() > ATBBox::StorageSlotCount)
-	{ Error = TEXT("箱・脱出高さマーカー・出口を設定してください。"); return false; }
+	{ Error = TEXT("箱・最終到達領域・出口を設定してください。"); return false; }
 	const FBox RoomBounds = Box->StorageRoomBounds();
 	const FVector LocalGoal = Box->StorageRoom->GetComponentTransform().InverseTransformPosition(Goal->GetActorLocation());
 	if (!RoomBounds.IsValid || LocalGoal.Z <= RoomBounds.Min.Z || LocalGoal.Z >= RoomBounds.Max.Z)
-	{ Error = TEXT("脱出高さマーカーは箱内室の床と天井の間に置いてください。"); return false; }
+	{ Error = TEXT("最終到達領域は箱内室の床と天井の間に置いてください。"); return false; }
 	if (CourseBounds->GetScaledBoxExtent().GetMin() <= 0 ||
 	    !CourseBounds->GetComponentRotation().Equals(FRotator::ZeroRotator, .001f))
 	{ Error = TEXT("コース範囲の大きさまたは回転が無効です。"); return false; }
+	TArray<UPrimitiveComponent*> Supports;
+	if (!ResolveFinalSupports(Supports, Error)) return false;
 	for (const auto& Exit : ExitPoints)
 	{
 		if (!IsValid(Exit) || Exit->GetWorld() != GetWorld() || Exit->GetActorLocation().ContainsNaN())
@@ -66,13 +71,90 @@ bool ATBBoxEscapeCourse::Validate(FString& Error, bool CheckSafety) const
 	return true;
 }
 
-bool ATBBoxEscapeCourse::AboveEscapeHeight(const ATBCharacter* Toy) const
+bool ATBBoxEscapeCourse::ResolveFinalSupports(TArray<UPrimitiveComponent*>& Out, FString& Error) const
 {
-	if (!IsValid(Toy) || !IsValid(Box) || !IsValid(Goal)) return false;
-	const FVector Local = Box->StorageRoom->GetComponentTransform().InverseTransformPosition(Toy->GetActorLocation());
-	const FBox Room = Box->StorageRoomBounds();
-	return Room.IsValid && Local.X >= Room.Min.X && Local.X <= Room.Max.X &&
-	    Local.Y >= Room.Min.Y && Local.Y <= Room.Max.Y && Toy->GetActorLocation().Z > Goal->GetActorLocation().Z;
+	Out.Reset();
+	const auto* Volume = IsValid(Goal) ? Cast<UBoxComponent>(Goal->GetCollisionComponent()) : nullptr;
+	if (!IsValid(Box) || !Volume || FinalSupportTag.IsNone() || FinalSupportLevelPackage.IsNone() ||
+	    ExpectedFinalSupportCount < 1 || ExpectedFinalSupportCount > 2 || !FMath::IsFinite(GoalMarginCm) || GoalMarginCm < 0 || GoalMarginCm > 5 ||
+	    Volume->GetComponentTransform().ContainsNaN() || Volume->GetComponentScale().GetMin() <= 0 ||
+	    !Volume->GetComponentRotation().Equals(FRotator::ZeroRotator, .001f) ||
+	    (Volume->IsQueryCollisionEnabled() && Volume->GetCollisionResponseToChannel(ECC_GameTraceChannel1) == ECR_Block))
+	{ Error = TEXT("最終領域・余白・支持面タグ/共通level/想定数の設定が無効です。"); return false; }
+	const FBox GoalBox = Volume->Bounds.GetBox();
+	const FVector Extent = Volume->GetScaledBoxExtent();
+	if (Extent.ContainsNaN() || Extent.X <= TBCharacterGeometry::ToyRadius + GoalMarginCm || Extent.Y <= TBCharacterGeometry::ToyRadius + GoalMarginCm ||
+	    Extent.Z <= TBCharacterGeometry::ToyHalfHeight + GoalMarginCm)
+	{ Error = TEXT("最終領域が玩具capsuleと安全余白に対して小さすぎます。"); return false; }
+	ULevel* SharedLevel = nullptr;
+	for (TActorIterator<AActor> It(GetWorld()); It; ++It)
+	{
+		if (It->IsActorBeingDestroyed()) continue;
+		TInlineComponentArray<UPrimitiveComponent*> Parts(*It);
+		for (UPrimitiveComponent* Part : Parts)
+		{
+			if (!IsValid(Part) || !Part->ComponentHasTag(FinalSupportTag)) continue;
+			auto* Level = It->GetLevel();
+			if (!Level || FName(*UWorld::RemovePIEPrefix(Level->GetOutermost()->GetName())) != FinalSupportLevelPackage ||
+			    (SharedLevel && SharedLevel != Level) || !Part->IsRegistered() || !Part->IsQueryCollisionEnabled() || Part->IsSimulatingPhysics() ||
+			    Part->GetComponentTransform().ContainsNaN() || Part->GetComponentScale().GetMin() <= 0 ||
+			    Part->GetCollisionResponseToChannel(ECC_GameTraceChannel1) != ECR_Block)
+			{ Error = TEXT("最終面タグは指定共通level内の有効な非物理Block支持componentだけへ付けてください。"); return false; }
+			SharedLevel = Level;
+			const FBox Surface = Part->Bounds.GetBox();
+			const FVector InRoom = Box->StorageRoom->GetComponentTransform().InverseTransformPosition(Surface.GetCenter());
+			if (!Surface.IsValid || Surface.Min.ContainsNaN() || Surface.Max.ContainsNaN() || !Box->StorageRoomBounds().IsInsideOrOn(InRoom) ||
+			    Surface.Min.X > GoalBox.Min.X + GoalMarginCm || Surface.Max.X < GoalBox.Max.X - GoalMarginCm ||
+			    Surface.Min.Y > GoalBox.Min.Y + GoalMarginCm || Surface.Max.Y < GoalBox.Max.Y - GoalMarginCm)
+			{ Error = TEXT("タグ付き最終面は箱室内で最終領域の足元を覆う同位置の面に限定してください。"); return false; }
+			Out.Add(Part);
+		}
+	}
+	if (Out.Num() != ExpectedFinalSupportCount)
+	{ Error = TEXT("最終支持面タグが欠落または想定外に重複しています。"); return false; }
+	// Render bounds alone do not prove support: inspect the actual first blocking geometry at centre/corners.
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(TBFinalSupportContract), false);
+	for (TActorIterator<ATBCharacter> It(GetWorld()); It; ++It) Params.AddIgnoredActor(*It);
+	double FirstHeight = 0;
+	for (int32 Sample = 0; Sample < 5; ++Sample)
+	{
+		const double X = Sample == 0 ? GoalBox.GetCenter().X : (Sample & 1) ? GoalBox.Min.X + GoalMarginCm : GoalBox.Max.X - GoalMarginCm;
+		const double Y = Sample == 0 ? GoalBox.GetCenter().Y : (Sample & 2) ? GoalBox.Min.Y + GoalMarginCm : GoalBox.Max.Y - GoalMarginCm;
+		FHitResult Hit;
+		if (!GetWorld()->LineTraceSingleByChannel(Hit, FVector(X, Y, GoalBox.Max.Z), FVector(X, Y, GoalBox.Min.Z - 4), ECC_GameTraceChannel1, Params) ||
+		    Hit.bStartPenetrating || !Out.Contains(Hit.GetComponent()) || Hit.ImpactNormal.Z < .71f ||
+		    (Sample > 0 && FMath::Abs(Hit.ImpactPoint.Z - FirstHeight) > .5) ||
+		    GoalBox.Min.Z + GoalMarginCm > Hit.ImpactPoint.Z + UCharacterMovementComponent::MIN_FLOOR_DIST ||
+		    GoalBox.Max.Z - GoalMarginCm < Hit.ImpactPoint.Z + 2 * TBCharacterGeometry::ToyHalfHeight + UCharacterMovementComponent::MAX_FLOOR_DIST)
+		{ Error = TEXT("最終領域を指定された水平支持面の直上へ、立位capsule全体が収まる高さで配置してください。"); return false; }
+		if (Sample == 0) FirstHeight = Hit.ImpactPoint.Z;
+	}
+	for (UPrimitiveComponent* Surface : Out)
+		if (FMath::Abs(Surface->Bounds.GetBox().Max.Z - FirstHeight) > .5)
+		{ Error = TEXT("許可する重複最終面の上端は同じ支持高さへ合わせてください。"); return false; }
+	return true;
+}
+
+bool ATBBoxEscapeCourse::ReachedGoal(const ATBCharacter* Toy) const
+{
+	TArray<UPrimitiveComponent*> Supports; FString Error;
+	return ResolveFinalSupports(Supports, Error) && IsFinalLanding(Toy, Supports);
+}
+
+bool ATBBoxEscapeCourse::IsFinalLanding(const ATBCharacter* Toy, const TArray<UPrimitiveComponent*>& Supports) const
+{
+	const auto* Volume = IsValid(Goal) ? Cast<UBoxComponent>(Goal->GetCollisionComponent()) : nullptr;
+	if (!IsValid(Toy) || !Contains(Volume, Toy, GoalMarginCm) || !Contains(CourseBounds, Toy)) return false;
+	const auto* Movement = Toy->GetCharacterMovement();
+	if (!Movement || !Movement->IsMovingOnGround() || Movement->Velocity.ContainsNaN()) return false;
+	FFindFloorResult Fresh;
+	Movement->FindFloor(Toy->GetActorLocation(), Fresh, false);
+	const FFindFloorResult* Floors[] = {&Movement->CurrentFloor, &Fresh};
+	for (const FFindFloorResult* Floor : Floors)
+		if (!Floor->IsWalkableFloor() || Floor->HitResult.bStartPenetrating || !Supports.Contains(Floor->HitResult.GetComponent()) ||
+		    Floor->HitResult.ImpactPoint.ContainsNaN() || Floor->HitResult.ImpactNormal.ContainsNaN() || !Movement->IsWalkable(Floor->HitResult) ||
+		    !FMath::IsFinite(Floor->GetDistanceToFloor()) || Floor->GetDistanceToFloor() < 0 || Floor->GetDistanceToFloor() > 4.f) return false;
+	return true;
 }
 bool ATBBoxEscapeCourse::SafeExitPoint(FVector Position, const ATBCharacter* Toy) const
 {
@@ -88,7 +170,7 @@ bool ATBBoxEscapeCourse::SafeExitPoint(FVector Position, const ATBCharacter* Toy
 	    Toy ? Toy->GetCharacterMovement()->GetWalkableFloorZ() : .71f);
 }
 
-bool ATBBoxEscapeCourse::Contains(const UBoxComponent* Volume, const ATBCharacter* Toy) const
+bool ATBBoxEscapeCourse::Contains(const UBoxComponent* Volume, const ATBCharacter* Toy, float Margin) const
 {
 	if (!Volume || !Toy) return false;
 	const FVector Scale = Volume->GetComponentScale().GetAbs();
@@ -96,9 +178,9 @@ bool ATBBoxEscapeCourse::Contains(const UBoxComponent* Volume, const ATBCharacte
 	const FVector Local = Volume->GetComponentTransform().InverseTransformPosition(Toy->GetActorLocation());
 	const FVector Extent = Volume->GetUnscaledBoxExtent();
 	const auto* Capsule = Toy->GetCapsuleComponent();
-	return FMath::Abs(Local.X) + Capsule->GetScaledCapsuleRadius() / Scale.X <= Extent.X &&
-	       FMath::Abs(Local.Y) + Capsule->GetScaledCapsuleRadius() / Scale.Y <= Extent.Y &&
-	       FMath::Abs(Local.Z) + Capsule->GetScaledCapsuleHalfHeight() / Scale.Z <= Extent.Z;
+	return FMath::Abs(Local.X) + (Capsule->GetScaledCapsuleRadius() + Margin) / Scale.X <= Extent.X &&
+	       FMath::Abs(Local.Y) + (Capsule->GetScaledCapsuleRadius() + Margin) / Scale.Y <= Extent.Y &&
+	       FMath::Abs(Local.Z) + (Capsule->GetScaledCapsuleHalfHeight() + Margin) / Scale.Z <= Extent.Z;
 }
 
 bool ATBBoxEscapeCourse::Eligible(const ATBCharacter* Toy) const
@@ -128,6 +210,8 @@ void ATBBoxEscapeCourse::Tick(float DeltaSeconds)
 	{ Attempts.Reset(); return; }
 	FString Error;
 	if (!Validate(Error, false)) return;
+	TArray<UPrimitiveComponent*> Supports;
+	if (!ResolveFinalSupports(Supports, Error)) return;
 	for (auto It = Attempts.CreateIterator(); It; ++It)
 		if (!Eligible(It.Key().Get())) It.RemoveCurrent();
 	for (TActorIterator<ATBCharacter> It(GetWorld()); It; ++It)
@@ -142,10 +226,11 @@ void ATBBoxEscapeCourse::Tick(float DeltaSeconds)
 			Attempt.Generation = Capture;
 		}
 		// Storage drops toys from above. A fresh capture must descend before any ascent can release it.
-		if (Contains(CourseBounds, Toy) && Toy->GetActorLocation().Z < Goal->GetActorLocation().Z)
-			Attempt.bDescendedBelowLine = true;
+		const auto* GoalVolume = Cast<UBoxComponent>(Goal->GetCollisionComponent());
+		if (Contains(CourseBounds, Toy) && Toy->GetActorLocation().Z + Toy->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() < GoalVolume->Bounds.GetBox().Min.Z)
+			Attempt.bDescendedBelowGoal = true;
 		if (Contains(CourseBounds, Toy)) Toy->SetFrozen(false);
-		if (!Attempt.bDescendedBelowLine || !AboveEscapeHeight(Toy)) continue;
+		if (!Attempt.bDescendedBelowGoal || !IsFinalLanding(Toy, Supports)) continue;
 		// Server deadlines and the current capture token still govern release.
 		if (auto* Mode = GetWorld()->GetAuthGameMode<ATBGameMode>()) Mode->CheckWin();
 		if (!Eligible(Toy) || State->Phase != ETBPhase::Playing) continue;
