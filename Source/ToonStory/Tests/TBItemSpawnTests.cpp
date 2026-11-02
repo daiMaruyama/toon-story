@@ -3,6 +3,7 @@
 #include "GamePlay/Items/TBItemSpawnDirector.h"
 #include "GamePlay/Items/TBItemSpawnPoint.h"
 #include "GamePlay/Items/TBNoiseRadio.h"
+#include "GamePlay/Items/TBWalkieTalkie.h"
 #include "GamePlay/TBLightSwitch.h"
 #include "GamePlay/TBRoomLighting.h"
 #include "Core/TBGameMode.h"
@@ -192,6 +193,8 @@ bool FTBAuthoredItemSpawnTest::RunTest(const FString&)
 			const FTransform* Placement=Entry.FindPlacement(Point->PlacementType);
 			if(!Entry.bEnabled || !Entry.ItemClass || Entry.Weight<=0 || !Placement) continue;
 			if(Entry.ItemClass->IsChildOf(ATBLightSwitch::StaticClass()) && !Point->Room) continue;
+			// ペア専用アイテムは単独の出現枠・地点では設置できない。
+			if(Entry.ItemClass->IsChildOf(ATBWalkieTalkie::StaticClass())) continue;
 			++Eligible;
 			Rules.Entries={Entry}; Director->StartRound();
 			if(Director->GetSpawnedCount()==0)
@@ -216,6 +219,24 @@ bool FTBAuthoredItemSpawnTest::RunTest(const FString&)
 	}
 	Rules=OldRules;
 	for(auto* Point:Points) Point->bEnabled=true;
+	for (const auto& Entry : OldRules.Entries)
+	{
+		if (!Entry.bEnabled || !Entry.ItemClass || !Entry.ItemClass->IsChildOf(ATBWalkieTalkie::StaticClass())) continue;
+		Rules.Entries={Entry};
+		Rules.SpawnCount=1;
+		Director->StartRound();
+		TestEqual(TEXT("A single slot cannot produce half a pair"),Director->GetSpawnedCount(),0);
+		Director->ResetRound();
+		Rules.SpawnCount=2;
+		Director->StartRound();
+		TestEqual(TEXT("Two slots produce a pair"),Director->GetSpawnedCount(),2);
+		int32 Paired=0;
+		for (TActorIterator<ATBWalkieTalkie> It(World); It; ++It)
+			if (It->Partner && It->Partner->Partner==*It) ++Paired;
+		TestEqual(TEXT("Spawned devices reference each other"),Paired,2);
+		Director->ResetRound();
+	}
+	Rules=OldRules;
 	for(int32 Round=0;Round<10;++Round)
 	{
 		Director->StartRound();
