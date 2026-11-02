@@ -49,6 +49,11 @@ void UTBTitleMenu::NativeConstruct()
 	{
 		EnterStory();
 	}
+	else
+	{
+		// 試合から戻ったときなど、寸劇を流さずにメニューへ入る。マップの初期状態のままにせず、最後のコマにしておく。
+		SettleStory();
+	}
 	if (State != EState::Story)
 	{
 		EnterMenu();
@@ -139,6 +144,14 @@ void UTBTitleMenu::EnterStory()
 	    FMovieSceneSequencePlaybackParams(Actor->GetSequencePlayer()->GetStartTime().Time, EUpdatePositionMethod::Jump));
 	Actor->GetSequencePlayer()->Play();
 	SetKeyboardFocus();
+}
+
+void UTBTitleMenu::SettleStory()
+{
+	if (ALevelSequenceActor* Actor = FindSequence(this, StoryTag))
+	{
+		Actor->GetSequencePlayer()->GoToEndAndStop();
+	}
 }
 
 void UTBTitleMenu::SkipStory()

@@ -69,6 +69,8 @@ private:
 	// 左側だけ、右へ向かって薄くなる暗幕の画像。
 	static UTexture2D* MakeSideShade(UObject* Outer);
 	void EnterMenu();
+	// 寸劇を流さずメニューへ入るとき、寸劇を最後のコマの状態にする。
+	void SettleStory();
 	void StartLoop();
 	// 触ったら、放置の数え直し。
 	void NoteInput();
