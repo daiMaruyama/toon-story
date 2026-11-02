@@ -30,6 +30,14 @@ public:
 	UFUNCTION(Exec) void TBFind();
 	UFUNCTION(Exec) void TBJoin(int32 Index);
 	UFUNCTION(Exec) void TBLeave();
+	bool IsStoryPlaying() const;
+	// カーソルの先にいるおもちゃのエモートを次へ。当たらなければ何もしない。
+	bool ClickToy();
+	// レイの先で、いちばん手前に見えているおもちゃ。
+	class UTBTitleEmote* PickToy(const FVector& Origin, const FVector& Direction) const;
+protected:
+	virtual void SetupInputComponent() override;
 private:
+	void ClickToyPressed() { ClickToy(); }
 	UPROPERTY(Transient) TObjectPtr<UTBTitleMenu> Menu;
 };

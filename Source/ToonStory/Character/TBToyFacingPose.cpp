@@ -1,6 +1,7 @@
 #include "TBToyFacingPose.h"
 #include "TBCharacter.h"
 #include "TBToyPresentation.h"
+#include "Core/TBTitleEmote.h"
 #include "Animation/AnimInstanceProxy.h"
 #include "Animation/AnimNode_LinkedInputPose.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -23,7 +24,21 @@ namespace
 			Input = Instance->GetLinkedInputPoseNode();
 			auto* Visual = Instance->GetOwningActor();
 			const auto* Pawn = Visual ? Cast<ATBCharacter>(Visual->GetOwner()) : nullptr;
-			TBToyPresentation::BuildEmotePose(Instance->GetSkelMeshComponent(), Pawn, EmotePose);
+			const auto* Title = !Pawn && Visual ? Visual->FindComponentByClass<UTBTitleEmote>() : nullptr;
+			FTBEmoteSample TitleSample;
+			if (Title && Title->UsesBodyMoves())
+			{
+				Title->BuildArmSwing(Instance->GetSkelMeshComponent(), EmotePose);
+			}
+			else if (Title && Title->GetSample(TitleSample))
+			{
+				TBToyPresentation::BuildEmotePose(Instance->GetSkelMeshComponent(), TitleSample, Visual->GetActorForwardVector(),
+				                                  Visual->GetActorRightVector(), EmotePose);
+			}
+			else
+			{
+				TBToyPresentation::BuildEmotePose(Instance->GetSkelMeshComponent(), Pawn, EmotePose);
+			}
 			float Desired = 0;
 			if (Pawn && !Pawn->IsMovementLocked() && Pawn->GetVelocity().SizeSquared2D() > 1)
 			{

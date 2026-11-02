@@ -267,16 +267,17 @@ namespace
 	{
 		return A != 0 && (B == 0 || (A != B && uint32(A - B) <= uint32(MAX_int32)));
 	}
-	double EmoteDuration(ETBEmoteKind Kind)
+}
+
+double ATBCharacter::EmoteDuration(ETBEmoteKind Kind)
+{
+	switch (Kind)
 	{
-		switch (Kind)
-		{
-		case ETBEmoteKind::Wave: return 1.6;
-		case ETBEmoteKind::Cheer: return 2.;
-		case ETBEmoteKind::Dance: return 3.;
-		case ETBEmoteKind::WildDance: return 6.;
-		default: return 0;
-		}
+	case ETBEmoteKind::Wave: return 1.6;
+	case ETBEmoteKind::Cheer: return 2.;
+	case ETBEmoteKind::Dance: return 3.;
+	case ETBEmoteKind::WildDance: return 6.;
+	default: return 0;
 	}
 }
 

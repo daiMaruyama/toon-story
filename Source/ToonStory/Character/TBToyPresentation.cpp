@@ -70,11 +70,19 @@ void TBToyPresentation::BuildEmotePose(const USkeletalMeshComponent* Mesh, const
 {
 	Out.Bones.Reset();
 	FTBEmoteSample Sample;
+	if (!IsValid(Pawn) || !Pawn->GetEmoteSample(Sample)) return;
+	BuildEmotePose(Mesh, Sample, Pawn->GetActorForwardVector(), Pawn->GetActorRightVector(), Out);
+}
+
+void TBToyPresentation::BuildEmotePose(const USkeletalMeshComponent* Mesh, const FTBEmoteSample& Sample, const FVector& WorldForward,
+	                                       const FVector& WorldRight, FTBEmotePose& Out)
+{
+	Out.Bones.Reset();
 	const auto* Asset = Mesh ? Mesh->GetSkeletalMeshAsset() : nullptr;
-	if (!IsValid(Pawn) || !Asset || !Pawn->GetEmoteSample(Sample) || Sample.Weight <= 0) return;
+	if (!Asset || Sample.Weight <= 0) return;
 	const auto& Ref = Asset->GetRefSkeleton();
-	const FVector Forward = Mesh->GetComponentTransform().InverseTransformVectorNoScale(Pawn->GetActorForwardVector()).GetSafeNormal();
-	const FVector Right = Mesh->GetComponentTransform().InverseTransformVectorNoScale(Pawn->GetActorRightVector()).GetSafeNormal();
+	const FVector Forward = Mesh->GetComponentTransform().InverseTransformVectorNoScale(WorldForward).GetSafeNormal();
+	const FVector Right = Mesh->GetComponentTransform().InverseTransformVectorNoScale(WorldRight).GetSafeNormal();
 	const FVector Up = Mesh->GetComponentTransform().InverseTransformVectorNoScale(FVector::UpVector).GetSafeNormal();
 	if (Forward.ContainsNaN() || Forward.IsNearlyZero() || Right.IsNearlyZero() || Up.IsNearlyZero()) return;
 	const double Beat = Sample.Progress * 2 * PI;
@@ -92,8 +100,10 @@ void TBToyPresentation::BuildEmotePose(const USkeletalMeshComponent* Mesh, const
 	{
 		if (Arms)
 		{
-			Add(UpperR, Forward, 125);
-			Add(EmoteBone(Ref, {TEXT("lowerarm_r"), TEXT("R_Forearm"), TEXT("RightForeArm"), TEXT("mixamorig:RightForeArm")}), Forward, 15 + 18 * FMath::Sin(Beat * 3));
+			const FName LowerR = EmoteBone(Ref, {TEXT("lowerarm_r"), TEXT("R_Forearm"), TEXT("RightForeArm"), TEXT("mixamorig:RightForeArm")});
+			// 前腕の無いおもちゃ（テディやロボット）は、上腕ごと振らないと手を上げたまま止まって見える。
+			Add(UpperR, Forward, LowerR.IsNone() ? 125 + 18 * FMath::Sin(Beat * 3) : 125);
+			Add(LowerR, Forward, 15 + 18 * FMath::Sin(Beat * 3));
 		}
 		else { Add(Torso, Up, 9 * FMath::Sin(Beat * 3)); Add(Head, Right, 8 * FMath::Sin(Beat * 2)); }
 	}
@@ -235,11 +245,28 @@ void TBToyPresentation::Initialize(AActor* Visual)
 		if (auto* Blend = LoadObject<UBlendSpace>(nullptr, *(Directory / Name)))
 		{
 			// Configure the post-process before PlayAnimation: reinitializing afterwards clears single-node playback.
-			Part->SetOverridePostProcessAnimBP(
-			    LoadClass<UAnimInstance>(nullptr, *(Directory / TEXT("ABP_TBLookLocomotion.ABP_TBLookLocomotion_C"))),
-			    false);
+			Part->SetOverridePostProcessAnimBP(LookPoseClass(Part), false);
 			Part->PlayAnimation(Blend, true);
 		}
+	}
+}
+
+UClass* TBToyPresentation::LookPoseClass(const USkeletalMeshComponent* Part)
+{
+	const auto* Mesh = Part ? Part->GetSkeletalMeshAsset() : nullptr;
+	if (!Mesh) return nullptr;
+	const FString Directory = FPackageName::GetLongPackagePath(Mesh->GetPathName());
+	return LoadClass<UAnimInstance>(nullptr, *(Directory / TEXT("ABP_TBLookLocomotion.ABP_TBLookLocomotion_C")));
+}
+
+void TBToyPresentation::UseLookPose(AActor* Visual)
+{
+	TInlineComponentArray<USkeletalMeshComponent*> Parts(Visual);
+	for (auto* Part : Parts)
+	{
+		if (Part->LeaderPoseComponent.IsValid()) continue;
+		// シーケンスが動かすアニメはそのままで、骨を回す後処理だけ足す。
+		if (UClass* Look = LookPoseClass(Part)) Part->SetOverridePostProcessAnimBP(Look, true);
 	}
 }
 
