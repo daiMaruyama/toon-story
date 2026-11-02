@@ -6,11 +6,14 @@
 #include "Audio/TBAudioSettings.h"
 #include "Audio/TBAudioSubsystem.h"
 #include "Audio/TBCharacterAudioComponent.h"
+#include "Blueprint/WidgetBlueprintLibrary.h"
 #include "Character/TBCharacter.h"
 #include "GamePlay/TBDummyToy.h"
 #include "Core/TBGameMode.h"
 #include "Core/TBGameState.h"
 #include "Core/TBPlayerState.h"
+#include "Core/TBTitleGameMode.h"
+#include "UI/TBTitleMenu.h"
 #include "Components/AudioComponent.h"
 #include "Components/SceneComponent.h"
 #include "Engine/Engine.h"
@@ -86,19 +89,48 @@ namespace
 	};
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBAudioTitleStoryTest, "ToonStory.Audio.TitleStory",
+                                 EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+bool FTBAudioTitleStoryTest::RunTest(const FString& Parameters)
+{
+	UWorld* World = nullptr;
+	for (const auto& Context : GEngine->GetWorldContexts())
+		if (Context.WorldType == EWorldType::Game && Context.World() &&
+		    Context.World()->GetAuthGameMode<ATBTitleGameMode>()) World = Context.World();
+	if (!TestNotNull(TEXT("Run on the title map"), World)) return false;
+	auto* Audio = World->GetGameInstance()->GetSubsystem<UTBAudioSubsystem>();
+	if (!TestNotNull(TEXT("Audio subsystem"), Audio)) return false;
+	TArray<UUserWidget*> Menus;
+	UWidgetBlueprintLibrary::GetAllWidgetsOfClass(World, Menus, UTBTitleMenu::StaticClass(), true);
+	if (!TestEqual(TEXT("One title menu"), Menus.Num(), 1)) return false;
+	auto* Menu = Cast<UTBTitleMenu>(Menus[0]);
+	Menu->EnterStory();
+	Audio->Tick(0.f);
+	TestTrue(TEXT("Story plays story music"), Menu->GetState() == UTBTitleMenu::EState::Story && Audio->GetMusicState() == ETBMusicState::Story);
+	Menu->SkipStory();
+	Audio->Tick(0.f);
+	TestTrue(TEXT("Skip returns to title music"), Menu->GetState() == UTBTitleMenu::EState::Menu && Audio->GetMusicState() == ETBMusicState::Title);
+	Menu->EnterStory();
+	Audio->Tick(0.f);
+	TestTrue(TEXT("Rewatch starts story music"), Menu->GetState() == UTBTitleMenu::EState::Story && Audio->GetMusicState() == ETBMusicState::Story);
+	Menu->SkipStory();
+	Audio->Tick(0.f);
+	return !HasAnyErrors();
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBAudioSelectedCatalogTest, "ToonStory.Audio.SelectedCatalog",
                                  EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
 bool FTBAudioSelectedCatalogTest::RunTest(const FString& Parameters)
 {
 	const auto* Settings = GetDefault<UTBAudioSettings>();
-	TestEqual(TEXT("Four music states registered"), Settings->Music.Num(), 4);
+	TestEqual(TEXT("Five music states registered"), Settings->Music.Num(), 5);
 	TestEqual(TEXT("All selected SE registered"), Settings->Sounds.Num(), int32(ETBSoundEvent::ChatMessage) + 1);
 	for (const auto& Pair : Settings->Music)
 	{
 		auto* Wave = Cast<USoundWave>(Pair.Value.Sound.LoadSynchronous());
 		if (TestNotNull(TEXT("Registered BGM loads"), Wave))
 		{
-			TestTrue(TEXT("BGM loops"), Wave->bLooping);
+			TestTrue(TEXT("Selected music supports looping"), bool(Wave->bLooping));
 			TestTrue(TEXT("BGM has samples"), Wave->Duration > 0);
 		}
 		TestFalse(TEXT("BGM is non-spatial"), Pair.Value.bSpatial);

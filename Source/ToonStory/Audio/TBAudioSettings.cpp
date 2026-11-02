@@ -2,7 +2,7 @@
 
 UTBAudioSettings::UTBAudioSettings()
 {
-	for (auto State : {ETBMusicState::Title, ETBMusicState::Lobby, ETBMusicState::Match, ETBMusicState::Results})
+	for (auto State : {ETBMusicState::Title, ETBMusicState::Lobby, ETBMusicState::Match, ETBMusicState::Results, ETBMusicState::Story})
 	{
 		auto& Clip = Music.Add(State);
 		Clip.bSpatial = false;

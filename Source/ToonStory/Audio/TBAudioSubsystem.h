@@ -93,8 +93,9 @@ private:
 	TWeakObjectPtr<UWorld> TravelFromWorld;
 	int32 LastLobbyCount = -1, LastRemainingSecond = -1;
 	double LastErrorTime = -1000;
+	double ResultMusicAt = 0;
 	void ChangeMusic(ETBMusicState Next);
-	void StopOwnedAudio();
+	void StopOwnedAudio(UAudioComponent* KeepMusic = nullptr);
 	void ReleaseVoiceTracking();
 	void OnWorldCleanup(UWorld* World, bool bSessionEnded, bool bCleanupResources);
 	void ApplyVolumes();
