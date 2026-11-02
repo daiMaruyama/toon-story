@@ -30,10 +30,15 @@ public:
 	// 体ごと動かす間に、腕だけ小さく振る姿勢。アニメの後処理から読む。
 	void BuildArmSwing(const USkeletalMeshComponent* Mesh, struct FTBEmotePose& Out) const;
 
+	// 体ごと動かすおもちゃの、今の高さのずれ（cm）。
+	float GetBodyLift() const;
+	// テスト用。大きくジャンプする姿勢の、空中の途中にする。
+	void SetMidJumpForTest();
+
 private:
 	enum class EMode : uint8 { Off, Play, Hold };
 	EMode ReadMode();
-	void MoveBody();
+	void MoveBody(float DeltaTime);
 	TWeakObjectPtr<USceneComponent> Body;
 	FTransform BodyRest;
 	TWeakObjectPtr<ALevelSequenceActor> Loop;
@@ -44,4 +49,7 @@ private:
 	float Weight = 0.f;
 	// 切り替えるときに一度ほどいてから次へ移る。
 	float Blend = 1.f;
+	// 今当てている高さ。固まる間は床まで下ろし、明けたら動きの高さへなめらかに戻す。
+	float AppliedLift = 0.f;
+	bool bSettlingLift = false;
 };

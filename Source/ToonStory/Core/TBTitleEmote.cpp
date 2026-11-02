@@ -19,6 +19,8 @@ namespace
 	constexpr float FadeSpeed = 3.f;
 	constexpr float UnwindSpeed = 8.f;
 	constexpr float RewindSpeed = 5.f;
+	// 固まるときに床へ下ろす・明けて戻す速さ（cm/秒）。
+	constexpr float LiftSettleSpeed = 40.f;
 	const FName LoopTag(TEXT("TitleLoop"));
 	// 体ごと動かすエモートの1回分の秒数（回る・ハネる・ジャンプ・よちよち）。
 	constexpr float BodyDurations[] = {1.6f, 1.f, 1.4f, 1.2f};
@@ -94,11 +96,11 @@ void UTBTitleEmote::TickComponent(float DeltaTime, ELevelTick TickType, FActorCo
 	if (Mode == EMode::Off && !(Loop.IsValid() && Loop->GetSequencePlayer() && Loop->GetSequencePlayer()->IsPlaying()))
 	{
 		Weight = 0.f;
-		MoveBody();
+		MoveBody(DeltaTime);
 		return;
 	}
 	Weight = FMath::FInterpConstantTo(Weight, Mode == EMode::Off ? 0.f : 1.f, DeltaTime, FadeSpeed);
-	ON_SCOPE_EXIT { MoveBody(); };
+	ON_SCOPE_EXIT { MoveBody(DeltaTime); };
 	if (Mode == EMode::Hold) return; // 見られている間は、その姿勢のまま。
 	if (PendingSteps > 0)
 	{
@@ -118,7 +120,21 @@ void UTBTitleEmote::TickComponent(float DeltaTime, ELevelTick TickType, FActorCo
 	if (Duration > 0) Phase = FMath::Frac(Phase + DeltaTime / Duration);
 }
 
-void UTBTitleEmote::MoveBody()
+float UTBTitleEmote::GetBodyLift() const
+{
+	const USceneComponent* Mesh = Body.Get();
+	return Mesh ? Mesh->GetRelativeLocation().Z - BodyRest.GetLocation().Z : 0.f;
+}
+
+void UTBTitleEmote::SetMidJumpForTest()
+{
+	Index = 2;
+	PendingSteps = 0;
+	Phase = .3f;
+	Blend = 1.f;
+}
+
+void UTBTitleEmote::MoveBody(float DeltaTime)
 {
 	USceneComponent* Mesh = Body.Get();
 	if (!Mesh) return;
@@ -134,7 +150,24 @@ void UTBTitleEmote::MoveBody()
 		break;
 	default: Turn.Roll = 14.f * FMath::Sin(Beat * 2.f); Turn.Yaw = 10.f * FMath::Sin(Beat); break; // よちよち揺れる
 	}
-	Mesh->SetRelativeLocationAndRotation(BodyRest.GetLocation() + Lift * W, (BodyRest.Rotator() + Turn * W).Quaternion());
+	// 固まる間は高さだけ床まで下ろす（回転などは固めたまま）。明けたら動きの高さへなめらかに戻す。
+	const float TargetLift = Mode == EMode::Hold ? 0.f : Lift.Z * W;
+	if (Mode == EMode::Hold)
+	{
+		bSettlingLift = true;
+	}
+	if (bSettlingLift)
+	{
+		AppliedLift = FMath::FInterpConstantTo(AppliedLift, TargetLift, DeltaTime, LiftSettleSpeed);
+		// 固まっている間は、床に着いても印を残す。明けたあとに、なめらかに戻すため。
+		bSettlingLift = Mode == EMode::Hold || !FMath::IsNearlyEqual(AppliedLift, TargetLift);
+	}
+	else
+	{
+		AppliedLift = TargetLift;
+	}
+	Mesh->SetRelativeLocationAndRotation(BodyRest.GetLocation() + FVector(Lift.X * W, Lift.Y * W, AppliedLift),
+	                                     (BodyRest.Rotator() + Turn * W).Quaternion());
 }
 
 bool UTBTitleEmote::UsesBodyMoves() const

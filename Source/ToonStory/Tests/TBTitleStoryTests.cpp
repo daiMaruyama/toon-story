@@ -297,6 +297,9 @@ bool FTBTitleToyEmoteTest::RunTest(const FString& Parameters)
 		{
 			// アヒル・テディ・ロボットは体ごと動く。見えているメッシュの位置か向きが変わる。
 			TestTrue(*FString::Printf(TEXT("%s moves its whole body"), *MeshName), Toy->UsesBodyMoves());
+			// 始まりはランダムで、ジャンプの後半は止まって見えるので、動く途中に揃えてから比べる。
+			Toy->SetMidJumpForTest();
+			Step(.05f);
 			const FTransform Before = Mesh->GetRelativeTransform();
 			Step(.3f);
 			TestFalse(*FString::Printf(TEXT("%s body moved"), *MeshName), Mesh->GetRelativeTransform().Equals(Before, .01f));
@@ -363,6 +366,31 @@ bool FTBTitleToyEmoteTest::RunTest(const FString& Parameters)
 	Step(.2f);
 	TestTrue(TEXT("Toys hold while the child watches"), Target->IsHolding());
 	TestFalse(TEXT("A watched toy ignores clicks"), Target->Next());
+	// ジャンプの途中で固まっても、空中で止まらない。高さだけ床まで下りて、明けたらなめらかに動きへ戻る。
+	UTBTitleEmote* Jumper = nullptr;
+	for (auto* Toy : Toys)
+	{
+		if (Toy->UsesBodyMoves()) { Jumper = Toy; break; }
+	}
+	if (TestNotNull(TEXT("A toy that moves its whole body"), Jumper))
+	{
+		Jump(200);
+		Step(.3f);
+		Jumper->SetMidJumpForTest();
+		Step(.05f);
+		const float InAir = Jumper->GetBodyLift();
+		TestTrue(TEXT("The toy is in the air before holding"), InAir > 5.f);
+		Jump(500);
+		Step(.05f);
+		TestTrue(TEXT("The toy holds"), Jumper->IsHolding());
+		TestTrue(TEXT("The height eases down, not a jump cut"), Jumper->GetBodyLift() > 0.f && Jumper->GetBodyLift() < InAir);
+		Step(1.f);
+		TestTrue(TEXT("A holding toy rests on the floor"), FMath::Abs(Jumper->GetBodyLift()) < .5f);
+		Jump(800);
+		Step(.05f);
+		TestTrue(TEXT("The height does not snap back when the hold ends"), Jumper->GetBodyLift() < 3.f);
+		Step(1.f);
+	}
 	// 子どもが去ったら、全員また動き出す（止まったままにならない）。
 	Jump(800);
 	Step(1.f);
