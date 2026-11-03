@@ -44,6 +44,9 @@ private:
 	void TextCommitted(const FText& Text, ETextCommit::Type Method);
 	void Sync(const UTBChatLog& Log);
 	void AddLine(const FTBChatLine& Line);
+	void RequestScrollToEnd();
+	// 一番下へ寄せる指示を、あと何フレーム出すか。
+	int32 ScrollRetryFrames = 0;
 	bool bOpen = false;
 	bool bResults = false;
 	bool bLayoutApplied = false;

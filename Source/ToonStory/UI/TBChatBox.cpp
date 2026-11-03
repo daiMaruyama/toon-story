@@ -117,7 +117,13 @@ void UTBChatBox::SetOpen(bool bInOpen)
 	{
 		Input->SetKeyboardFocus();
 	}
-	Scroll->ScrollToEnd();
+	RequestScrollToEnd();
+}
+
+// ScrollToEndは次のTickで、その時点の高さを使って消費される。行を出した直後は高さがまだ古いので、数フレーム続けて頼む。
+void UTBChatBox::RequestScrollToEnd()
+{
+	ScrollRetryFrames = 3;
 }
 
 // 履歴は後ろに足すか、前から消すか、全部消すかだけ。消えた行を前から外し、増えた行を後ろに足す。
@@ -143,7 +149,7 @@ void UTBChatBox::Sync(const UTBChatLog& Log)
 			AddLine(Line);
 		}
 	}
-	Scroll->ScrollToEnd();
+	RequestScrollToEnd();
 }
 
 void UTBChatBox::AddLine(const FTBChatLine& Line)
@@ -207,6 +213,11 @@ void UTBChatBox::NativeTick(const FGeometry& Geometry, float DeltaTime)
 	}
 	if (bShownChanged)
 	{
+		RequestScrollToEnd();
+	}
+	if (ScrollRetryFrames > 0)
+	{
+		--ScrollRetryFrames;
 		Scroll->ScrollToEnd();
 	}
 }
