@@ -29,6 +29,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Audio|Footsteps")
 	bool bAutomaticFootsteps = true;
 
+	// 足音を鳴らすか。複製される値（しゃがみ・速度）だけで決めるので、どの画面でも同じになる。NPC もプレイヤーと同じ。
+	// おもちゃは走り（歩きと走りの中間速度以上）だけ、人間はしゃがみ以外で鳴る。
+	static bool ShouldPlayFootstep(ETBTeam Team, bool bCrouched, float Speed2D);
+
 private:
 	TWeakObjectPtr<ATBCharacter> Character;
 	TWeakObjectPtr<UAudioComponent> StoreAudio;

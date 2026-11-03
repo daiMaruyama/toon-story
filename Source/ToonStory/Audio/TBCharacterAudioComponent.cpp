@@ -5,12 +5,23 @@
 #include "GamePlay/TBPickup.h"
 #include "Core/TBGameHelpers.h"
 #include "Core/TBPlayerState.h"
+#include "Data/TBCharacterData.h"
 #include "Components/AudioComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
+
+bool UTBCharacterAudioComponent::ShouldPlayFootstep(ETBTeam Team, bool bCrouched, float Speed2D)
+{
+	if (Team == ETBTeam::Toy)
+	{
+		const auto& Toy = TB::CharacterData().Toy;
+		return Speed2D >= (Toy.WalkSpeed + Toy.SprintSpeed) * .5f;
+	}
+	return !bCrouched;
+}
 
 UTBCharacterAudioComponent::UTBCharacterAudioComponent()
 {
@@ -106,7 +117,8 @@ void UTBCharacterAudioComponent::UpdateMovement(ATBCharacter* OwnerCharacter, UT
 			bObservedAirborneDeparture = false;
 			StepDistance = 0.f;
 		}
-		if (bAutomaticFootsteps && bWasGrounded && bGrounded && Movement->Velocity.SizeSquared2D() > 100.f)
+		if (bAutomaticFootsteps && bWasGrounded && bGrounded && Movement->Velocity.SizeSquared2D() > 100.f &&
+		    ShouldPlayFootstep(Player->Team, OwnerCharacter->IsCrouched(), Movement->Velocity.Size2D()))
 		{
 			StepDistance += Distance;
 			const float Interval = FMath::Max(1.f, Player->Team == ETBTeam::Toy ? ToyStepDistance : HumanStepDistance);
