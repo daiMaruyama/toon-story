@@ -29,6 +29,8 @@ public:
 	void SetOpen(bool bInOpen);
 	// 結果画面では真ん中の板を避けて下へ寄せる。
 	void SetResultsLayout(bool bInResults);
+	// 履歴との同期と、行ごとの透明度の更新。Nowを渡せるのはテストのため。
+	void RefreshLines(const UTBChatLog& Log, double Now);
 
 protected:
 	virtual void NativeOnInitialized() override;

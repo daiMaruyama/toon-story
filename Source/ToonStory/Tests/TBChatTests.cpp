@@ -1,6 +1,11 @@
 #include "Misc/AutomationTest.h"
 #if WITH_DEV_AUTOMATION_TESTS
+#include "Blueprint/UserWidget.h"
+#include "Blueprint/WidgetTree.h"
 #include "Character/TBNPCController.h"
+#include "Components/HorizontalBox.h"
+#include "Components/ScrollBox.h"
+#include "UI/TBChatBox.h"
 #include "Core/TBChat.h"
 #include "Core/TBController.h"
 #include "Core/TBGameMode.h"
@@ -110,6 +115,57 @@ bool FTBChatNoticeTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Joined"), TB::Chat::NoticeText(ETBChatNotice::Joined, TEXT("A")), FString(TEXT("Aがあそびにきた！")));
 	TestEqual(TEXT("Left"), TB::Chat::NoticeText(ETBChatNotice::Left, TEXT("A")), FString(TEXT("Aがかえっていった")));
 	TestEqual(TEXT("Kicked"), TB::Chat::NoticeText(ETBChatNotice::Kicked, TEXT("A")), FString(TEXT("Aはホストにおうちへ帰された")));
+	return true;
+}
+
+// 閉じている間に行が消えても、行の場所は残す（Collapsedにすると高さが減り、残りの行が一瞬ずれる）。配置そのものは見ない。
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBChatFadeLayoutTest, "ToonStory.Chat.FadeKeepsLayout",
+                                 EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+bool FTBChatFadeLayoutTest::RunTest(const FString& Parameters)
+{
+	UWorld* World = nullptr;
+	for (const auto& Context : GEngine->GetWorldContexts())
+		if (Context.WorldType == EWorldType::Game) World = Context.World();
+	if (!World || !World->GetGameInstance()) return false;
+	auto* Log = World->GetGameInstance()->GetSubsystem<UTBChatLog>();
+	auto* Box = CreateWidget<UTBChatBox>(World->GetGameInstance());
+	if (!Log || !Box) return false;
+	Log->Clear();
+	Log->Add(TEXT("A"), TEXT("one"), false);
+	Log->Add(TEXT("A"), TEXT("two"), false);
+	const double Shown = Log->GetLines().Last().Time;
+	TArray<UWidget*> Rows;
+	Box->RefreshLines(*Log, Shown);
+	Box->WidgetTree->ForEachWidget([&Rows](UWidget* Widget)
+	{
+		if (Cast<UHorizontalBox>(Widget)) Rows.Add(Widget);
+	});
+	TestEqual(TEXT("Both lines built"), Rows.Num(), 2);
+	for (UWidget* Row : Rows)
+	{
+		TestEqual(TEXT("Shown line is visible"), Row->GetVisibility(), ESlateVisibility::HitTestInvisible);
+		TestEqual(TEXT("Shown line is opaque"), Row->GetRenderOpacity(), 1.f);
+	}
+
+	Box->RefreshLines(*Log, Shown + TB::Rules().Chat.ShowSeconds + 5);
+	for (UWidget* Row : Rows)
+	{
+		TestNotEqual(TEXT("Expired line keeps its place"), Row->GetVisibility(), ESlateVisibility::Collapsed);
+		TestEqual(TEXT("Expired line is transparent"), Row->GetRenderOpacity(), 0.f);
+	}
+	// 場所を残すとスクロール位置が0を超えるので、上下の影（罫線に見える）は描かない設定にする。
+	bool bFoundScroll = false;
+	Box->WidgetTree->ForEachWidget([this, &bFoundScroll](UWidget* Widget)
+	{
+		if (const auto* Scroll = Cast<UScrollBox>(Widget))
+		{
+			bFoundScroll = true;
+			TestEqual(TEXT("Top shadow is not drawn"), Scroll->GetWidgetStyle().TopShadowBrush.DrawAs, ESlateBrushDrawType::NoDrawType);
+			TestEqual(TEXT("Bottom shadow is not drawn"), Scroll->GetWidgetStyle().BottomShadowBrush.DrawAs, ESlateBrushDrawType::NoDrawType);
+		}
+	});
+	TestTrue(TEXT("Scroll box exists"), bFoundScroll);
+	Log->Clear();
 	return true;
 }
 

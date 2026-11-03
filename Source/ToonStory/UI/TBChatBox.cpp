@@ -64,6 +64,10 @@ void UTBChatBox::NativeOnInitialized()
 	Panel->AddChildToVerticalBox(LogBack)->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
 	Scroll = WidgetTree->ConstructWidget<UScrollBox>();
 	Scroll->SetScrollBarVisibility(ESlateVisibility::Collapsed);
+	// 消えた行の場所を残すので、閉じていてもスクロール位置が0を超える。上下の影が罫線に見えるので描かない。
+	FScrollBoxStyle ScrollStyle = Scroll->GetWidgetStyle();
+	ScrollStyle.SetTopShadowBrush(FSlateNoResource()).SetBottomShadowBrush(FSlateNoResource());
+	Scroll->SetWidgetStyle(ScrollStyle);
 	LogBack->SetContent(Scroll);
 	LineBox = WidgetTree->ConstructWidget<UVerticalBox>();
 	Scroll->AddChild(LineBox);
@@ -178,6 +182,32 @@ void UTBChatBox::AddLine(const FTBChatLine& Line)
 	LineOpacity.Add(-1.f); // まだ何も入れていない
 }
 
+// 開いている間は全部。閉じている間は新しい発言だけを出し、最後の1秒で薄れさせる。変わった行にだけ入れる。
+// 消えた行はCollapsedにせず、透明のまま場所を残す。高さが減ると、ScrollToEndが古い高さで処理される数フレームに、残りの行がずれるため。
+void UTBChatBox::RefreshLines(const UTBChatLog& Log, double Now)
+{
+	if (Log.GetRevision() != BuiltRevision)
+	{
+		Sync(Log);
+	}
+	const double ShowSeconds = TB::Rules().Chat.ShowSeconds;
+	const auto& Lines = Log.GetLines();
+	for (int32 Index = 0; Index < LineWidgets.Num() && Index < Lines.Num(); ++Index)
+	{
+		const float Opacity = bOpen ? 1.f : FMath::Clamp(float(ShowSeconds - (Now - Lines[Index].Time)), 0.f, 1.f);
+		if (Opacity == LineOpacity[Index])
+		{
+			continue;
+		}
+		if (LineOpacity[Index] < 0)
+		{
+			LineWidgets[Index]->SetVisibility(ESlateVisibility::HitTestInvisible);
+		}
+		LineWidgets[Index]->SetRenderOpacity(Opacity);
+		LineOpacity[Index] = Opacity;
+	}
+}
+
 void UTBChatBox::NativeTick(const FGeometry& Geometry, float DeltaTime)
 {
 	Super::NativeTick(Geometry, DeltaTime);
@@ -186,35 +216,7 @@ void UTBChatBox::NativeTick(const FGeometry& Geometry, float DeltaTime)
 	{
 		return;
 	}
-	if (Log->GetRevision() != BuiltRevision)
-	{
-		Sync(*Log);
-	}
-	// 開いている間は全部。閉じている間は新しい発言だけを出し、最後の1秒で薄れさせる。変わった行にだけ入れる。
-	const double Now = FPlatformTime::Seconds();
-	const double ShowSeconds = TB::Rules().Chat.ShowSeconds;
-	const auto& Lines = Log->GetLines();
-	bool bShownChanged = false;
-	for (int32 Index = 0; Index < LineWidgets.Num() && Index < Lines.Num(); ++Index)
-	{
-		const float Opacity = bOpen ? 1.f : FMath::Clamp(float(ShowSeconds - (Now - Lines[Index].Time)), 0.f, 1.f);
-		if (Opacity == LineOpacity[Index])
-		{
-			continue;
-		}
-		// 作ったばかりの行（-1）は、見せるか隠すかを必ず入れる。隠すのを忘れると、透明なまま場所を取る。
-		if (LineOpacity[Index] < 0 || (Opacity > 0) != (LineOpacity[Index] > 0))
-		{
-			LineWidgets[Index]->SetVisibility(Opacity > 0 ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
-			bShownChanged = true;
-		}
-		LineWidgets[Index]->SetRenderOpacity(Opacity);
-		LineOpacity[Index] = Opacity;
-	}
-	if (bShownChanged)
-	{
-		RequestScrollToEnd();
-	}
+	RefreshLines(*Log, FPlatformTime::Seconds());
 	if (ScrollRetryFrames > 0)
 	{
 		--ScrollRetryFrames;
