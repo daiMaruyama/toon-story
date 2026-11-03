@@ -3,6 +3,8 @@
 #include "Tests/TBTestMatch.h"
 #include "Character/TBNPCController.h"
 #include "Character/TBCharacter.h"
+#include "Character/TBMovement.h"
+#include "Data/TBCharacterData.h"
 #include "Core/TBGameMode.h"
 #include "Core/TBLobbySettings.h"
 #include "Core/TBGameState.h"
@@ -162,6 +164,112 @@ bool FTBNPCDummyTest::RunTest(const FString& Parameters)
   Mode->Finish(ETBWinner::Humans, TEXT("NPC dummy test"));
   Mode->ReturnToLobby(PC);
   Dummy->Destroy();
+  State->Settings = Original;
+  Mode->SyncLobbyCounts();
+  return true;
+ }));
+ return true;
+}
+
+// NPC のおもちゃは人間が見えているときだけ走り、見えなくなる・凍結すると歩きへ戻る。
+// 状態を残す他の NPC テストより前（名前順）に走らせるため、名前を A 始まりにしている。
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBNPCToySprintTest, "ToonStory.NPC.AlertToySprint",
+ EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+bool FTBNPCToySprintTest::RunTest(const FString& Parameters)
+{
+ UWorld* World = nullptr;
+ for (const auto& Context : GEngine->GetWorldContexts())
+  if (Context.WorldType == EWorldType::Game) World = Context.World();
+ if (!World || World->GetNetMode() != NM_Standalone) return false;
+ auto* Mode = World->GetAuthGameMode<ATBGameMode>();
+ auto* State = World->GetGameState<ATBGameState>();
+ auto* PC = Cast<ATBController>(World->GetFirstPlayerController());
+ if (!TestTrue(TEXT("Match stage is ready"), Mode && State && PC && State->PlayerArray.Num() == 1)) return false;
+ Mode->SyncLobbyCounts();
+ const auto Original = State->Settings;
+ auto Rules = Original; Rules.NPCHumans = 1; Rules.NPCToys = 1;
+ Mode->SetRules(PC, Rules);
+ PC->GetPlayerState<ATBPlayerState>()->bReady = true;
+ Mode->StartRound(PC);
+ Mode->AdvancePreparationClockForTest(0);
+ ATBNPCController* Human = nullptr;
+ ATBNPCController* Toy = nullptr;
+ for (TActorIterator<ATBNPCController> It(World); It; ++It)
+ {
+  It->SetActorTickEnabled(false);
+  if (CastChecked<ATBCharacter>(It->GetPawn())->IsHuman()) Human = *It;
+  else Toy = *It;
+ }
+ if (!TestNotNull(TEXT("NPC human"), Human) || !TestNotNull(TEXT("NPC toy"), Toy) ||
+     !TestNotNull(TEXT("Box"), State->Box.Get())) return false;
+ auto* HumanBody = CastChecked<ATBCharacter>(Human->GetPawn());
+ auto* ToyBody = CastChecked<ATBCharacter>(Toy->GetPawn());
+ const FTransform Box = State->Box->GetActorTransform();
+ HumanBody->TeleportTo(Box.TransformPosition(FVector(-350, 0, 70)), Box.Rotator());
+ ToyBody->TeleportTo(Box.TransformPosition(FVector(-50, 100, 30)), Box.Rotator());
+ PC->GetPawn()->SetActorLocation(FVector(2500, 2500, 70));
+ // AAIController は焦点がないと操作ロテーションを体の向きで上書きするので、体ごと向ける。
+ const auto Face = [ToyBody, HumanBody, Toy](bool bToward)
+ {
+  const float Yaw = (HumanBody->GetActorLocation() - ToyBody->GetPawnViewLocation()).Rotation().Yaw;
+  const FRotator View(0, bToward ? Yaw : Yaw + 180.f, 0);
+  Toy->StopMovement();
+  ToyBody->SetActorRotation(View);
+  Toy->SetControlRotation(View);
+ };
+ Face(true);
+ TestTrue(TEXT("Toy NPC sees the human"), Toy->CanSee(HumanBody));
+ auto* Movement = CastChecked<UTBMovement>(ToyBody->GetCharacterMovement());
+ // NPC の思考間隔はゲーム時間で測られるので、各確認の前にゲーム時間で待つ。
+ const TSharedRef<double> ReadyAt = MakeShared<double>(World->GetTimeSeconds() + .6);
+ const auto Step = [World, ReadyAt](TFunction<void()> Check)
+ {
+  ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([World, ReadyAt, Check]()
+  {
+   if (World->GetTimeSeconds() < *ReadyAt) return false;
+   Check();
+   *ReadyAt = World->GetTimeSeconds() + .6;
+   return true;
+  }));
+ };
+ Step([this, Toy, Movement]()
+ {
+  Toy->Tick(.4f);
+  TestTrue(TEXT("Seen human makes the toy sprint"), Movement->bWantsToSprint);
+  TestEqual(TEXT("Sprint speed applies on the server"), Movement->GetMaxSpeed(), TB::CharacterData().Toy.SprintSpeed);
+ });
+ Step([this, Face, Toy, Movement]()
+ {
+  Face(false);
+  for (TActorIterator<ATBCharacter> It(Toy->GetWorld()); It; ++It)
+   if (It->IsHuman())
+    TestFalse(*FString::Printf(TEXT("Human %s is out of the toy's view"), *It->GetName()), Toy->CanSee(*It));
+  Toy->Tick(.4f);
+  TestFalse(TEXT("Unseen human returns the toy to walking"), Movement->bWantsToSprint);
+  TestEqual(TEXT("Walk speed returns"), Movement->GetMaxSpeed(), TB::CharacterData().Toy.WalkSpeed);
+ });
+ Step([this, Face, Toy, ToyBody, HumanBody, Movement, ToyStart = ToyBody->GetActorLocation()]()
+ {
+  // 直前の思考で歩き出した分を戻して、同じ見通しで見直す。
+  Toy->StopMovement();
+  ToyBody->SetActorLocation(ToyStart);
+  Face(true);
+  TestTrue(TEXT("Toy NPC sees the human again"), Toy->CanSee(HumanBody));
+  Toy->Tick(.4f);
+  TestTrue(TEXT("Toy sprints again when the human is seen"), Movement->bWantsToSprint);
+ });
+ Step([this, Toy, ToyBody, HumanBody, Movement]()
+ {
+  ToyBody->TBPS()->bFrozen = true;
+  Toy->Tick(.4f);
+  TestFalse(TEXT("Frozen toy does not keep sprinting"), Movement->bWantsToSprint);
+  ToyBody->TBPS()->bFrozen = false;
+  TestFalse(TEXT("Human NPC never sprints"), CastChecked<UTBMovement>(HumanBody->GetCharacterMovement())->bWantsToSprint);
+ });
+ ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([Mode, PC, State, Original]()
+ {
+  Mode->Finish(ETBWinner::Humans, TEXT("NPC toy sprint test"));
+  Mode->ReturnToLobby(PC);
   State->Settings = Original;
   Mode->SyncLobbyCounts();
   return true;

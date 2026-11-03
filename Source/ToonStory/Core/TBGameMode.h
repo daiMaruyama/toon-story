@@ -60,6 +60,7 @@ private:
 	friend class FTBAuthoredLightingTest;
 	friend class FTBLobbyVisibleTest;
 	friend class FTBNPCDummyTest;
+	friend class FTBNPCToySprintTest;
 	friend class FTBNPCFieldTransportTest;
 	friend class FTBNPCMatchTest;
 	friend class FTBNPCSoloStartTest;
