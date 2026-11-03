@@ -7,6 +7,7 @@
 
 class UAudioComponent;
 class USceneComponent;
+struct FTBAudioSubsystemTestAccess;
 
 /** Local audio only. GameInstance owns preferences; playback belongs to the current world. */
 UCLASS()
@@ -59,6 +60,7 @@ public:
 	float GetVoiceVolume() const { return VoiceVolume; }
 
 private:
+	friend struct FTBAudioSubsystemTestAccess;
 	struct FPlayingSound
 	{
 		TWeakObjectPtr<UAudioComponent> Component;
@@ -89,12 +91,15 @@ private:
 	float HumanFootstepToyPitchMultiplier = .75f;
 	uint32 SettingsRevision = 0;
 	bool bInitialized = false, bSawPlaying = false, bResultCuePlayed = false;
+	// このワールドで最初のロビーの人数（1以上）を処理するまでtrue。結果の曲を残すとMusicStateがResultsのままなので、MusicStateには頼らない。
+	bool bFirstLobbyTick = true;
 	TOptional<ETBSoundEvent> TravelSound;
 	TWeakObjectPtr<UWorld> TravelFromWorld;
 	int32 LastLobbyCount = -1, LastRemainingSecond = -1;
 	double LastErrorTime = -1000;
+	double ResultMusicAt = 0;
 	void ChangeMusic(ETBMusicState Next);
-	void StopOwnedAudio();
+	void StopOwnedAudio(UAudioComponent* KeepMusic = nullptr);
 	void ReleaseVoiceTracking();
 	void OnWorldCleanup(UWorld* World, bool bSessionEnded, bool bCleanupResources);
 	void ApplyVolumes();

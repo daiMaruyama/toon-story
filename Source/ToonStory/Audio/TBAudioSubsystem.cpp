@@ -7,6 +7,7 @@
 #include "Core/TBTitleGameMode.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
+#include "Kismet/GameplayStatics.h"
 #include "Sound/SoundBase.h"
 #include "Sound/SoundAttenuation.h"
 #include "Sound/SoundConcurrency.h"
@@ -70,28 +71,30 @@ void UTBAudioSubsystem::ReloadAudioSettings()
 void UTBAudioSubsystem::OnWorldCleanup(UWorld* World, bool bSessionEnded, bool bCleanupResources)
 {
 	if (PlaybackWorld.Get() != World) return;
-	StopOwnedAudio();
+	UAudioComponent* KeepMusic = MusicState == ETBMusicState::Results && MusicComponent.IsValid() && MusicComponent->IsPlaying()
+	    ? MusicComponent.Get() : nullptr;
+	StopOwnedAudio(KeepMusic);
 	ReleaseVoiceTracking(); // Voice components are owned/stopped by their talkers.
 	PlaybackWorld.Reset();
 	ToyActionMasks.Reset();
-	MusicState = ETBMusicState::None;
+	if (!KeepMusic) MusicState = ETBMusicState::None;
 	bSawPlaying = bResultCuePlayed = false;
 }
 
-void UTBAudioSubsystem::StopOwnedAudio()
+void UTBAudioSubsystem::StopOwnedAudio(UAudioComponent* KeepMusic)
 {
 	for (const auto& Playing : PlayingSounds)
 	{
-		if (Playing.Category == ETBAudioCategory::Voice) continue;
+		if (Playing.Category == ETBAudioCategory::Voice || Playing.Component.Get() == KeepMusic) continue;
 		if (auto* Audio = Playing.Component.Get())
 		{
 			Audio->Stop();
 			Audio->DestroyComponent();
 		}
 	}
-	PlayingSounds.RemoveAll([](const FPlayingSound& Playing) { return Playing.Category != ETBAudioCategory::Voice; });
-	OwnedComponents.Reset();
-	MusicComponent.Reset();
+	PlayingSounds.RemoveAll([KeepMusic](const FPlayingSound& Playing) { return Playing.Category != ETBAudioCategory::Voice && Playing.Component.Get() != KeepMusic; });
+	OwnedComponents.RemoveAll([KeepMusic](const TObjectPtr<UAudioComponent>& Audio) { return Audio.Get() != KeepMusic; });
+	if (!KeepMusic) MusicComponent.Reset();
 }
 
 void UTBAudioSubsystem::ReleaseVoiceTracking()
@@ -101,20 +104,23 @@ void UTBAudioSubsystem::ReleaseVoiceTracking()
 		if (Playing.Category == ETBAudioCategory::Voice && Playing.Component.IsValid())
 			Playing.Component->SetVolumeMultiplier(Playing.BaseVolume);
 	}
-	PlayingSounds.Reset();
+	PlayingSounds.RemoveAll([](const FPlayingSound& Playing) { return Playing.Category == ETBAudioCategory::Voice; });
 }
 
 void UTBAudioSubsystem::EnsurePlaybackWorld(UWorld* World)
 {
 	if (PlaybackWorld.Get() != World)
 	{
-		StopOwnedAudio();
+		UAudioComponent* KeepMusic = MusicState == ETBMusicState::Results && MusicComponent.IsValid() && MusicComponent->IsPlaying()
+		    ? MusicComponent.Get() : nullptr;
+		StopOwnedAudio(KeepMusic);
 		ReleaseVoiceTracking();
 		PlaybackWorld = World;
 		ToyActionMasks.Reset();
-		MusicState = ETBMusicState::None;
+		if (!KeepMusic) MusicState = ETBMusicState::None;
 		bSawPlaying = bResultCuePlayed = false;
 		LastLobbyCount = LastRemainingSecond = -1;
+		bFirstLobbyTick = true;
 		++SettingsRevision;
 	}
 }
@@ -157,13 +163,22 @@ void UTBAudioSubsystem::Tick(float DeltaTime)
 			const int32 Count = State->PlayerArray.Num();
 			if (Count > 0 && Count != LastLobbyCount)
 			{
-				if (LastLobbyCount >= 0 || MusicState == ETBMusicState::None)
+				if (LastLobbyCount >= 0 || bFirstLobbyTick)
 					PlaySoundEvent(LastLobbyCount > Count ? ETBSoundEvent::LobbyLeave : ETBSoundEvent::LobbyJoin);
 				LastLobbyCount = Count;
+				bFirstLobbyTick = false; // 人数0の間は最初の入室音を使い切らない。
 			}
 		}
-		else LastLobbyCount = -1;
-		if (Next != ETBMusicState::Results) bResultCuePlayed = false;
+		else
+		{
+			LastLobbyCount = -1;
+			if (Next != ETBMusicState::None) bFirstLobbyTick = false;
+		}
+		if (Next != ETBMusicState::Results)
+		{
+			bResultCuePlayed = false;
+			ResultMusicAt = 0;
+		}
 		// Wait for winner/team replication. Initial snapshots and rematch resets don't play old cues.
 		const auto* Player = Local->GetPlayerState<ATBPlayerState>();
 		if (Next == ETBMusicState::Results && bSawPlaying && !bResultCuePlayed && Player &&
@@ -171,12 +186,21 @@ void UTBAudioSubsystem::Tick(float DeltaTime)
 		{
 			const bool Won = (Player->Team == ETBTeam::Human && State->Winner == ETBWinner::Humans) ||
 			                 (Player->Team == ETBTeam::Toy && State->Winner == ETBWinner::Toys);
-			PlaySoundEvent(Won ? ETBSoundEvent::Victory : ETBSoundEvent::Defeat);
+			const ETBSoundEvent ResultEvent = Won ? ETBSoundEvent::Victory : ETBSoundEvent::Defeat;
+			PlaySoundEvent(ResultEvent);
+			const FTBAudioClip* ResultClip = SoundClips.Find(ResultEvent);
+			const USoundBase* ResultSound = ResultClip ? ResultClip->Sound.Get() : nullptr;
+			const float Duration = ResultSound ? ResultSound->GetDuration() : 0.f;
+			ResultMusicAt = World->GetTimeSeconds() + (FMath::IsFinite(Duration) ? FMath::Clamp(Duration, 0.f, 10.f) : 0.f);
 			bResultCuePlayed = true;
 		}
+		// Leave room for the result cue before starting the result music.
+		if (State->Phase == ETBPhase::Results && bSawPlaying && bResultCuePlayed &&
+		    World->GetTimeSeconds() < ResultMusicAt) Next = ETBMusicState::None;
 		if (Next == ETBMusicState::Lobby) bSawPlaying = false;
 	}
-	else if (Local->IsA<ATBTitleController>()) Next = ETBMusicState::Title;
+	else if (const auto* Title = Cast<ATBTitleController>(Local))
+		Next = Title->IsStoryPlaying() ? ETBMusicState::Story : ETBMusicState::Title;
 	ChangeMusic(Next);
 	PlayingSounds.RemoveAll([](const FPlayingSound& Playing) { return !Playing.Component.IsValid(); });
 	OwnedComponents.RemoveAll([](const TObjectPtr<UAudioComponent>& Audio) { return !IsValid(Audio); });
@@ -208,11 +232,16 @@ UAudioComponent* UTBAudioSubsystem::CreateAudio(const FTBAudioClip& Clip, ETBAud
 		if (Count >= FMath::Clamp(Clip.MaxInstances, 1, 64)) return nullptr;
 	}
 	UObject* Outer = AttachTo && AttachTo->GetOwner() ? static_cast<UObject*>(AttachTo->GetOwner()) : static_cast<UObject*>(World);
-	auto* Audio = NewObject<UAudioComponent>(Outer);
+	const bool bPersistentMusic = Category == ETBAudioCategory::Music &&
+	    (MusicState == ETBMusicState::Results || MusicState == ETBMusicState::Lobby) && GEngine && GEngine->UseSound();
+	auto* Audio = bPersistentMusic
+	    ? UGameplayStatics::CreateSound2D(World, Clip.Sound.Get(), 1.f, 1.f, 0.f, nullptr, true, false)
+	    : NewObject<UAudioComponent>(Outer);
+	if (!Audio) return nullptr;
 	Audio->bAutoActivate = false;
 	Audio->bAutoDestroy = !bLoop;
 	Audio->bShouldRemainActiveIfDropped = bLoop;
-	Audio->bStopWhenOwnerDestroyed = true;
+	Audio->bStopWhenOwnerDestroyed = !bPersistentMusic;
 	Audio->bAllowSpatialization = Category == ETBAudioCategory::Effects && Clip.bSpatial;
 	Audio->bIsUISound = !Audio->bAllowSpatialization;
 	Audio->SetSound(Clip.Sound.Get());
@@ -256,7 +285,7 @@ UAudioComponent* UTBAudioSubsystem::CreateAudio(const FTBAudioClip& Clip, ETBAud
 	}
 	if (AttachTo) Audio->SetupAttachment(AttachTo);
 	else Audio->SetWorldLocation(Location);
-	Audio->RegisterComponentWithWorld(World);
+	if (!bPersistentMusic) Audio->RegisterComponentWithWorld(World);
 	OwnedComponents.Add(Audio);
 	PlayingSounds.Add({Audio, Category, Event, BaseVolume, bLoop, Category == ETBAudioCategory::Effects && Clip.bToyActionSound});
 	return Audio;
@@ -302,6 +331,17 @@ void UTBAudioSubsystem::StopLoop(UAudioComponent* Audio)
 void UTBAudioSubsystem::ChangeMusic(ETBMusicState Next)
 {
 	if (MusicState == Next) return;
+	// Results and lobby may deliberately share the same music. Keep playing it
+	// through the transition instead of restarting the song.
+	const FTBAudioClip* PreviousClip = MusicClips.Find(MusicState);
+	const FTBAudioClip* NextClip = MusicClips.Find(Next);
+	if (MusicComponent.IsValid() && MusicComponent->IsPlaying() && PreviousClip && NextClip &&
+	    !PreviousClip->Sound.IsNull() && PreviousClip->Sound.ToSoftObjectPath() == NextClip->Sound.ToSoftObjectPath() &&
+	    FMath::IsNearlyEqual(PreviousClip->Volume, NextClip->Volume) && FMath::IsNearlyEqual(PreviousClip->Pitch, NextClip->Pitch))
+	{
+		MusicState = Next;
+		return;
+	}
 	if (auto* Audio = MusicComponent.Get())
 	{
 		for (auto& Playing : PlayingSounds)
@@ -316,7 +356,7 @@ void UTBAudioSubsystem::ChangeMusic(ETBMusicState Next)
 	MusicState = Next;
 	if (const auto* Clip = MusicClips.Find(Next))
 	{
-		auto* Audio = CreateAudio(*Clip, ETBAudioCategory::Music, ETBSoundEvent::UIClick, FVector::ZeroVector, nullptr, true);
+		auto* Audio = CreateAudio(*Clip, ETBAudioCategory::Music, ETBSoundEvent::UIClick, FVector::ZeroVector, nullptr, Next != ETBMusicState::Story);
 		MusicComponent = Audio;
 		if (Audio) Audio->FadeIn(MusicFadeSeconds, 1.f);
 	}

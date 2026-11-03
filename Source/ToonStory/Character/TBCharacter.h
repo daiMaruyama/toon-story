@@ -120,6 +120,8 @@ public:
 	bool RequestEmote(ETBEmoteKind Kind);
 	bool TryEmote(ETBEmoteKind Kind);
 	bool GetEmoteSample(FTBEmoteSample& Out) const;
+	// エモート1回分の秒数。タイトルのおもちゃも同じ速さで回す。
+	static double EmoteDuration(ETBEmoteKind Kind);
 	UFUNCTION(Server, Reliable)
 	void ServerEmote(ETBEmoteKind Kind, uint32 ExpectedRound, uint32 ExpectedPossession);
 	UFUNCTION()

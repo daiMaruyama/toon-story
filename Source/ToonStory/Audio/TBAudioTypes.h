@@ -5,7 +5,7 @@
 UENUM(BlueprintType)
 enum class ETBMusicState : uint8
 {
-	None, Title, Lobby, Match, Results
+	None, Title, Lobby, Match, Results, Story
 };
 
 UENUM(BlueprintType)

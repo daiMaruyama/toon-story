@@ -6,11 +6,14 @@
 #include "Audio/TBAudioSettings.h"
 #include "Audio/TBAudioSubsystem.h"
 #include "Audio/TBCharacterAudioComponent.h"
+#include "Blueprint/WidgetBlueprintLibrary.h"
 #include "Character/TBCharacter.h"
 #include "GamePlay/TBDummyToy.h"
 #include "Core/TBGameMode.h"
 #include "Core/TBGameState.h"
 #include "Core/TBPlayerState.h"
+#include "Core/TBTitleGameMode.h"
+#include "UI/TBTitleMenu.h"
 #include "Components/AudioComponent.h"
 #include "Components/SceneComponent.h"
 #include "Engine/Engine.h"
@@ -86,19 +89,48 @@ namespace
 	};
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBAudioTitleStoryTest, "ToonStory.Audio.TitleStory",
+                                 EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+bool FTBAudioTitleStoryTest::RunTest(const FString& Parameters)
+{
+	UWorld* World = nullptr;
+	for (const auto& Context : GEngine->GetWorldContexts())
+		if (Context.WorldType == EWorldType::Game && Context.World() &&
+		    Context.World()->GetAuthGameMode<ATBTitleGameMode>()) World = Context.World();
+	if (!TestNotNull(TEXT("Run on the title map"), World)) return false;
+	auto* Audio = World->GetGameInstance()->GetSubsystem<UTBAudioSubsystem>();
+	if (!TestNotNull(TEXT("Audio subsystem"), Audio)) return false;
+	TArray<UUserWidget*> Menus;
+	UWidgetBlueprintLibrary::GetAllWidgetsOfClass(World, Menus, UTBTitleMenu::StaticClass(), true);
+	if (!TestEqual(TEXT("One title menu"), Menus.Num(), 1)) return false;
+	auto* Menu = Cast<UTBTitleMenu>(Menus[0]);
+	Menu->EnterStory();
+	Audio->Tick(0.f);
+	TestTrue(TEXT("Story plays story music"), Menu->GetState() == UTBTitleMenu::EState::Story && Audio->GetMusicState() == ETBMusicState::Story);
+	Menu->SkipStory();
+	Audio->Tick(0.f);
+	TestTrue(TEXT("Skip returns to title music"), Menu->GetState() == UTBTitleMenu::EState::Menu && Audio->GetMusicState() == ETBMusicState::Title);
+	Menu->EnterStory();
+	Audio->Tick(0.f);
+	TestTrue(TEXT("Rewatch starts story music"), Menu->GetState() == UTBTitleMenu::EState::Story && Audio->GetMusicState() == ETBMusicState::Story);
+	Menu->SkipStory();
+	Audio->Tick(0.f);
+	return !HasAnyErrors();
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBAudioSelectedCatalogTest, "ToonStory.Audio.SelectedCatalog",
                                  EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
 bool FTBAudioSelectedCatalogTest::RunTest(const FString& Parameters)
 {
 	const auto* Settings = GetDefault<UTBAudioSettings>();
-	TestEqual(TEXT("Four music states registered"), Settings->Music.Num(), 4);
+	TestEqual(TEXT("Five music states registered"), Settings->Music.Num(), 5);
 	TestEqual(TEXT("All selected SE registered"), Settings->Sounds.Num(), int32(ETBSoundEvent::ChatMessage) + 1);
 	for (const auto& Pair : Settings->Music)
 	{
 		auto* Wave = Cast<USoundWave>(Pair.Value.Sound.LoadSynchronous());
 		if (TestNotNull(TEXT("Registered BGM loads"), Wave))
 		{
-			TestTrue(TEXT("BGM loops"), Wave->bLooping);
+			TestTrue(TEXT("Selected music supports looping"), bool(Wave->bLooping));
 			TestTrue(TEXT("BGM has samples"), Wave->Duration > 0);
 		}
 		TestFalse(TEXT("BGM is non-spatial"), Pair.Value.bSpatial);
@@ -226,6 +258,100 @@ bool FTBAudioPhaseTest::RunTest(const FString& Parameters)
 		}
 		TestEqual(TEXT("Unchanged phase remains stable"), Audio->GetMusicState(), Expected[Index]);
 		TestEqual(TEXT("Round changes preserve user preference"), Audio->GetMusicVolume(), .25f);
+	}
+	State->Phase = OriginalPhase;
+	State->Winner = OriginalWinner;
+	Audio->Tick(0.f);
+	return !HasAnyErrors();
+}
+
+struct FTBAudioSubsystemTestAccess
+{
+	static void CleanupWorld(UTBAudioSubsystem* Audio, UWorld* World) { Audio->OnWorldCleanup(World, false, false); }
+};
+
+// 結果の曲を残したままワールドが変わるとMusicStateがResultsのまま残る。それでも入室音は鳴ること。
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBAudioLobbyJoinAfterResultsTest, "ToonStory.Audio.LobbyJoinAfterResults",
+                                 EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+bool FTBAudioLobbyJoinAfterResultsTest::RunTest(const FString& Parameters)
+{
+	UWorld* World = FindAudioTestWorld();
+	if (!TestNotNull(TEXT("Run in a standalone stage with -game"), World)) return false;
+	auto* Audio = World->GetGameInstance()->GetSubsystem<UTBAudioSubsystem>();
+	auto* State = World->GetGameState<ATBGameState>();
+	if (!TestNotNull(TEXT("Audio subsystem"), Audio) || !TestNotNull(TEXT("Match state"), State)) return false;
+	if (!TestTrue(TEXT("A player is in the lobby"), State->PlayerArray.Num() > 0)) return false;
+	// 残す曲は再生中のコンポーネントが必要で、音の出力装置がないと作られない。
+	if (!GEngine->UseSound())
+	{
+		AddInfo(TEXT("Skipped: needs an audio device (run without -nosound)"));
+		return true;
+	}
+	FScopedEmptyAudio Empty(Audio);
+	auto MakeWave = []()
+	{
+		auto* Wave = NewObject<USoundWaveProcedural>();
+		Wave->NumChannels = 1;
+		Wave->SetSampleRate(22050);
+		TArray<uint8> Silence;
+		Silence.SetNumZeroed(4410);
+		Wave->QueueAudio(Silence.GetData(), Silence.Num());
+		return Wave;
+	};
+	auto* MusicWave = MakeWave();
+	auto* JoinWave = MakeWave();
+	auto* Settings = GetMutableDefault<UTBAudioSettings>();
+	Settings->Music.FindOrAdd(ETBMusicState::Results).Sound = MusicWave;
+	Settings->Sounds.FindOrAdd(ETBSoundEvent::LobbyJoin).Sound = JoinWave;
+	Audio->ReloadAudioSettings();
+	auto CountJoin = [&]()
+	{
+		int32 Count = 0;
+		for (TObjectIterator<UAudioComponent> It; It; ++It)
+		{
+			if (It->GetWorld() == World && It->IsRegistered() && It->GetSound() == JoinWave) ++Count;
+		}
+		return Count;
+	};
+	const ETBPhase OriginalPhase = State->Phase;
+	const ETBWinner OriginalWinner = State->Winner;
+	State->Winner = ETBWinner::None;
+	State->Phase = ETBPhase::Results;
+	Audio->Tick(0.f);
+
+	// 同じワールドでの再戦は鳴らさない。
+	int32 Before = CountJoin();
+	State->Phase = ETBPhase::Lobby;
+	Audio->Tick(0.f);
+	TestEqual(TEXT("Rematch in the same world plays no join cue"), CountJoin(), Before);
+
+	// 結果の曲を残したまま、別のワールドのロビーへ戻る。
+	State->Phase = ETBPhase::Results;
+	Audio->Tick(0.f);
+	FTBAudioSubsystemTestAccess::CleanupWorld(Audio, World);
+	if (TestEqual(TEXT("Results music is kept across the world change"), Audio->GetMusicState(), ETBMusicState::Results))
+	{
+		Before = CountJoin();
+		State->Phase = ETBPhase::Lobby;
+		Audio->Tick(0.f);
+		TestEqual(TEXT("Returning to the lobby plays the join cue"), CountJoin(), Before + 1);
+	}
+
+	// プレイヤーは最初のロビーのTickより後に同期される。人数0の間に入室音を使い切らないこと。
+	State->Phase = ETBPhase::Results;
+	Audio->Tick(0.f);
+	FTBAudioSubsystemTestAccess::CleanupWorld(Audio, World);
+	if (TestEqual(TEXT("Results music is kept again"), Audio->GetMusicState(), ETBMusicState::Results))
+	{
+		const auto Players = State->PlayerArray;
+		State->PlayerArray.Reset();
+		Before = CountJoin();
+		State->Phase = ETBPhase::Lobby;
+		Audio->Tick(0.f);
+		TestEqual(TEXT("An empty lobby plays no join cue"), CountJoin(), Before);
+		State->PlayerArray = Players;
+		Audio->Tick(0.f);
+		TestEqual(TEXT("Players arriving later play the join cue"), CountJoin(), Before + 1);
 	}
 	State->Phase = OriginalPhase;
 	State->Winner = OriginalWinner;
