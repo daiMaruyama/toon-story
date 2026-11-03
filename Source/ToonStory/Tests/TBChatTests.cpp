@@ -1,8 +1,15 @@
 #include "Misc/AutomationTest.h"
 #if WITH_DEV_AUTOMATION_TESTS
+#include "Character/TBNPCController.h"
 #include "Core/TBChat.h"
+#include "Core/TBController.h"
+#include "Core/TBGameMode.h"
+#include "Core/TBPlayerState.h"
 #include "Data/TBRuleData.h"
+#include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
+#include "Engine/World.h"
+#include "GameFramework/PlayerState.h"
 
 // 改行と制御文字は空白に、前後は詰める。1回の文字数で切り、絵文字の途中では切らない。
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBChatCleanTest, "ToonStory.Chat.Clean",
@@ -103,6 +110,46 @@ bool FTBChatNoticeTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Joined"), TB::Chat::NoticeText(ETBChatNotice::Joined, TEXT("A")), FString(TEXT("Aがあそびにきた！")));
 	TestEqual(TEXT("Left"), TB::Chat::NoticeText(ETBChatNotice::Left, TEXT("A")), FString(TEXT("Aがかえっていった")));
 	TestEqual(TEXT("Kicked"), TB::Chat::NoticeText(ETBChatNotice::Kicked, TEXT("A")), FString(TEXT("Aはホストにおうちへ帰された")));
+	return true;
+}
+
+// 抜けたお知らせは本物のプレイヤーだけ。NPCのコントローラーを壊しても（RemoveNPCsと同じ）出さない。
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBChatLeaveNoticeTest, "ToonStory.Chat.LeaveNotice",
+                                 EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+bool FTBChatLeaveNoticeTest::RunTest(const FString& Parameters)
+{
+	UWorld* World = nullptr;
+	for (const auto& Context : GEngine->GetWorldContexts())
+		if (Context.WorldType == EWorldType::Game) World = Context.World();
+	if (!World || World->GetNetMode() != NM_Standalone || !World->GetAuthGameMode<ATBGameMode>())
+	{
+		AddError(FString::Printf(TEXT("Needs a standalone lobby world (world=%s mode=%s)"), World ? *World->GetMapName() : TEXT("none"),
+		                         World && World->GetAuthGameMode() ? *World->GetAuthGameMode()->GetClass()->GetName() : TEXT("none")));
+		return false;
+	}
+	auto* Log = World->GetGameInstance()->GetSubsystem<UTBChatLog>();
+	if (!Log) return false;
+
+	// 本物が抜けたときは、残った人（このテストの本人）にお知らせが届く。ここが届かないと、下のNPCの確認が意味を持たない。
+	const int32 Before = Log->GetLines().Num();
+	auto* Real = World->SpawnActor<ATBController>();
+	if (!Real || !Real->PlayerState) return false;
+	Real->PlayerState->SetPlayerName(TEXT("Real"));
+	Real->Destroy();
+	TestEqual(TEXT("Real player leave is announced"), Log->GetLines().Num(), Before + 1);
+	if (Log->GetLines().Num() > Before)
+	{
+		TestEqual(TEXT("Real player leave text"), Log->GetLines().Last().Text, TB::Chat::NoticeText(ETBChatNotice::Left, TEXT("Real")));
+	}
+
+	const int32 BeforeBot = Log->GetLines().Num();
+	auto* Bot = World->SpawnActor<ATBNPCController>();
+	auto* Info = Bot ? Bot->GetPlayerState<ATBPlayerState>() : nullptr;
+	if (!Info) return false;
+	Info->SetIsABot(true);
+	Info->SetPlayerName(TEXT("NPC Human 1"));
+	Bot->Destroy();
+	TestEqual(TEXT("NPC leave is not announced"), Log->GetLines().Num(), BeforeBot);
 	return true;
 }
 #endif

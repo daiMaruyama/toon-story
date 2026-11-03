@@ -1226,7 +1226,9 @@ void ATBGameMode::Logout(AController* Exiting)
 	}
 	const auto* Leaving = Cast<ATBController>(Exiting);
 	const ETBChatNotice LeaveKind = Leaving && Leaving->bKickedByHost ? ETBChatNotice::Kicked : ETBChatNotice::Left;
-	const FString LeaverName = TB::Chat::DisplayName(Exiting->PlayerState);
+	// NPCはコントローラーを壊すとLogoutが呼ばれる。お知らせは本物のプレイヤーだけ。
+	const bool bBot = Exiting->PlayerState && Exiting->PlayerState->IsABot();
+	const FString LeaverName = bBot ? FString() : TB::Chat::DisplayName(Exiting->PlayerState);
 	TB::Chat::BroadcastNotice(GetWorld(), LeaveKind, LeaverName, Exiting);
 	auto* MatchInfo = TB::GS(GetWorld());
 	const bool WasPlaying = MatchInfo && MatchInfo->Phase == ETBPhase::Playing;
