@@ -166,8 +166,8 @@ void UTBAudioSubsystem::Tick(float DeltaTime)
 				if (LastLobbyCount >= 0 || bFirstLobbyTick)
 					PlaySoundEvent(LastLobbyCount > Count ? ETBSoundEvent::LobbyLeave : ETBSoundEvent::LobbyJoin);
 				LastLobbyCount = Count;
+				bFirstLobbyTick = false; // 人数0の間は最初の入室音を使い切らない。
 			}
-			bFirstLobbyTick = false;
 		}
 		else
 		{

@@ -91,7 +91,7 @@ private:
 	float HumanFootstepToyPitchMultiplier = .75f;
 	uint32 SettingsRevision = 0;
 	bool bInitialized = false, bSawPlaying = false, bResultCuePlayed = false;
-	// True until this world shows its first lobby tick. Independent of MusicState, which kept result music leaves set.
+	// このワールドで最初のロビーの人数（1以上）を処理するまでtrue。結果の曲を残すとMusicStateがResultsのままなので、MusicStateには頼らない。
 	bool bFirstLobbyTick = true;
 	TOptional<ETBSoundEvent> TravelSound;
 	TWeakObjectPtr<UWorld> TravelFromWorld;

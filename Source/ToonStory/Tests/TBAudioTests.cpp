@@ -270,7 +270,7 @@ struct FTBAudioSubsystemTestAccess
 	static void CleanupWorld(UTBAudioSubsystem* Audio, UWorld* World) { Audio->OnWorldCleanup(World, false, false); }
 };
 
-// Results music survives the world change, so MusicState stays Results in the lobby. The join cue must still play.
+// 結果の曲を残したままワールドが変わるとMusicStateがResultsのまま残る。それでも入室音は鳴ること。
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBAudioLobbyJoinAfterResultsTest, "ToonStory.Audio.LobbyJoinAfterResults",
                                  EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
 bool FTBAudioLobbyJoinAfterResultsTest::RunTest(const FString& Parameters)
@@ -281,7 +281,7 @@ bool FTBAudioLobbyJoinAfterResultsTest::RunTest(const FString& Parameters)
 	auto* State = World->GetGameState<ATBGameState>();
 	if (!TestNotNull(TEXT("Audio subsystem"), Audio) || !TestNotNull(TEXT("Match state"), State)) return false;
 	if (!TestTrue(TEXT("A player is in the lobby"), State->PlayerArray.Num() > 0)) return false;
-	// Kept music needs a playing component, which only exists with an audio device.
+	// 残す曲は再生中のコンポーネントが必要で、音の出力装置がないと作られない。
 	if (!GEngine->UseSound())
 	{
 		AddInfo(TEXT("Skipped: needs an audio device (run without -nosound)"));
@@ -319,13 +319,13 @@ bool FTBAudioLobbyJoinAfterResultsTest::RunTest(const FString& Parameters)
 	State->Phase = ETBPhase::Results;
 	Audio->Tick(0.f);
 
-	// A rematch inside the same world stays quiet.
+	// 同じワールドでの再戦は鳴らさない。
 	int32 Before = CountJoin();
 	State->Phase = ETBPhase::Lobby;
 	Audio->Tick(0.f);
 	TestEqual(TEXT("Rematch in the same world plays no join cue"), CountJoin(), Before);
 
-	// Back to the lobby in a new world with the results music kept.
+	// 結果の曲を残したまま、別のワールドのロビーへ戻る。
 	State->Phase = ETBPhase::Results;
 	Audio->Tick(0.f);
 	FTBAudioSubsystemTestAccess::CleanupWorld(Audio, World);
@@ -335,6 +335,23 @@ bool FTBAudioLobbyJoinAfterResultsTest::RunTest(const FString& Parameters)
 		State->Phase = ETBPhase::Lobby;
 		Audio->Tick(0.f);
 		TestEqual(TEXT("Returning to the lobby plays the join cue"), CountJoin(), Before + 1);
+	}
+
+	// プレイヤーは最初のロビーのTickより後に同期される。人数0の間に入室音を使い切らないこと。
+	State->Phase = ETBPhase::Results;
+	Audio->Tick(0.f);
+	FTBAudioSubsystemTestAccess::CleanupWorld(Audio, World);
+	if (TestEqual(TEXT("Results music is kept again"), Audio->GetMusicState(), ETBMusicState::Results))
+	{
+		const auto Players = State->PlayerArray;
+		State->PlayerArray.Reset();
+		Before = CountJoin();
+		State->Phase = ETBPhase::Lobby;
+		Audio->Tick(0.f);
+		TestEqual(TEXT("An empty lobby plays no join cue"), CountJoin(), Before);
+		State->PlayerArray = Players;
+		Audio->Tick(0.f);
+		TestEqual(TEXT("Players arriving later play the join cue"), CountJoin(), Before + 1);
 	}
 	State->Phase = OriginalPhase;
 	State->Winner = OriginalWinner;
