@@ -120,6 +120,7 @@ void UTBAudioSubsystem::EnsurePlaybackWorld(UWorld* World)
 		if (!KeepMusic) MusicState = ETBMusicState::None;
 		bSawPlaying = bResultCuePlayed = false;
 		LastLobbyCount = LastRemainingSecond = -1;
+		bFirstLobbyTick = true;
 		++SettingsRevision;
 	}
 }
@@ -162,12 +163,17 @@ void UTBAudioSubsystem::Tick(float DeltaTime)
 			const int32 Count = State->PlayerArray.Num();
 			if (Count > 0 && Count != LastLobbyCount)
 			{
-				if (LastLobbyCount >= 0 || MusicState == ETBMusicState::None)
+				if (LastLobbyCount >= 0 || bFirstLobbyTick)
 					PlaySoundEvent(LastLobbyCount > Count ? ETBSoundEvent::LobbyLeave : ETBSoundEvent::LobbyJoin);
 				LastLobbyCount = Count;
 			}
+			bFirstLobbyTick = false;
 		}
-		else LastLobbyCount = -1;
+		else
+		{
+			LastLobbyCount = -1;
+			if (Next != ETBMusicState::None) bFirstLobbyTick = false;
+		}
 		if (Next != ETBMusicState::Results)
 		{
 			bResultCuePlayed = false;

@@ -265,6 +265,83 @@ bool FTBAudioPhaseTest::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
+struct FTBAudioSubsystemTestAccess
+{
+	static void CleanupWorld(UTBAudioSubsystem* Audio, UWorld* World) { Audio->OnWorldCleanup(World, false, false); }
+};
+
+// Results music survives the world change, so MusicState stays Results in the lobby. The join cue must still play.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBAudioLobbyJoinAfterResultsTest, "ToonStory.Audio.LobbyJoinAfterResults",
+                                 EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+bool FTBAudioLobbyJoinAfterResultsTest::RunTest(const FString& Parameters)
+{
+	UWorld* World = FindAudioTestWorld();
+	if (!TestNotNull(TEXT("Run in a standalone stage with -game"), World)) return false;
+	auto* Audio = World->GetGameInstance()->GetSubsystem<UTBAudioSubsystem>();
+	auto* State = World->GetGameState<ATBGameState>();
+	if (!TestNotNull(TEXT("Audio subsystem"), Audio) || !TestNotNull(TEXT("Match state"), State)) return false;
+	if (!TestTrue(TEXT("A player is in the lobby"), State->PlayerArray.Num() > 0)) return false;
+	// Kept music needs a playing component, which only exists with an audio device.
+	if (!GEngine->UseSound())
+	{
+		AddInfo(TEXT("Skipped: needs an audio device (run without -nosound)"));
+		return true;
+	}
+	FScopedEmptyAudio Empty(Audio);
+	auto MakeWave = []()
+	{
+		auto* Wave = NewObject<USoundWaveProcedural>();
+		Wave->NumChannels = 1;
+		Wave->SetSampleRate(22050);
+		TArray<uint8> Silence;
+		Silence.SetNumZeroed(4410);
+		Wave->QueueAudio(Silence.GetData(), Silence.Num());
+		return Wave;
+	};
+	auto* MusicWave = MakeWave();
+	auto* JoinWave = MakeWave();
+	auto* Settings = GetMutableDefault<UTBAudioSettings>();
+	Settings->Music.FindOrAdd(ETBMusicState::Results).Sound = MusicWave;
+	Settings->Sounds.FindOrAdd(ETBSoundEvent::LobbyJoin).Sound = JoinWave;
+	Audio->ReloadAudioSettings();
+	auto CountJoin = [&]()
+	{
+		int32 Count = 0;
+		for (TObjectIterator<UAudioComponent> It; It; ++It)
+		{
+			if (It->GetWorld() == World && It->IsRegistered() && It->GetSound() == JoinWave) ++Count;
+		}
+		return Count;
+	};
+	const ETBPhase OriginalPhase = State->Phase;
+	const ETBWinner OriginalWinner = State->Winner;
+	State->Winner = ETBWinner::None;
+	State->Phase = ETBPhase::Results;
+	Audio->Tick(0.f);
+
+	// A rematch inside the same world stays quiet.
+	int32 Before = CountJoin();
+	State->Phase = ETBPhase::Lobby;
+	Audio->Tick(0.f);
+	TestEqual(TEXT("Rematch in the same world plays no join cue"), CountJoin(), Before);
+
+	// Back to the lobby in a new world with the results music kept.
+	State->Phase = ETBPhase::Results;
+	Audio->Tick(0.f);
+	FTBAudioSubsystemTestAccess::CleanupWorld(Audio, World);
+	if (TestEqual(TEXT("Results music is kept across the world change"), Audio->GetMusicState(), ETBMusicState::Results))
+	{
+		Before = CountJoin();
+		State->Phase = ETBPhase::Lobby;
+		Audio->Tick(0.f);
+		TestEqual(TEXT("Returning to the lobby plays the join cue"), CountJoin(), Before + 1);
+	}
+	State->Phase = OriginalPhase;
+	State->Winner = OriginalWinner;
+	Audio->Tick(0.f);
+	return !HasAnyErrors();
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBAudioAudienceTest, "ToonStory.Audio.AudienceIsolation",
                                  EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
 bool FTBAudioAudienceTest::RunTest(const FString& Parameters)

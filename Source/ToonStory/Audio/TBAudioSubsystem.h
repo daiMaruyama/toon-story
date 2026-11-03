@@ -7,6 +7,7 @@
 
 class UAudioComponent;
 class USceneComponent;
+struct FTBAudioSubsystemTestAccess;
 
 /** Local audio only. GameInstance owns preferences; playback belongs to the current world. */
 UCLASS()
@@ -59,6 +60,7 @@ public:
 	float GetVoiceVolume() const { return VoiceVolume; }
 
 private:
+	friend struct FTBAudioSubsystemTestAccess;
 	struct FPlayingSound
 	{
 		TWeakObjectPtr<UAudioComponent> Component;
@@ -89,6 +91,8 @@ private:
 	float HumanFootstepToyPitchMultiplier = .75f;
 	uint32 SettingsRevision = 0;
 	bool bInitialized = false, bSawPlaying = false, bResultCuePlayed = false;
+	// True until this world shows its first lobby tick. Independent of MusicState, which kept result music leaves set.
+	bool bFirstLobbyTick = true;
 	TOptional<ETBSoundEvent> TravelSound;
 	TWeakObjectPtr<UWorld> TravelFromWorld;
 	int32 LastLobbyCount = -1, LastRemainingSecond = -1;
