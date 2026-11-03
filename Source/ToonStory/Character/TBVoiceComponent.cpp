@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Mamodou. All Rights Reserved.
 
 #include "Character/TBVoiceComponent.h"
+#include "Character/TBCharacter.h"
 #include "Audio/TBPitchShift.h"
 #include "Audio/TBAudioSubsystem.h"
 #include "Core/TBGameHelpers.h"
@@ -8,6 +9,8 @@
 #include "Core/TBPlayerState.h"
 #include "Data/TBRuleData.h"
 #include "GamePlay/TBBox.h"
+#include "GamePlay/Items/TBWalkieTalkie.h"
+#include "Data/TBWalkieTalkieData.h"
 #include "Components/AudioComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -193,6 +196,29 @@ void UTBVoiceComponent::UpdateVoice()
 	Shape.LPFRadiusMax = Voice.BoxedDistance;
 	Shape.LPFFrequencyAtMin = Voice.BoxedMuffleFrequency;
 	Shape.LPFFrequencyAtMax = Voice.BoxedMuffleFrequency;
+	// 同じ話者の音声はエンジン上1系統なので、聞き手が受信機の範囲内なら受信機へ移す。
+	const APawn* ListenerPawn = Controller ? Controller->GetPawn() : nullptr;
+	if (ListenerPawn && TB::Playing(GetWorld()))
+	{
+		for (TActorIterator<ATBWalkieTalkie> It(GetWorld()); It; ++It)
+		{
+			const ATBWalkieTalkie* Sender = *It;
+			const ATBWalkieTalkie* Receiver = Sender->Partner;
+			if (Sender->Transmitter.Get() != Pawn || !IsValid(Receiver) || Receiver->Transmitter ||
+			    Receiver->Partner != Sender || !FMath::IsFinite(Receiver->Data().AudibleDistance) ||
+			    Receiver->Data().AudibleDistance <= 0.f ||
+			    FVector::DistSquared(ListenerPawn->GetActorLocation(), Receiver->GetActorLocation()) > FMath::Square(Receiver->Data().AudibleDistance)) continue;
+			SetComponentTickEnabled(false);
+			Settings.ComponentToAttachTo = Receiver->GetRootComponent();
+			Shape.bAttenuate = true;
+			Shape.bSpatialize = true;
+			Shape.FalloffDistance = Receiver->Data().AudibleDistance;
+			Shape.bAttenuateWithLPF = true;
+			Shape.LPFRadiusMax = Receiver->Data().AudibleDistance;
+			Shape.LPFFrequencyAtMin = Shape.LPFFrequencyAtMax = FMath::Clamp(Receiver->Data().FilterFrequency, 100.f, 20000.f);
+			break;
+		}
+	}
 	ApplyToTalkingAudio();
 }
 

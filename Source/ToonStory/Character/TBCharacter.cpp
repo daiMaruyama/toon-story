@@ -25,6 +25,7 @@
 #include "GamePlay/TBPickup.h"
 #include "GamePlay/Items/TBInteractable.h"
 #include "GamePlay/Items/TBInteractionTarget.h"
+#include "GamePlay/Items/TBWalkieTalkie.h"
 #include "GamePlay/TBRuleMath.h"
 #include "Data/TBCharacterData.h"
 #include "Data/TBRuleData.h"
@@ -813,6 +814,8 @@ void ATBCharacter::Tick(float DeltaSeconds)
 
 void ATBCharacter::ClearHeldInteraction()
 {
+	if (HasAuthority())
+		for (TActorIterator<ATBWalkieTalkie> It(GetWorld()); It; ++It) It->StopTransmitting(this);
 	if (HasAuthority() && CarriedDummy && StoreStarted >= 0)
 	{
 		UTBAudioEvents::Emit(this, ETBSoundEvent::StoreCancel, TBPS(), FVector::ZeroVector);
