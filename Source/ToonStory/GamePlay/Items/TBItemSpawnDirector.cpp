@@ -1,6 +1,7 @@
 #include "TBItemSpawnDirector.h"
 #include "TBItemSpawnPoint.h"
 #include "TBItemBase.h"
+#include "TBWalkieTalkie.h"
 #include "Data/TBRuleData.h"
 #include "Core/TBGameState.h"
 #include "GamePlay/TBLightSwitch.h"
@@ -146,11 +147,12 @@ void UTBItemSpawnDirector::StartRound()
 	for(TActorIterator<ATBItemSpawnPoint> It(GetWorld());It;++It) if(CanSpawnAt(**It,Rules)) Points.Add(*It);
 	FRandomStream Random(FMath::Rand());
 	for(int32 Index=Points.Num()-1;Index>0;--Index) Points.Swap(Index,Random.RandRange(0,Index));
+	TSet<const ATBItemSpawnPoint*> UsedPoints;
 	for(const auto* Point:Points)
 	{
 		if(!IsSameRound()) break;
 		if(GetSpawnedCount()>=FMath::Clamp(Rules.SpawnCount,0,100)) break;
-		if(!IsValid(Point) || !CanSpawnAt(*Point,Rules)) continue;
+		if(!IsValid(Point) || UsedPoints.Contains(Point) || !CanSpawnAt(*Point,Rules)) continue;
 		TArray<const FTBItemSpawnEntry*> Candidates;
 		for(const auto& Entry:Rules.Entries)
 		{
@@ -159,6 +161,7 @@ void UTBItemSpawnDirector::StartRound()
 			   !FMath::IsFinite(Entry.Weight) || Entry.Weight<=0 || !Class->GetDefaultObject<ATBItemBase>()->GetIsReplicated() ||
 			   !Entry.FindPlacement(Point->PlacementType)) continue;
 			if(Class->IsChildOf(ATBLightSwitch::StaticClass()) && (!IsValid(Point->Room) || Point->Room->IsActorBeingDestroyed() || Point->Room->GetWorld()!=GetWorld())) continue;
+			if(Class->IsChildOf(ATBWalkieTalkie::StaticClass()) && GetSpawnedCount()+2>FMath::Clamp(Rules.SpawnCount,0,100)) continue;
 			Candidates.Add(&Entry);
 		}
 		while(!Candidates.IsEmpty())
@@ -173,7 +176,27 @@ void UTBItemSpawnDirector::StartRound()
 				Roll-=FMath::Min(1000.f,Candidates[Index]->Weight);
 				if(Roll<0) { Selected=Index; break; }
 			}
-			if(auto* Item=TrySpawn(*Point,*Candidates[Selected],Rules)) { SpawnedItems.Add(Item); break; }
+			const FTBItemSpawnEntry& Entry = *Candidates[Selected];
+			if(auto* Item=TrySpawn(*Point,Entry,Rules))
+			{
+				SpawnedItems.Add(Item);
+				if (auto* First = Cast<ATBWalkieTalkie>(Item))
+				{
+					bool bPaired = false;
+					for (const auto* OtherPoint : Points)
+					{
+						if (!IsSameRound() || OtherPoint == Point || UsedPoints.Contains(OtherPoint) || !IsValid(OtherPoint) || !CanSpawnAt(*OtherPoint, Rules)) continue;
+						if (auto* Second = Cast<ATBWalkieTalkie>(TrySpawn(*OtherPoint, Entry, Rules)))
+						{
+							if (First->PairWith(Second)) { SpawnedItems.Add(Second); UsedPoints.Add(OtherPoint); bPaired = true; break; }
+							Second->Destroy();
+						}
+					}
+					if (!bPaired) { SpawnedItems.Pop(); First->Destroy(); Candidates.RemoveAt(Selected); continue; }
+				}
+				UsedPoints.Add(Point);
+				break;
+			}
 			Candidates.RemoveAt(Selected);
 		}
 	}
