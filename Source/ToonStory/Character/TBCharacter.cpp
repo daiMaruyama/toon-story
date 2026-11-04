@@ -530,6 +530,14 @@ void ATBCharacter::ApplyState()
 			TInlineComponentArray<UPrimitiveComponent*> Parts(Assembly);
 			for (auto* Part : Parts)
 			{
+				// MetaHuman's Hair component inherits the face-only bounds by default.
+				// Use its own groom bounds so hair outside the face is not culled at view edges.
+				if (Part->GetFName() == TEXT("Hair"))
+				{
+					Part->bUseAttachParentBound = false;
+					Part->SetBoundsScale(1.2f);
+					Part->UpdateBounds();
+				}
 				auto* Skinned = Cast<USkeletalMeshComponent>(Part);
 				if (Skinned && Skinned->GetSkeletalMeshAsset() && LoadedChildMesh && Skinned->GetName().Equals(TEXT("Body"), ESearchCase::IgnoreCase))
 				{
