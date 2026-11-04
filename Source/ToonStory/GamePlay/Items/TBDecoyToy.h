@@ -24,6 +24,8 @@ public:
 	TSubclassOf<AActor> VisualClass;
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="ニセおもちゃ")
 	bool bWalking = false;
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="ニセおもちゃ")
+	bool bGrounded = false;
 	const UTBDecoyToyData& Data() const;
 protected:
 	virtual bool CanPerformAction_Implementation(const FTBInteractionContext& Context) const override;
@@ -36,4 +38,5 @@ private:
 	FVector PreviousLocation = FVector::ZeroVector;
 	float StepDistance = 0.f;
 	bool bHasSample = false;
+	float VerticalSpeed = 0.f;
 };

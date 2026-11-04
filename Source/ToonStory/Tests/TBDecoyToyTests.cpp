@@ -59,6 +59,39 @@ bool FTBDecoyToyTest::RunTest(const FString&)
 		TestTrue(TEXT("Wall reflects horizontal direction"),Reflected.X < -.5 && Reflected.Y > .5);
 		Wall->Destroy();
 	}
+	// 床、小さな段差、崖を独立したテスト空間で確認する。
+	auto SpawnBox=[&](const FVector& Center,const FVector& Extent)
+	{
+		auto* Actor=World->SpawnActor<AActor>(Center,FRotator::ZeroRotator,Params);
+		if (!Actor) return static_cast<AActor*>(nullptr);
+		auto* Box=NewObject<UBoxComponent>(Actor); Actor->SetRootComponent(Box); Box->SetBoxExtent(Extent);
+		Box->SetCollisionEnabled(ECollisionEnabled::QueryOnly); Box->SetCollisionObjectType(ECC_WorldStatic);
+		Box->SetCollisionResponseToAllChannels(ECR_Block); Box->RegisterComponent(); Actor->SetActorLocation(Center);
+		return Actor;
+	};
+	const FVector Base(10000,10000,10000);
+	auto* Floor=SpawnBox(Base+FVector(0,0,-10),FVector(100,100,10));
+	auto* Carpet=SpawnBox(Base+FVector(40,0,2),FVector(20,40,2));
+	if (TestNotNull(TEXT("Floor fixture"),Floor) && TestNotNull(TEXT("Carpet fixture"),Carpet))
+	{
+		Decoy->bWalking=false; Decoy->SetActorLocation(Base+FVector(0,0,.5)); Decoy->SetActorRotation(FRotator::ZeroRotator);
+		Decoy->Tick(.1f);
+		TestTrue(TEXT("Settles onto floor"),Decoy->bGrounded);
+		Decoy->bWalking=true;
+		for (int32 I=0;I<10;++I) Decoy->Tick(.1f);
+		TestTrue(TEXT("Walks onto small step"),Decoy->GetActorLocation().X>Base.X+25 && Decoy->GetActorLocation().Z>Base.Z+3);
+		TestTrue(TEXT("Stays grounded on step"),Decoy->bGrounded);
+		// 空中から開始しても停止中のまま重力が働き、床で止まる。
+		Decoy->bWalking=false; Decoy->bGrounded=false; Decoy->SetActorLocation(Base+FVector(-50,0,80));
+		for (int32 I=0;I<12;++I) Decoy->Tick(.1f);
+		TestTrue(TEXT("Stationary airborne decoy lands"),Decoy->bGrounded && FMath::Abs(Decoy->GetActorLocation().Z-Base.Z)<2);
+		// 床の外に出ると高さを維持せず落下する。
+		Decoy->SetActorLocation(Base+FVector(99,70,.5)); Decoy->SetActorRotation(FRotator::ZeroRotator); Decoy->bWalking=true;
+		for (int32 I=0;I<8;++I) Decoy->Tick(.1f);
+		TestTrue(TEXT("Walks off ledge and falls"),Decoy->GetActorLocation().Z<Base.Z-10 && !Decoy->bGrounded);
+	}
+	if (Floor) Floor->Destroy();
+	if (Carpet) Carpet->Destroy();
 	return true;
 }
 #endif
