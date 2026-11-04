@@ -25,6 +25,7 @@
 #include "EnhancedInputComponent.h"
 #include "InputAction.h"
 #include "AIController.h"
+#include "Data/TBDataSettings.h"
 #include "Engine/Engine.h"
 #include "Engine/SkeletalMesh.h"
 #include "Engine/World.h"
@@ -843,4 +844,84 @@ bool FTBEmoteTest::RunTest(const FString&)
 	LocalPC->ToggleLeaveMenu();
 	return !HasAnyErrors();
 }
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBRetargetedCarryTest, "ToonStory.NormalAnimation.RetargetedCarry",
+    EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+bool FTBRetargetedCarryTest::RunTest(const FString&)
+{
+    auto* World = AnimationTestWorld();
+    if (!TestNotNull(TEXT("Standalone world"), World)) return false;
+    FActorSpawnParameters Spawn; Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+    auto* Human = World->SpawnActor<ATBCharacter>(FVector(-12000, 0, 2000), FRotator::ZeroRotator, Spawn);
+    auto* Info = World->SpawnActor<ATBPlayerState>();
+    auto* Toy = World->SpawnActor<ATBDummyToy>();
+    ON_SCOPE_EXIT { Human->Destroy(); Info->Destroy(); Toy->Destroy(); };
+    Human->SetActorTickEnabled(false); Human->SetActorEnableCollision(false);
+    Human->GetCharacterMovement()->SetComponentTickEnabled(false);
+    Human->SetPlayerState(Info); Info->Team = ETBTeam::Human;
+    Toy->SetActorTickEnabled(false); Toy->SetActorEnableCollision(false);
+    UClass* Army = LoadClass<AActor>(nullptr, TEXT("/Game/Characters/Toys/BP_ArmyMan_StarterPack.BP_ArmyMan_StarterPack_C"));
+    if (!TestNotNull(TEXT("Army man visual"), Army)) return false;
+    for (const auto& Look : GetDefault<UTBDataSettings>()->HumanAppearances)
+    {
+        Info->HumanAppearance = Look; Human->ApplyState();
+        auto* Assembly = Human->HumanVisual->GetChildActor();
+        if (!TestNotNull(TEXT("Human assembly"), Assembly)) return false;
+        USkeletalMeshComponent* Body = nullptr;
+        for (auto* Part : TInlineComponentArray<USkeletalMeshComponent*>(Assembly))
+            if (Cast<UTBHumanBodyPose>(Part->GetAnimInstance())) Body = Part;
+        if (!TestNotNull(TEXT("Retargeted body"), Body)) return false;
+        auto* Driver = Human->GetMesh();
+        Driver->PlayAnimation(LoadObject<UAnimSequence>(nullptr, TEXT("/Game/Characters/ChildAnimation/Child_MM_Idle")), false);
+        Driver->GetSingleNodeInstance()->SetPosition(0, false);
+        Driver->GetSingleNodeInstance()->SetPlaying(false);
+        auto Advance = [&]() { for (int32 Frame=0; Frame<70; ++Frame) { PoseFrames(Driver); PoseFrames(Body); } };
+        const auto& Ref = Body->GetSkeletalMeshAsset()->GetRefSkeleton();
+        auto Rest = [&Ref](FName Name)
+        {
+            FTransform Result = FTransform::Identity;
+            for (int32 Bone=Ref.FindBoneIndex(Name); Bone!=INDEX_NONE; Bone=Ref.GetParentIndex(Bone)) Result *= Ref.GetRefBonePose()[Bone];
+            return Result;
+        };
+        for (int32 LOD : {1, 4})
+        {
+            Body->SetForcedLOD(LOD);
+            Human->CarriedDummy = nullptr; Advance();
+            const FHands Idle = Hands(Body);
+            for (UClass* Visual : {Army, ATBToyCarVisual::StaticClass()})
+            {
+                Toy->Visual->SetChildActorClass(Visual);
+                TBToyPresentation::Initialize(Toy->Visual->GetChildActor());
+                Human->CarriedDummy = Toy; Advance();
+                FVector Contact[2];
+                if (!TestTrue(TEXT("Carry contacts exist"), TBToyPresentation::CarryContacts(Human, Contact[0], Contact[1]))) return false;
+                for (int32 Side=0; Side<2; ++Side)
+                {
+                    const FName Hand(Side == 0 ? TEXT("hand_l") : TEXT("hand_r"));
+                    const FName Middle(Side == 0 ? TEXT("middle_01_l") : TEXT("middle_01_r"));
+                    const FVector Offset = Rest(Hand).InverseTransformPosition(Rest(Middle).GetLocation());
+                    const FVector Palm = Body->GetSocketTransform(Hand).TransformPosition(Offset);
+                    const FName IndexKnuckle(Side == 0 ? TEXT("index_01_l") : TEXT("index_01_r"));
+                    const FName PinkyKnuckle(Side == 0 ? TEXT("pinky_01_l") : TEXT("pinky_01_r"));
+                    const FVector ThumbSideLocal = Rest(Hand).InverseTransformVector(Rest(IndexKnuckle).GetLocation() - Rest(PinkyKnuckle).GetLocation());
+                    const auto HandWorld = Body->GetSocketTransform(Hand);
+                    TestTrue(TEXT("Fingers point forward, not upward"), FVector::DotProduct(HandWorld.TransformVectorNoScale(Offset).GetSafeNormal(), Human->GetActorForwardVector()) > .95);
+                    TestTrue(TEXT("Thumb side is above the little finger on both hands"), FVector::DotProduct(HandWorld.TransformVectorNoScale(ThumbSideLocal).GetSafeNormal(), FVector::UpVector) > .8);
+                    const FVector Outward = Human->GetActorRightVector() * (Side == 0 ? -1. : 1.);
+                    const double Error = FVector::Distance(Palm, Contact[Side] + Outward * 2.5);
+                    TestTrue(*FString::Printf(TEXT("%s LOD%d %s hand%d contact error %.2fcm"), *Assembly->GetName(), LOD, *Visual->GetName(), Side, Error), Error < 2.);
+                    for (const TCHAR* Finger : {TEXT("thumb"), TEXT("index"), TEXT("middle"), TEXT("ring"), TEXT("pinky")})
+                    {
+                        const FName Tip(*FString::Printf(TEXT("%s_03_%s"), Finger, Side == 0 ? TEXT("l") : TEXT("r")));
+                        const double Clearance = FVector::DotProduct(Body->GetSocketLocation(Tip) - Contact[Side], Outward);
+                        TestTrue(*FString::Printf(TEXT("%s LOD%d %s %s stays outside toy: %.2fcm"), *Assembly->GetName(), LOD, *Visual->GetName(), *Tip.ToString(), Clearance), Clearance > 1.0);
+                    }
+                }
+                Human->CarriedDummy = nullptr; Advance();
+                TestTrue(TEXT("Release returns retargeted arms to idle"), PoseDistance(Hands(Body), Idle) < .1);
+            }
+        }
+    }
+    return !HasAnyErrors();
+}
+
 #endif

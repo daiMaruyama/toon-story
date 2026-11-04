@@ -1,5 +1,8 @@
 #include "TBHumanPose.h"
 #include "TBCharacter.h"
+#include "TBToyPresentation.h"
+#include "GamePlay/TBDummyToy.h"
+#include "TwoBoneIK.h"
 #include "Animation/AnimInstanceProxy.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/SkeletalMesh.h"
@@ -27,6 +30,20 @@ class FBodyPoseProxy : public FAnimInstanceProxy
 	FVector Up, Forward;
 	bool bPreserveLook = false;
 	FVector HipOffset = FVector::ZeroVector;
+	int32 ArmBones[2][3] = {{INDEX_NONE, INDEX_NONE, INDEX_NONE}, {INDEX_NONE, INDEX_NONE, INDEX_NONE}};
+	FVector PalmOffset[2], GripContact[2], ElbowDirection[2];
+	FQuat PalmBasis[2], HandRotation[2];
+	TArray<TPair<int32, FQuat>> FingerRest[2];
+	bool bHasHandBasis = false, bHasGripTargets = false, bHadLiveGrip = false;
+	float GripWeight = 0;
+	TWeakObjectPtr<AActor> GripObject;
+
+	void ResetGrip()
+	{
+		GripWeight = 0;
+		bHasGripTargets = bHadLiveGrip = false;
+		GripObject.Reset();
+	}
 
 public:
 	using FAnimInstanceProxy::FAnimInstanceProxy;
@@ -41,7 +58,7 @@ public:
 		auto* Target = Instance->GetSkelMeshComponent()->GetSkeletalMeshAsset();
 		Rotations.Reset();
 		HipOffset = FVector::ZeroVector;
-		if (!Source || !Target) return;
+		if (!Source || !Target) { ResetGrip(); return; }
 		if (SourceMesh.Get() != Source || TargetMesh.Get() != Target)
 		{
 			SourceMesh = Source;
@@ -55,6 +72,48 @@ public:
 			LowerSpine = Target->GetRefSkeleton().FindBoneIndex(TEXT("spine_01"));
 			Neck = Target->GetRefSkeleton().FindBoneIndex(TEXT("neck_01"));
 			Head = Target->GetRefSkeleton().FindBoneIndex(TEXT("head"));
+			ResetGrip();
+			bHasHandBasis = true;
+			const auto& Ref = Target->GetRefSkeleton();
+			for (int32 Side = 0; Side < 2; ++Side)
+			{
+				const FString Suffix = Side == 0 ? TEXT("l") : TEXT("r");
+				ArmBones[Side][0] = Ref.FindBoneIndex(*("upperarm_" + Suffix));
+				ArmBones[Side][1] = Ref.FindBoneIndex(*("lowerarm_" + Suffix));
+				ArmBones[Side][2] = Ref.FindBoneIndex(*("hand_" + Suffix));
+				const int32 Middle = Ref.FindBoneIndex(*("middle_01_" + Suffix));
+				const int32 Index = Ref.FindBoneIndex(*("index_01_" + Suffix));
+				const int32 Pinky = Ref.FindBoneIndex(*("pinky_01_" + Suffix));
+				if (ArmBones[Side][0] == INDEX_NONE || ArmBones[Side][1] == INDEX_NONE || ArmBones[Side][2] == INDEX_NONE ||
+				    Middle == INDEX_NONE || Index == INDEX_NONE || Pinky == INDEX_NONE)
+				{ bHasHandBasis = false; continue; }
+				const auto& Hand = TargetRest[ArmBones[Side][2]];
+				PalmOffset[Side] = Hand.InverseTransformPosition(TargetRest[Middle].GetLocation());
+				const FVector Across = Hand.InverseTransformVector(TargetRest[Index].GetLocation() - TargetRest[Pinky].GetLocation());
+				PalmBasis[Side] = FRotationMatrix::MakeFromXY(PalmOffset[Side], Across).ToQuat();
+				FingerRest[Side].Reset();
+				// The MetaHuman reference fingers are already curled. Flatten their flexion
+				// into the palm plane, preserving the mesh's own finger spread and thumb side.
+				const FVector PalmNormal = Hand.TransformVectorNoScale(PalmBasis[Side].GetAxisZ()).GetSafeNormal();
+				TArray<FTransform> OpenHand = TargetRest;
+				for (int32 Bone = 0; Bone < Ref.GetNum(); ++Bone)
+				{
+					const int32 Parent = Ref.GetParentIndex(Bone);
+					int32 Ancestor = Parent;
+					while (Ancestor != INDEX_NONE && Ancestor != ArmBones[Side][2]) Ancestor = Ref.GetParentIndex(Ancestor);
+					if (Ancestor != ArmBones[Side][2]) continue;
+					OpenHand[Bone] = Ref.GetRefBonePose()[Bone] * OpenHand[Parent];
+					const FString Name = Ref.GetBoneName(Bone).ToString();
+					if (Name.Contains(TEXT("_01_")) || Name.Contains(TEXT("_02_")) || Name.Contains(TEXT("_03_")))
+					{
+						const FVector Direction = OpenHand[Bone].GetRotation().GetAxisX();
+						const FVector FlatDirection = FVector::VectorPlaneProject(Direction, PalmNormal).GetSafeNormal();
+						if (!FlatDirection.IsNearlyZero())
+							OpenHand[Bone].SetRotation((FQuat::FindBetweenNormals(Direction, FlatDirection) * OpenHand[Bone].GetRotation()).GetNormalized());
+					}
+					FingerRest[Side].Emplace(Bone, OpenHand[Bone].GetRelativeTransform(OpenHand[Parent]).GetRotation());
+				}
+			}
 		}
 		FTBEmoteSample Gesture;
 		const bool Standing = Pawn->GetCharacterMovement()->IsMovingOnGround() && !Pawn->bIsCrouched &&
@@ -64,6 +123,30 @@ public:
 		const auto& Transform = Instance->GetSkelMeshComponent()->GetComponentTransform();
 		Forward = Transform.InverseTransformVectorNoScale(Pawn->GetActorForwardVector());
 		Up = Transform.InverseTransformVectorNoScale(FVector::UpVector);
+		// Source rotations alone cannot preserve contact after changing arm lengths and hand proportions.
+		AActor* Carried = Pawn->CarriedToy ? static_cast<AActor*>(Pawn->CarriedToy.Get()) : Pawn->CarriedDummy.Get();
+		FVector LiveContact[2];
+		const bool LiveGrip = IsValid(Carried) && bHasHandBasis && TBToyPresentation::CarryContacts(Pawn, LiveContact[0], LiveContact[1]);
+		if (Carried && !LiveGrip) ResetGrip();
+		if (LiveGrip)
+		{
+			if (!bHadLiveGrip || GripObject.Get() != Carried) ResetGrip();
+			const FVector Right = Transform.InverseTransformVectorNoScale(Pawn->GetActorRightVector());
+			const double Scale = FMath::Max(.01, Transform.GetScale3D().GetAbsMax());
+			for (int32 Side = 0; Side < 2; ++Side)
+			{
+				GripContact[Side] = Transform.InverseTransformPosition(LiveContact[Side] + Pawn->GetActorRightVector() * (Side == 0 ? -2.5 : 2.5));
+				// Point fingers forward and the index/thumb side upward. Swapping these axes
+				// rolls both wrists upside down even when the palm contact positions are correct.
+				HandRotation[Side] = FRotationMatrix::MakeFromXY(Forward, Up).ToQuat() * PalmBasis[Side].Inverse();
+				ElbowDirection[Side] = (Right * (Side == 0 ? -35. : 35.) - Forward * 5. - Up * 25.) / Scale;
+			}
+			GripObject = Carried;
+			bHasGripTargets = true;
+		}
+		bHadLiveGrip = LiveGrip;
+		GripWeight = FMath::FInterpTo(GripWeight, LiveGrip ? 1.f : 0.f, Delta, 12.f);
+		if (!LiveGrip && GripWeight < .001f) ResetGrip();
 		FTBHumanLookSnapshot Look;
 		bPreserveLook = Pawn->GetHumanLook(Look);
 		const auto& Pose = Driver->GetComponentSpaceTransforms();
@@ -136,6 +219,36 @@ public:
 						auto& HeadLocal = Output.Pose[Skull];
 						HeadLocal.SetRotation((NeckRotation.Inverse() * Lift.Inverse() * NeckRotation * HeadLocal.GetRotation()).GetNormalized());
 					}
+				}
+			}
+		}
+		if (bHasGripTargets && GripWeight > .001f)
+		{
+			for (int32 Side = 0; Side < 2; ++Side)
+			{
+				const auto Upper = Bones.MakeCompactPoseIndex(FMeshPoseBoneIndex(ArmBones[Side][0]));
+				const auto Lower = Bones.MakeCompactPoseIndex(FMeshPoseBoneIndex(ArmBones[Side][1]));
+				const auto Hand = Bones.MakeCompactPoseIndex(FMeshPoseBoneIndex(ArmBones[Side][2]));
+				if (Upper == INDEX_NONE || Lower == INDEX_NONE || Hand == INDEX_NONE) continue;
+				const auto Parent = Bones.GetParentBoneIndex(Upper);
+				if (Parent == INDEX_NONE) continue;
+				FCSPose<FCompactPose> Pose;
+				Pose.InitPose(Output.Pose);
+				FTransform U = Pose.GetComponentSpaceTransform(Upper), L = Pose.GetComponentSpaceTransform(Lower), H = Pose.GetComponentSpaceTransform(Hand);
+				const FVector Target = GripContact[Side] - HandRotation[Side].RotateVector(PalmOffset[Side]);
+				AnimationCore::SolveTwoBoneIK(U, L, H, U.GetLocation() + ElbowDirection[Side],
+				    FMath::Lerp(H.GetLocation(), Target, double(GripWeight)), false, 1., 1.);
+				H.SetRotation(FQuat::Slerp(H.GetRotation(), HandRotation[Side], GripWeight).GetNormalized());
+				Output.Pose[Upper] = U.GetRelativeTransform(Pose.GetComponentSpaceTransform(Parent));
+				Output.Pose[Lower] = L.GetRelativeTransform(U);
+				Output.Pose[Hand] = H.GetRelativeTransform(L);
+				// Finger curls copied from the original child's smaller hand are not compatible
+				// with this mesh. Blend to this hand's own relaxed reference fingers while holding.
+				for (const auto& Finger : FingerRest[Side])
+				{
+					const auto Index = Bones.MakeCompactPoseIndex(FMeshPoseBoneIndex(Finger.Key));
+					if (Index != INDEX_NONE)
+						Output.Pose[Index].SetRotation(FQuat::Slerp(Output.Pose[Index].GetRotation(), Finger.Value, GripWeight).GetNormalized());
 				}
 			}
 		}
