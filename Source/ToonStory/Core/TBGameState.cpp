@@ -39,7 +39,7 @@ void ATBGameState::OnPropHit(UPrimitiveComponent* Part, AActor* Other, UPrimitiv
 	const double Height = Part->GetCenterOfMass().Z;
 	const double Fall = *Peak - Height;
 	*Peak = Height;
-	if (const auto Sound = UTBAudioEvents::PropDropSound(Fall))
+	if (const auto Sound = UTBAudioEvents::PropDropSound(Fall, UTBAudioEvents::IsGlassProp(Cast<UStaticMeshComponent>(Part))))
 		UTBAudioEvents::Emit(this, *Sound, nullptr, Hit.ImpactPoint);
 }
 

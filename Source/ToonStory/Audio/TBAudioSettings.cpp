@@ -7,7 +7,7 @@ UTBAudioSettings::UTBAudioSettings()
 		auto& Clip = Music.Add(State);
 		Clip.bSpatial = false;
 	}
-	for (uint8 Index = 0; Index <= uint8(ETBSoundEvent::PropDropHeavy); ++Index)
+	for (uint8 Index = 0; Index <= uint8(ETBSoundEvent::GlassDropHeavy); ++Index)
 	{
 		const auto Event = ETBSoundEvent(Index);
 		auto& Clip = Sounds.Add(Event);
@@ -19,7 +19,8 @@ UTBAudioSettings::UTBAudioSettings()
 		                Event == ETBSoundEvent::HumanFootstep || Event == ETBSoundEvent::HumanLand ||
 		                Event == ETBSoundEvent::CaptureHard || Event == ETBSoundEvent::ToyTaunt ||
 		                Event == ETBSoundEvent::ToyPush || Event == ETBSoundEvent::PropDropLight ||
-		                Event == ETBSoundEvent::PropDropMedium || Event == ETBSoundEvent::PropDropHeavy;
+		                Event == ETBSoundEvent::PropDropMedium || Event == ETBSoundEvent::PropDropHeavy ||
+		                Event == ETBSoundEvent::GlassDropLight || Event == ETBSoundEvent::GlassDropMedium || Event == ETBSoundEvent::GlassDropHeavy;
 		if (Event == ETBSoundEvent::Footstep || Event == ETBSoundEvent::HumanFootstep) Clip.MaxInstances = 16;
 		if (Event == ETBSoundEvent::HumanFootstep) Clip.MaxDistance = 2400.f;
 	}

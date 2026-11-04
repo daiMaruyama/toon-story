@@ -18,7 +18,7 @@ enum class ETBSoundEvent : uint8
 	TeamNotice, CaptureHard, CarryLift, CarryDrop, HumanLand, StoreCancel, RescueCancel,
 	TVButton, TVChannel, TVPowerOn, TVPowerOff, TVGlitch, TimeTick, JingleAlternate,
 	BatteryLast, BoxedTransition, CollectLoop, TVStatic, ToyTaunt, ChatMessage,
-	ToyPush, PropDropLight, PropDropMedium, PropDropHeavy
+	ToyPush, PropDropLight, PropDropMedium, PropDropHeavy, GlassDropLight, GlassDropMedium, GlassDropHeavy
 };
 
 UENUM(BlueprintType)

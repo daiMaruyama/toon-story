@@ -17,6 +17,8 @@
 #include "UI/TBTitleMenu.h"
 #include "Components/AudioComponent.h"
 #include "Components/SceneComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "Engine/StaticMesh.h"
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
@@ -125,11 +127,23 @@ bool FTBAudioSelectedCatalogTest::RunTest(const FString& Parameters)
 {
 	const auto* Settings = GetDefault<UTBAudioSettings>();
 	TestEqual(TEXT("Five music states registered"), Settings->Music.Num(), 5);
-	TestEqual(TEXT("All selected SE registered"), Settings->Sounds.Num(), int32(ETBSoundEvent::PropDropHeavy) + 1);
+	TestEqual(TEXT("All selected SE registered"), Settings->Sounds.Num(), int32(ETBSoundEvent::GlassDropHeavy) + 1);
 	TestFalse(TEXT("Resting contact stays silent"), UTBAudioEvents::PropDropSound(5.99).IsSet());
 	TestTrue(TEXT("Six centimeter fall has a light impact"), UTBAudioEvents::PropDropSound(6.) == ETBSoundEvent::PropDropLight);
 	TestTrue(TEXT("Thirty centimeter fall has a medium impact"), UTBAudioEvents::PropDropSound(30.) == ETBSoundEvent::PropDropMedium);
 	TestTrue(TEXT("Ninety centimeter fall has a heavy impact"), UTBAudioEvents::PropDropSound(90.) == ETBSoundEvent::PropDropHeavy);
+	TestFalse(TEXT("Glass resting contact stays silent"), UTBAudioEvents::PropDropSound(5.99, true).IsSet());
+	TestTrue(TEXT("Low glass drop"), UTBAudioEvents::PropDropSound(6., true) == ETBSoundEvent::GlassDropLight);
+	TestTrue(TEXT("Medium glass drop"), UTBAudioEvents::PropDropSound(30., true) == ETBSoundEvent::GlassDropMedium);
+	TestTrue(TEXT("High glass drop"), UTBAudioEvents::PropDropSound(90., true) == ETBSoundEvent::GlassDropHeavy);
+	auto* Probe = NewObject<UStaticMeshComponent>();
+	Probe->SetStaticMesh(LoadObject<UStaticMesh>(nullptr, TEXT("/Game/PushableProps/SM_Glass_Cup_A_Physics.SM_Glass_Cup_A_Physics")));
+	TestNotNull(TEXT("Glass prop mesh loads"), Probe->GetStaticMesh().Get());
+	TestTrue(TEXT("Existing glass cup uses shatter sound"), UTBAudioEvents::IsGlassProp(Probe));
+	Probe->SetStaticMesh(LoadObject<UStaticMesh>(nullptr, TEXT("/Game/PushableProps/SM_Radio_Physics.SM_Radio_Physics")));
+	TestFalse(TEXT("Radio retains its original impact sound"), UTBAudioEvents::IsGlassProp(Probe));
+	Probe->ComponentTags.Add(TEXT("TBGlass"));
+	TestTrue(TEXT("Other glass props can explicitly opt in"), UTBAudioEvents::IsGlassProp(Probe));
 	for (const auto& Pair : Settings->Music)
 	{
 		auto* Wave = Cast<USoundWave>(Pair.Value.Sound.LoadSynchronous());
@@ -416,7 +430,8 @@ bool FTBAudioAudienceTest::RunTest(const FString& Parameters)
 	}
 	TestFalse(TEXT("Team notice excludes captured subject"), UTBAudioEvents::ShouldDeliver(ETBSoundEvent::TeamNotice, Toy, Toy));
 	for (const ETBSoundEvent Event : {ETBSoundEvent::Capture, ETBSoundEvent::Store, ETBSoundEvent::ToyPush,
-	                                 ETBSoundEvent::PropDropLight, ETBSoundEvent::PropDropMedium, ETBSoundEvent::PropDropHeavy})
+	                                 ETBSoundEvent::PropDropLight, ETBSoundEvent::PropDropMedium, ETBSoundEvent::PropDropHeavy,
+	                                 ETBSoundEvent::GlassDropLight, ETBSoundEvent::GlassDropMedium, ETBSoundEvent::GlassDropHeavy})
 	{
 		TestTrue(TEXT("World event reaches Children"), UTBAudioEvents::ShouldDeliver(Event, Human, Toy));
 		TestTrue(TEXT("World event reaches Toys"), UTBAudioEvents::ShouldDeliver(Event, Toy, Toy));

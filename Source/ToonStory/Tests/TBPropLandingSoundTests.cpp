@@ -2,6 +2,7 @@
 
 #if WITH_DEV_AUTOMATION_TESTS && !UE_BUILD_SHIPPING
 #include "Audio/TBAudioTypes.h"
+#include "Audio/TBAudioEvents.h"
 #include "Components/StaticMeshComponent.h"
 #include "Core/TBController.h"
 #include "Engine/Engine.h"
@@ -88,13 +89,13 @@ bool FTBPropLandingSoundTest::RunTest(const FString&)
 	const FProperty* LocationParam = FindFProperty<FStructProperty>(RPC, TEXT("Location"));
 	if (!TestNotNull(TEXT("Sound event parameter"), EventParam) || !TestNotNull(TEXT("Sound location parameter"), LocationParam)) return false;
 	// Observe the real Client RPC even under -nosound. Returning false lets normal dispatch continue.
-	AActor::ProcessEventDelegate.BindLambda([Controller, RPC, Contact, EventParam, LocationParam, Raw = &Probe.Get()](AActor* Actor, UFunction* Fn, void* Args)
+	AActor::ProcessEventDelegate.BindLambda([Controller, RPC, Contact, Expected = *UTBAudioEvents::PropDropSound(160., UTBAudioEvents::IsGlassProp(Part)), EventParam, LocationParam, Raw = &Probe.Get()](AActor* Actor, UFunction* Fn, void* Args)
 	{
 		if (Actor == Controller && Fn == RPC)
 		{
 			const auto Event = *EventParam->ContainerPtrToValuePtr<ETBSoundEvent>(Args);
 			const auto Location = *LocationParam->ContainerPtrToValuePtr<FVector>(Args);
-			if (Event == ETBSoundEvent::PropDropHeavy && FVector::Dist(Location, Contact) < 65.) Raw->bHeardLanding = true;
+			if (Event == Expected && FVector::Dist(Location, Contact) < 65.) Raw->bHeardLanding = true;
 		}
 		return false;
 	});

@@ -151,3 +151,5 @@ $AudioProject = (Resolve-Path ./ToonStory.uproject).Path
 - `HumanFootstepPerspective` が成功。同じ素材に対する聞き手別音量・ピッチ、距離が近いほど大きくなる減衰、範囲外の無音、既存の音量操作、空素材を確認。レポートは `Saved/Automation/HumanFootstepsVerified/index.json`。
 - 既存の音声テスト4件と `ToonStory.Match.Rematch` も成功（`Saved/Automation/HumanFootsteps/index.json`）。この初回レポートでは新テストのピッチ比較が小数の丸め差で失敗し、許容誤差修正後に上記の個別テストで再確認しています。
 - 今回も無音環境での自動確認です。素材登録後の音色・音量バランス、歩行中の可聴確認、別PC間での聞こえ方は未確認です。
+
+ガラスのコップなど（`SM_Glass_*` / `SM_Bathroom_Water_Glass*`、またはコンポーネントタグ `TBGlass`）だけは、同じ高さの区切りで破砕音を鳴らします。他の小物の音は変更しません。音素材は Joseph SARDIN / BigSoundBank「Glass Burst」#0148（CC0、https://bigsoundbank.com/glass-burst-s0148.html）。`glass_shatter` は配布WAVをそのまま使用し、高さ別に音量を変えます。音のみの演出で、メッシュは破壊しません。
