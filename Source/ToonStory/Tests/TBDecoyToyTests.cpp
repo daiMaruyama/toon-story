@@ -106,10 +106,11 @@ bool FTBDecoyFootstepTest::RunTest(const FString&)
 	if (!TestNotNull(TEXT("Standalone world"),World)) return false;
 	auto* Decoy=World->SpawnActor<ATBDecoyToy>(FVector(0,0,10000),FRotator::ZeroRotator);
 	if (!TestNotNull(TEXT("Decoy fixture"),Decoy)) return false;
-	ON_SCOPE_EXIT { Decoy->Destroy(); };
+	// A simulated proxy cannot destroy itself; restore authority before cleaning up the fixture.
+	ON_SCOPE_EXIT { Decoy->SetRole(ROLE_Authority); Decoy->Destroy(); };
 	// Inject the displacement seen by a remote listener without server movement or a real audio device.
 	Decoy->SetRole(ROLE_SimulatedProxy); Decoy->SetActorTickEnabled(false);
-	Decoy->bWalking=true; Decoy->Tick(.05f);
+	Decoy->bWalking=true; Decoy->bGrounded=true; Decoy->Tick(.05f);
 	const auto& Toy=TB::CharacterData().Toy;
 	const float Threshold=(Toy.WalkSpeed+Toy.SprintSpeed)*.5f;
 	const float Interval=GetDefault<UTBCharacterAudioComponent>()->ToyStepDistance;
@@ -135,6 +136,9 @@ bool FTBDecoyFootstepTest::RunTest(const FString&)
 	Decoy->bWalking=true; Decoy->StepDistance=0; Decoy->FootstepSampleSeconds=0;
 	Observe(0); Observe(2*(Threshold+1));
 	TestTrue(TEXT("Batched replicated running still accumulates a step"),Decoy->StepDistance>0.f);
+	Decoy->bGrounded=false; Decoy->StepDistance=Interval-.5f; Observe(Threshold+1);
+	TestEqual(TEXT("Airborne running does not emit or retain a footstep"),Decoy->StepDistance,0.f);
+	Decoy->bGrounded=true;
 	Decoy->LoadedData->WalkSpeed=Threshold-1; Decoy->StepDistance=Interval-.5f;
 	Observe(2*(Threshold+1));
 	TestEqual(TEXT("A walking decoy never sounds like a runner after a network update"),Decoy->StepDistance,0.f);
