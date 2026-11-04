@@ -7,6 +7,7 @@
 #include "Core/TBGameHelpers.h"
 #include "Core/TBPlayerState.h"
 #include "Data/TBDecoyToyData.h"
+#include "Data/TBCharacterData.h"
 #include "Components/ChildActorComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/GameInstance.h"
@@ -75,23 +76,58 @@ void ATBDecoyToy::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 	if (HasAuthority() && bWalking && !TB::Playing(GetWorld())) { bWalking=false; ForceNetUpdate(); }
-	if (HasAuthority() && bWalking && TB::Playing(GetWorld()) && FMath::IsFinite(DeltaSeconds) && DeltaSeconds>0)
+	if (HasAuthority() && FMath::IsFinite(DeltaSeconds) && DeltaSeconds>0)
 	{
+		const float Dt=FMath::Min(DeltaSeconds,.1f);
 		const float Speed=FMath::IsFinite(Data().WalkSpeed) ? FMath::Max(0.f,Data().WalkSpeed) : 0.f;
 		const FVector From=GetActorLocation();
-		const FVector Delta=GetActorForwardVector()*Speed*FMath::Min(DeltaSeconds,.1f);
+		const FVector Delta=bWalking && TB::Playing(GetWorld()) ? GetActorForwardVector()*Speed*Dt : FVector::ZeroVector;
 		FHitResult Hit;
 		FCollisionQueryParams Params(SCENE_QUERY_STAT(DecoyMotion),false,this);
 		const FVector Offset(0,0,10);
-		if (GetWorld()->SweepSingleByChannel(Hit,From+Offset,From+Offset+Delta,FQuat::Identity,ECC_WorldDynamic,FCollisionShape::MakeSphere(8.f),Params))
+		const auto Shape=FCollisionShape::MakeSphere(8.f);
+		const float ConfiguredStep=TB::CharacterData().Toy.MaxStepHeight;
+		const float StepHeight=FMath::IsFinite(ConfiguredStep) ? FMath::Clamp(ConfiguredStep,0.f,100.f) : 0.f;
+		if (!Delta.IsNearlyZero() && GetWorld()->SweepSingleByChannel(Hit,From+Offset,From+Offset+Delta,FQuat::Identity,ECC_WorldDynamic,Shape,Params))
 		{
-			SetActorLocation(From+Delta*FMath::Max(0.f,Hit.Time-.01f));
-			FVector Normal=Hit.ImpactNormal; Normal.Z=0; Normal.Normalize();
-			FVector Next=FMath::GetReflectionVector(GetActorForwardVector(),Normal); Next.Z=0;
-			if (Normal.IsNearlyZero() || Next.IsNearlyZero()) Next=-GetActorForwardVector();
-			SetActorRotation(Next.Rotation());
+			// 段差分だけ上げた経路と頭上が空いていれば、前進してから床へ着地する。
+			const FVector Raise(0,0,StepHeight);
+			FHitResult UpHit, ForwardHit, FloorHit;
+			const bool bCanStep=bGrounded && StepHeight>0 &&
+			    !GetWorld()->SweepSingleByChannel(UpHit,From+Offset,From+Offset+Raise,FQuat::Identity,ECC_WorldDynamic,Shape,Params) &&
+			    !GetWorld()->SweepSingleByChannel(ForwardHit,From+Offset+Raise,From+Offset+Raise+Delta,FQuat::Identity,ECC_WorldDynamic,Shape,Params) &&
+			    GetWorld()->SweepSingleByChannel(FloorHit,From+Offset+Raise+Delta,From+Offset+Delta-FVector(0,0,2),FQuat::Identity,ECC_WorldDynamic,Shape,Params) &&
+			    FloorHit.ImpactNormal.Z>=.7f;
+			if (bCanStep)
+			{
+				SetActorLocation(FloorHit.Location-FVector(0,0,8)+FVector(0,0,.1f));
+				VerticalSpeed=0;
+			}
+			else
+			{
+				SetActorLocation(From+Delta*FMath::Max(0.f,Hit.Time-.01f));
+				FVector Normal=Hit.ImpactNormal; Normal.Z=0; Normal.Normalize();
+				FVector Next=FMath::GetReflectionVector(GetActorForwardVector(),Normal); Next.Z=0;
+				if (Normal.IsNearlyZero() || Next.IsNearlyZero()) Next=-GetActorForwardVector();
+				SetActorRotation(Next.Rotation());
+			}
 		}
 		else SetActorLocation(From+Delta);
+
+		// 停止中にも重力を適用する。スイープで床を検出し、空中では実際に落下する。
+		const FVector Position=GetActorLocation();
+		const float Gravity=FMath::IsFinite(GetWorld()->GetGravityZ()) ? FMath::Min(0.f,GetWorld()->GetGravityZ()) : -980.f;
+		VerticalSpeed=FMath::Max(-4000.f,VerticalSpeed+Gravity*Dt);
+		const float Down=FMath::Max(2.f,-VerticalSpeed*Dt)+(bGrounded ? StepHeight : 0.f);
+		const FVector Start=Position+FVector(0,0,8.1f);
+		FHitResult Floor;
+		const bool bFloor=GetWorld()->SweepSingleByChannel(Floor,Start,Start-FVector(0,0,Down),FQuat::Identity,ECC_WorldDynamic,Shape,Params) && Floor.ImpactNormal.Z>=.7f;
+		if (bFloor)
+		{
+			SetActorLocation(Floor.Location-FVector(0,0,8)+FVector(0,0,.1f));
+			VerticalSpeed=0; bGrounded=true;
+		}
+		else { SetActorLocation(Position+FVector(0,0,VerticalSpeed*Dt)); bGrounded=false; }
 	}
 	if (GetNetMode()==NM_DedicatedServer) return;
 	const FVector Location=GetActorLocation();
@@ -100,7 +136,7 @@ void ATBDecoyToy::Tick(float DeltaSeconds)
 	TBToyPresentation::Ground(Visual,Location.Z);
 	// Position replication can arrive in batches. Average over the time since the last
 	// displacement, and never mistake a packet-sized jump for a faster configured gait.
-	if (bWalking && DeltaSeconds>0 && DeltaSeconds<=.25f && Distance<100.f)
+	if (bWalking && bGrounded && DeltaSeconds>0 && DeltaSeconds<=.25f && Distance<100.f)
 	{
 		FootstepSampleSeconds+=DeltaSeconds;
 		if (Distance>KINDA_SMALL_NUMBER)
@@ -129,4 +165,5 @@ void ATBDecoyToy::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifet
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(ATBDecoyToy,VisualClass);
 	DOREPLIFETIME(ATBDecoyToy,bWalking);
+	DOREPLIFETIME(ATBDecoyToy,bGrounded);
 }
