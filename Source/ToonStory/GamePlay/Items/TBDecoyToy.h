@@ -29,11 +29,13 @@ protected:
 	virtual bool CanPerformAction_Implementation(const FTBInteractionContext& Context) const override;
 	virtual bool PerformAction_Implementation(const FTBInteractionContext& Context) override;
 private:
+	friend class FTBDecoyFootstepTest;
 	UFUNCTION()
 	void OnRep_Visual();
 	UPROPERTY(Transient)
 	TObjectPtr<UTBDecoyToyData> LoadedData;
 	FVector PreviousLocation = FVector::ZeroVector;
 	float StepDistance = 0.f;
+	float FootstepSampleSeconds = 0.f;
 	bool bHasSample = false;
 };

@@ -4,6 +4,9 @@
 #include "Character/TBCharacter.h"
 #include "Core/TBGameState.h"
 #include "Core/TBPlayerState.h"
+#include "Audio/TBCharacterAudioComponent.h"
+#include "Data/TBCharacterData.h"
+#include "Data/TBDecoyToyData.h"
 #include "Tests/TBTestMatch.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
@@ -60,5 +63,50 @@ bool FTBDecoyToyTest::RunTest(const FString&)
 		Wall->Destroy();
 	}
 	return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBDecoyFootstepTest,"ToonStory.Items.DecoyFootstepRule",EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+bool FTBDecoyFootstepTest::RunTest(const FString&)
+{
+	UWorld* World=nullptr;
+	for (const auto& Entry:GEngine->GetWorldContexts())
+		if (Entry.WorldType==EWorldType::Game && Entry.World() && Entry.World()->GetNetMode()==NM_Standalone) { World=Entry.World(); break; }
+	if (!TestNotNull(TEXT("Standalone world"),World)) return false;
+	auto* Decoy=World->SpawnActor<ATBDecoyToy>(FVector(0,0,10000),FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("Decoy fixture"),Decoy)) return false;
+	ON_SCOPE_EXIT { Decoy->Destroy(); };
+	// Inject the displacement seen by a remote listener without server movement or a real audio device.
+	Decoy->SetRole(ROLE_SimulatedProxy); Decoy->SetActorTickEnabled(false);
+	Decoy->bWalking=true; Decoy->Tick(.05f);
+	const auto& Toy=TB::CharacterData().Toy;
+	const float Threshold=(Toy.WalkSpeed+Toy.SprintSpeed)*.5f;
+	const float Interval=GetDefault<UTBCharacterAudioComponent>()->ToyStepDistance;
+	Decoy->LoadedData=NewObject<UTBDecoyToyData>(Decoy);
+	Decoy->LoadedData->WalkSpeed=Threshold+1;
+	Decoy->FootstepSampleSeconds=0;
+	auto Observe=[&](float Speed,float Delta=.05f)
+	{
+		Decoy->SetActorLocation(Decoy->GetActorLocation()+FVector(Speed*Delta,0,0));
+		Decoy->Tick(Delta);
+	};
+	Decoy->StepDistance=Interval-.5f;
+	Observe(Threshold-1);
+	TestEqual(TEXT("Slow movement neither emits nor retains a partial footstep"),Decoy->StepDistance,0.f);
+	Observe(Threshold+1);
+	TestTrue(TEXT("Running movement accumulates footstep distance"),Decoy->StepDistance>0.f);
+	Decoy->StepDistance=Interval-.5f; Observe(Threshold+1);
+	TestTrue(TEXT("Running consumes one footstep at the stride boundary"),Decoy->StepDistance<Interval && Decoy->StepDistance>0.f);
+	for (int32 I=0;I<6;++I) Observe(0);
+	TestEqual(TEXT("Blocked decoy resets stride despite the configured speed"),Decoy->StepDistance,0.f);
+	Decoy->StepDistance=10; Decoy->bWalking=false; Observe(Threshold+1);
+	TestEqual(TEXT("Stopped decoy is silent even if its position changes"),Decoy->StepDistance,0.f);
+	Decoy->bWalking=true; Decoy->StepDistance=0; Decoy->FootstepSampleSeconds=0;
+	Observe(0); Observe(2*(Threshold+1));
+	TestTrue(TEXT("Batched replicated running still accumulates a step"),Decoy->StepDistance>0.f);
+	Decoy->LoadedData->WalkSpeed=Threshold-1; Decoy->StepDistance=Interval-.5f;
+	Observe(2*(Threshold+1));
+	TestEqual(TEXT("A walking decoy never sounds like a runner after a network update"),Decoy->StepDistance,0.f);
+	Decoy->StepDistance=10; Observe(4000);
+	TestEqual(TEXT("Teleport does not produce a footstep"),Decoy->StepDistance,0.f);
+	return !HasAnyErrors();
 }
 #endif
