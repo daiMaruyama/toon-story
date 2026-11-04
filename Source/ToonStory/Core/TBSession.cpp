@@ -27,7 +27,7 @@ namespace
 {
 	constexpr double OfflineReturnTimeoutSeconds = 30.0;
 	const FName GameKey(TEXT("TOYBOX_BUILD"));
-	const FString BuildTag(TEXT("ToonStory_HumanRoster_ToyPush_Decoy_20261104"));
+	const FString BuildTag(TEXT("ToonStory_Tabletop_GroundedDecoy_20261104"));
 	const FName LobbyKey(TEXT("LOBBY_OPEN"));
 } // namespace
 void UTBSession::Initialize(FSubsystemCollectionBase& Collection)
@@ -686,17 +686,20 @@ bool FTBSessionBuildCompatibilityTest::RunTest(const FString&)
 	const auto BeforeWalkie=MakeResult(TEXT("ToonStory_RemoteFeedback_20261102"));
 	const auto BeforeDecoy=MakeResult(TEXT("ToonStory_WalkieTalkie_20261102"));
 	const auto BeforeHumanRoster=MakeResult(TEXT("ToonStory_DecoyToy_20261103"));
+	const auto BeforeGlassAudio=MakeResult(TEXT("ToonStory_HumanRoster_ToyPush_Decoy_20261104"));
+	const auto BeforeTabletop=MakeResult(TEXT("ToonStory_GlassAudio_ItemVisuals_20261104"));
+	const auto MainDecoyGround=MakeResult(TEXT("ToonStory_DecoyToyGround_20261104"));
 	auto Missing=Current;
 	Missing.Session.SessionSettings.Remove(GameKey);
 	Session->Search=MakeShared<FOnlineSessionSearch>();
-	Session->Search->SearchResults={Old,ItemsOnly,MomOnly,BeforeLobbyEmotes,BeforeRemoteFeedback,BeforeWalkie,BeforeDecoy,BeforeHumanRoster,Missing,Current};
+	Session->Search->SearchResults={Old,ItemsOnly,MomOnly,BeforeLobbyEmotes,BeforeRemoteFeedback,BeforeWalkie,BeforeDecoy,BeforeHumanRoster,BeforeGlassAudio,BeforeTabletop,MainDecoyGround,Missing,Current};
 	Session->CurrentOperation=UTBSession::ESessionOperation::Finding;
 	Session->Found(true);
 	TestEqual(TEXT("Search exposes only matching build"),Session->Rooms.Num(),1);
 	FString SelectedTag;
 	if (Session->Results.Num()==1) Session->Results[0].Session.SessionSettings.Get(GameKey,SelectedTag);
 	TestEqual(TEXT("Search retained the current build"),SelectedTag,BuildTag);
-	for (const auto& Incompatible:{Old,ItemsOnly,MomOnly,BeforeLobbyEmotes,BeforeRemoteFeedback,BeforeWalkie,BeforeDecoy,BeforeHumanRoster,Missing})
+	for (const auto& Incompatible:{Old,ItemsOnly,MomOnly,BeforeLobbyEmotes,BeforeRemoteFeedback,BeforeWalkie,BeforeDecoy,BeforeHumanRoster,BeforeGlassAudio,BeforeTabletop,MainDecoyGround,Missing})
 	{
 		Session->Status.Reset();
 		Session->BeginJoin(Incompatible);
