@@ -8,6 +8,8 @@
 #include "GameFramework/PhysicsVolume.h"
 #include "Core/TBPlayerState.h"
 #include "Components/PrimitiveComponent.h"
+#include "Components/CapsuleComponent.h"
+#include "Engine/World.h"
 
 void UTBMovement::ApplyImpactPhysicsForces(const FHitResult& Impact, const FVector& ImpactAcceleration,
     const FVector& ImpactVelocity)
@@ -22,11 +24,37 @@ void UTBMovement::ApplyImpactPhysicsForces(const FHitResult& Impact, const FVect
 	// character force, which is tuned for much heavier physics objects.
 	if (!CharacterOwner || !CharacterOwner->HasAuthority() || !Part->IsSimulatingPhysics()) return;
 	const FVector Direction = FVector(ImpactVelocity.X, ImpactVelocity.Y, 0).GetSafeNormal();
-	const float DesiredSpeed = FMath::Clamp(float(ImpactVelocity.Size2D()) * .35f, 0.f, 100.f);
+	const auto* Pawn = Cast<ATBCharacter>(CharacterOwner);
+	if (!Pawn || !Pawn->IsHuman()) return;
+	const float DesiredSpeed = FMath::Min(float(ImpactVelocity.Size2D()) * 1.25f, 360.f);
 	const float CurrentSpeed = FVector::DotProduct(Part->GetPhysicsLinearVelocity(), Direction);
-	const float DeltaSpeed = FMath::Clamp(DesiredSpeed - CurrentSpeed, 0.f, 15.f);
+	const float DeltaSpeed = FMath::Clamp(DesiredSpeed - CurrentSpeed, 0.f, 280.f);
 	if (!Direction.IsNearlyZero() && DeltaSpeed > 0)
 		Part->AddImpulseAtLocation(Direction * Part->GetMass() * DeltaSpeed, Impact.ImpactPoint);
+}
+
+void UTBMovement::SweepPushableProps(float DeltaSeconds)
+{
+	bBrushingProp = false;
+	const FVector Approach = (Velocity + Acceleration * DeltaSeconds) * FVector(1, 1, 0);
+	if (!CharacterOwner || Approach.IsNearlyZero() || !UpdatedComponent) return;
+	const auto* Capsule = CharacterOwner->GetCapsuleComponent();
+	const FVector Start = Capsule->GetComponentLocation();
+	FCollisionObjectQueryParams Types(ECC_PhysicsBody);
+	Types.AddObjectTypesToQuery(ECC_WorldDynamic);
+	TArray<FHitResult> Contacts;
+	GetWorld()->SweepMultiByObjectType(Contacts, Start, Start + Approach * DeltaSeconds, Capsule->GetComponentQuat(),
+	    Types, Capsule->GetCollisionShape(), FCollisionQueryParams(SCENE_QUERY_STAT(TBPushableSweep), false, CharacterOwner));
+	for (const auto& Hit : Contacts)
+	{
+		auto* Part = Hit.GetComponent();
+		if (!Part || !Part->ComponentHasTag(TEXT("TBPushable")) ||
+		    FVector::DotProduct(Approach, Part->Bounds.Origin - Start) <= 0) continue;
+		bBrushingProp = true;
+		FHitResult Contact = Hit;
+		if (Hit.bStartPenetrating) Contact.ImpactPoint = Part->Bounds.Origin;
+		ApplyImpactPhysicsForces(Contact, Acceleration, Approach);
+	}
 }
 
 namespace
@@ -86,10 +114,10 @@ float UTBMovement::GetMaxSpeed() const
 	{
 		return 0.f;
 	}
-	if (bWantsToSprint && Character && Character->TBPS() && Character->TBPS()->Team == ETBTeam::Toy &&
-	    (IsMovingOnGround() || IsFalling()))
+	if (Character && Character->TBPS() && Character->TBPS()->Team == ETBTeam::Toy && (IsMovingOnGround() || IsFalling()))
 	{
-		return TB::CharacterData().Toy.SprintSpeed;
+		const float Speed = bWantsToSprint ? TB::CharacterData().Toy.SprintSpeed : Super::GetMaxSpeed();
+		return bBrushingProp ? .85f * Speed : Speed;
 	}
 	if (Character && Character->IsHuman())
 		if (const auto* NPC = Cast<ATBNPCController>(Character->GetController()))
@@ -135,7 +163,9 @@ void UTBMovement::PerformMovement(float DeltaSeconds)
 	{
 		SetMovementMode(MOVE_Falling);
 	}
+	SweepPushableProps(DeltaSeconds);
 	Super::PerformMovement(DeltaSeconds);
+	bBrushingProp = false;
 }
 
 // 凍結中の専用物理。横速度と上昇を止め、落下と床の衝突を処理する。

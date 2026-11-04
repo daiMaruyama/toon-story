@@ -578,6 +578,17 @@ bool FTBEmoteTest::RunTest(const FString&)
 		Source->CancelEmote(); Proxy->Emote = Source->Emote; Proxy->OnRep_Emote(); PoseFrames(HumanMesh, 4);
 		TestTrue(TEXT("Cancellation restores the unchanged normal base pose"), PoseDistance(Hands(HumanMesh), HumanRest) < .05);
 	}
+	if (!Start(ETBEmoteKind::Dance)) return false;
+	Source->CrouchPressed();
+	auto* Move = Source->GetCharacterMovement();
+	TestTrue(TEXT("Dance allows the normal crouch input"), Move->bWantsToCrouch != 0);
+	TestFalse(TEXT("A pending crouch immediately suppresses the emote pose"), Source->GetEmoteSample(Sample));
+	Move->Crouch(false);
+	TestTrue(TEXT("The character crouches and cancels the dance"), Source->bIsCrouched && !Source->Emote.bActive);
+	Source->Emote.NextAllowedAt = 0; Source->LastEmoteCancelFrame = MAX_uint64;
+	TestFalse(TEXT("A crouched character cannot start an emote"), Source->TryEmote(ETBEmoteKind::Wave));
+	Source->CrouchReleased(); Move->UnCrouch(false);
+	TestFalse(TEXT("Standing again does not resume the dance"), Source->Emote.bActive);
 	Start(ETBEmoteKind::Wave); const double Cooldown = Source->Emote.NextAllowedAt;
 	TestFalse(TEXT("Invalid ID is rejected"), Source->TryEmote(static_cast<ETBEmoteKind>(255)));
 	TestFalse(TEXT("Active/cooldown request is rejected"), Source->TryEmote(ETBEmoteKind::Dance));
@@ -703,6 +714,9 @@ bool FTBEmoteTest::RunTest(const FString&)
 					if (Part->LeaderPoseComponent.IsValid() || !Part->GetSkeletalMeshAsset()) continue;
 					FTBEmotePose Pose; TBToyPresentation::BuildEmotePose(Part, Proxy, Pose);
 					TestTrue(TEXT("Current skeletal model maps a semantic emote"), !Pose.Bones.IsEmpty());
+					if (Part->GetSkeletalMeshAsset()->GetName() == TEXT("SK_Duck"))
+						TestTrue(TEXT("Duck emote drives the bone weighted to its surface"),
+						    Pose.Bones.ContainsByPredicate([](const FTBEmoteBone& Bone) { return Bone.Name == TEXT("pelvis"); }));
 					TestNotNull(TEXT("Toy's existing post-process really uses the native facing/emote proxy"), Cast<UTBToyFacingPose>(Part->GetPostProcessInstance()));
 					++Mapped; PoseFrames(Part, 2);
 					const auto& Rest = RestPoses.FindChecked(Part);

@@ -22,4 +22,5 @@ public:
 
 	/** Audience rules are shared by every emitter; rescue cues never reach Children. */
 	static bool ShouldDeliver(ETBSoundEvent Event, const ATBPlayerState* Recipient, const APlayerState* Subject);
+	static TOptional<ETBSoundEvent> PropDropSound(double FallCentimeters);
 };

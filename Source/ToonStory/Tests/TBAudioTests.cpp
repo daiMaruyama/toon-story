@@ -124,7 +124,11 @@ bool FTBAudioSelectedCatalogTest::RunTest(const FString& Parameters)
 {
 	const auto* Settings = GetDefault<UTBAudioSettings>();
 	TestEqual(TEXT("Five music states registered"), Settings->Music.Num(), 5);
-	TestEqual(TEXT("All selected SE registered"), Settings->Sounds.Num(), int32(ETBSoundEvent::ChatMessage) + 1);
+	TestEqual(TEXT("All selected SE registered"), Settings->Sounds.Num(), int32(ETBSoundEvent::PropDropHeavy) + 1);
+	TestFalse(TEXT("Resting contact stays silent"), UTBAudioEvents::PropDropSound(5.99).IsSet());
+	TestTrue(TEXT("Six centimeter fall has a light impact"), UTBAudioEvents::PropDropSound(6.) == ETBSoundEvent::PropDropLight);
+	TestTrue(TEXT("Thirty centimeter fall has a medium impact"), UTBAudioEvents::PropDropSound(30.) == ETBSoundEvent::PropDropMedium);
+	TestTrue(TEXT("Ninety centimeter fall has a heavy impact"), UTBAudioEvents::PropDropSound(90.) == ETBSoundEvent::PropDropHeavy);
 	for (const auto& Pair : Settings->Music)
 	{
 		auto* Wave = Cast<USoundWave>(Pair.Value.Sound.LoadSynchronous());
@@ -410,7 +414,8 @@ bool FTBAudioAudienceTest::RunTest(const FString& Parameters)
 		TestFalse(TEXT("Human cannot hear TV"), UTBAudioEvents::ShouldDeliver(Event, Human, Toy));
 	}
 	TestFalse(TEXT("Team notice excludes captured subject"), UTBAudioEvents::ShouldDeliver(ETBSoundEvent::TeamNotice, Toy, Toy));
-	for (const ETBSoundEvent Event : {ETBSoundEvent::Capture, ETBSoundEvent::Store})
+	for (const ETBSoundEvent Event : {ETBSoundEvent::Capture, ETBSoundEvent::Store, ETBSoundEvent::ToyPush,
+	                                 ETBSoundEvent::PropDropLight, ETBSoundEvent::PropDropMedium, ETBSoundEvent::PropDropHeavy})
 	{
 		TestTrue(TEXT("World event reaches Children"), UTBAudioEvents::ShouldDeliver(Event, Human, Toy));
 		TestTrue(TEXT("World event reaches Toys"), UTBAudioEvents::ShouldDeliver(Event, Toy, Toy));

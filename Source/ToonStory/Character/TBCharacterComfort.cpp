@@ -10,6 +10,7 @@
 void ATBCharacter::OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
 {
 	Super::OnStartCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
+	CancelEmote();
 	// The human mesh is fitted at runtime; the Blueprint default mesh offset is not its standing baseline.
 	const FVector Offset = StandingMeshOffset + FVector(0, 0, HalfHeightAdjust);
 	GetMesh()->GetRelativeLocation_DirectMutable() = Offset;

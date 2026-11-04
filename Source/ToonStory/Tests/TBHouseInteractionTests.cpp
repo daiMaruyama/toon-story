@@ -9,6 +9,7 @@
 #include "PhysicsEngine/BodySetup.h"
 #include "Character/TBCharacter.h"
 #include "Character/TBMovement.h"
+#include "Core/TBPlayerState.h"
 #include "Tests/AutomationCommon.h"
 #include "GamePlay/TBBoxEscapeCourse.h"
 
@@ -67,6 +68,9 @@ bool FTBHouseInteractionTest::RunTest(const FString&)
 		if (Part->ComponentHasTag(TEXT("TBPushable")))
 		{
 			++Props;
+			TestEqual(TEXT("Human capsule passes through small prop"), Part->GetCollisionResponseToChannel(ECC_Pawn), ECR_Ignore);
+			TestEqual(TEXT("Toy capsule cannot stand on small prop"), Part->GetCollisionResponseToChannel(ECC_GameTraceChannel1), ECR_Ignore);
+			TestEqual(TEXT("Small prop does not retract camera"), Part->GetCollisionResponseToChannel(ECC_Camera), ECR_Ignore);
 			TestTrue(TEXT("Small prop actually simulates physics"), Part->IsSimulatingPhysics());
 			TestTrue(TEXT("Small prop movement replicates"), It->GetIsReplicated() && It->IsReplicatingMovement());
 			TestTrue(TEXT("Small prop has simple physics collision"), Mesh->GetBodySetup() && Mesh->GetBodySetup()->AggGeom.GetElementCount() > 0);
@@ -76,7 +80,7 @@ bool FTBHouseInteractionTest::RunTest(const FString&)
 	TestEqual(TEXT("All selected furniture components are configured"), Furniture, 27);
 	TestEqual(TEXT("All dining chairs checked"), Chairs, 7);
 	TestEqual(TEXT("Fridge checked"), Fridges, 1);
-	TestEqual(TEXT("All small props configured"), Props, 57);
+	TestEqual(TEXT("All small props configured"), Props, 55);
 	if (TestNotNull(TEXT("Radio physics probe exists"), Probe))
 	{
 		auto* Body = Cast<ATBCharacter>(World->GetFirstPlayerController()->GetPawn());
@@ -88,11 +92,15 @@ bool FTBHouseInteractionTest::RunTest(const FString&)
 		Probe->SetEnableGravity(false);
 		Probe->SetPhysicsLinearVelocity(FVector::ZeroVector);
 		FHitResult Impact(Probe->GetOwner(), Probe, Probe->Bounds.Origin, -FVector::ForwardVector);
+		if (!TestNotNull(TEXT("Character team"), Body->TBPS())) return false;
+		const auto OriginalTeam = Body->TBPS()->Team;
+		Body->TBPS()->Team = ETBTeam::Human;
 		Movement->ApplyImpactPhysicsForces(Impact, FVector(500, 0, 0), FVector(200, 0, 0));
+		Body->TBPS()->Team = OriginalTeam;
 		ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(.2f));
 		ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([this, Probe, Original]()
 		{
-			TestTrue(TEXT("Contact force moves the actual physics prop"), Probe->GetPhysicsLinearVelocity().Size() > .1f);
+			TestTrue(TEXT("Human contact moves the actual physics prop"), Probe->GetPhysicsLinearVelocity().Size() > .1f);
 			Probe->SetWorldTransform(Original, false, nullptr, ETeleportType::TeleportPhysics);
 			Probe->SetPhysicsLinearVelocity(FVector::ZeroVector);
 			Probe->SetEnableGravity(true);

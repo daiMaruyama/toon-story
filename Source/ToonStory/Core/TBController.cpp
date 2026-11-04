@@ -99,7 +99,7 @@ void ATBController::PlayerTick(float DeltaTime)
 	const bool BlockingPanel = HUD && (HUD->IsChatBlocked() || HUD->IsStagePickerOpen());
 	const bool ShowMenu = State && (InLobby ? (BlockingPanel || IsChatOpen() || State->bTravelPending) :
 	    (State->Phase != ETBPhase::Playing || bLeaveMenuOpen || BlockingPanel));
-	UpdateLobbyCamera((InLobby && ShowMenu && !IsChatOpen()) || ShouldHidePreparationView());
+	UpdateLobbyCamera(InLobby || ShouldHidePreparationView());
 	UpdateMenuInput(ShowMenu);
 	UpdateScreenTransition();
 	UpdateViewAspect();
@@ -287,7 +287,7 @@ void ATBController::UpdateScreenTransition()
 
 void ATBController::UpdateLobbyCamera(bool InLobby)
 {
-	// ロビーの設定画面と準備中だけ固定カメラを使う。探索中はPawnの視点へ戻す。
+	// Pawn の所持で視点が戻る場合も、ロビーではマップの固定カメラを維持する。
 	if (InLobby)
 	{
 		if (!bLobbyCameraSearched)

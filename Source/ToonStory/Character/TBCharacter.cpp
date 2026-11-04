@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Mamodou. All Rights Reserved.
 
 #include "TBCharacter.h"
+#include "TBHumanPose.h"
 #include "TBToyCharacter.h"
 #include "TBToyCarVisual.h"
 #include "TBToyPresentation.h"
@@ -55,6 +56,8 @@ ATBCharacter::ATBCharacter(const FObjectInitializer& Init)
 	SetNetUpdateFrequency(30);
 	SetMinNetUpdateFrequency(15);
 	GetCapsuleComponent()->InitCapsuleSize(26, 65);
+	HumanVisual = CreateDefaultSubobject<UChildActorComponent>(TEXT("HumanVisual"));
+	HumanVisual->SetupAttachment(GetMesh());
 	GetCapsuleComponent()->SetGenerateOverlapEvents(true);
 	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
 	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
@@ -315,7 +318,7 @@ bool ATBCharacter::EmoteGameplayEligible() const
 	const bool Playing = State && CanAct() && FMath::IsFinite(State->EndTime) && State->EndTime > Now;
 	if (!State || !IsValid(Player) || (!Lobby && !Playing) || IsMovementLocked() || IsActorBeingDestroyed() ||
 	    !State->PlayerArray.Contains(Player) || !FMath::IsFinite(Now) ||
-	    !Movement || !Movement->IsMovingOnGround() || GetVelocity().ContainsNaN() || GetVelocity().Size2D() > 2.f ||
+	    !Movement || bIsCrouched || Movement->bWantsToCrouch || !Movement->IsMovingOnGround() || GetVelocity().ContainsNaN() || GetVelocity().Size2D() > 2.f ||
 	    Carrier || HasCarriedToy() || bHoldingInteract || bRescuing || StoreStarted >= 0) return false;
 	if ((HasAuthority() || IsLocallyControlled()) && (!IsValid(OwnerController) || OwnerController->GetPawn() != this ||
 	    OwnerController->GetPlayerState<ATBPlayerState>() != Player)) return false;
@@ -516,6 +519,46 @@ void ATBCharacter::ApplyState()
 	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_GameTraceChannel1, Toy ? ECR_Block : ECR_Ignore);
 	ApplyComfortBody(Toy);
 	UpdateAppearance(Toy);
+	UClass* Look = !Toy && GetNetMode() != NM_DedicatedServer ? ToyPlayerInfo->HumanAppearance.LoadSynchronous() : nullptr;
+	if (HumanVisual->GetChildActorClass() != Look)
+	{
+		HumanVisual->SetChildActorClass(Look);
+		if (AActor* Assembly = HumanVisual->GetChildActor())
+		{
+			Assembly->SetOwner(this);
+			Assembly->SetActorEnableCollision(false);
+			TInlineComponentArray<UPrimitiveComponent*> Parts(Assembly);
+			for (auto* Part : Parts)
+			{
+				auto* Skinned = Cast<USkeletalMeshComponent>(Part);
+				if (Skinned && Skinned->GetSkeletalMeshAsset() && LoadedChildMesh && Skinned->GetName().Equals(TEXT("Body"), ESearchCase::IgnoreCase))
+				{
+					Skinned->AddTickPrerequisiteComponent(GetMesh());
+					Skinned->SetAnimInstanceClass(UTBHumanBodyPose::StaticClass());
+					// Body meshes are modular and may omit the head. Size the entire assembly by its skeleton.
+					const auto& Ref = Skinned->GetSkeletalMeshAsset()->GetRefSkeleton();
+					auto RestPosition = [&Ref](int32 Bone)
+					{
+						FTransform Rest = FTransform::Identity;
+						for (; Bone != INDEX_NONE; Bone = Ref.GetParentIndex(Bone))
+							Rest *= Ref.GetRefBonePose()[Bone];
+						return Rest.GetLocation();
+					};
+					const int32 Head = Ref.FindBoneIndex(TEXT("head")), Foot = Ref.FindBoneIndex(TEXT("foot_l"));
+					if (Head != INDEX_NONE && Foot != INDEX_NONE)
+					{
+						HumanVisual->SetRelativeScale3D(FVector::OneVector);
+						const FVector Span = Skinned->GetComponentTransform().TransformVector(RestPosition(Head) - RestPosition(Foot));
+						if (Span.Z > 1.) HumanVisual->SetRelativeScale3D(FVector(106. / Span.Z));
+					}
+				}
+			}
+		}
+	}
+	if (auto* Assembly = HumanVisual->GetChildActor())
+		for (auto* Part : TInlineComponentArray<UPrimitiveComponent*>(Assembly))
+			Part->SetOwnerNoSee(IsHuman());
+	if (!Toy && LoadedChildMesh) GetMesh()->SetVisibility(!HumanVisual->GetChildActor());
 	const bool Held = ToyPlayerInfo->ToyState == ETBToyState::Grabbed ||
 	                  ToyPlayerInfo->ToyState == ETBToyState::Carried ||
 	                  ToyPlayerInfo->ToyState == ETBToyState::Storing;
@@ -992,6 +1035,59 @@ void ATBCharacter::RequestTaunt()
 		ServerTaunt();
 }
 
+void ATBCharacter::RequestPush()
+{
+	if (IsLocallyControlled() && CanAct() && TBPS()->Team == ETBTeam::Toy)
+		ServerPush();
+}
+
+void ATBCharacter::ServerPush_Implementation()
+{
+	TryPush();
+}
+
+bool ATBCharacter::TryPush()
+{
+	if (!HasAuthority() || !CanAct() || TBPS()->Team != ETBTeam::Toy) return false;
+	const double Now = GetWorld()->GetTimeSeconds();
+	if (Now - LastPushTime < .45) return false;
+	LastPushTime = Now;
+
+	const FVector Start = GetActorLocation();
+	const FVector Forward = FRotator(0, GetControlRotation().Yaw, 0).Vector();
+	constexpr float Reach = 42.f;
+	FCollisionObjectQueryParams Types(ECC_PhysicsBody);
+	Types.AddObjectTypesToQuery(ECC_WorldDynamic);
+	Types.AddObjectTypesToQuery(ECC_GameTraceChannel1);
+	TArray<FHitResult> Contacts;
+	FCollisionQueryParams Query(SCENE_QUERY_STAT(TBToyPush), false, this);
+	GetWorld()->SweepMultiByObjectType(Contacts, Start, Start + Forward * Reach, FQuat::Identity,
+	    Types, FCollisionShape::MakeSphere(12.f), Query);
+	for (const FHitResult& Hit : Contacts)
+	{
+		auto* Part = Hit.GetComponent();
+		auto* Ally = Cast<ATBCharacter>(Hit.GetActor());
+		if (!Part) continue;
+		if (Ally)
+		{
+			if (Part != Ally->GetCapsuleComponent() || !Ally->CanAct() || Ally->TBPS()->Team != ETBTeam::Toy) continue;
+		}
+		else if (!Part->ComponentHasTag(TEXT("TBPushable")) || !Part->IsSimulatingPhysics()) continue;
+
+		if (FVector::DotProduct(Forward, Part->Bounds.Origin - Start) <= 0.f) continue;
+		const FVector Contact = Hit.bStartPenetrating ? Part->Bounds.Origin : FVector(Hit.ImpactPoint);
+		if (!TB::ClearPath(this, Hit.GetActor(), Start, Contact)) continue;
+
+		if (Ally)
+			Ally->LaunchCharacter(Forward * 145.f + FVector::UpVector * 65.f, true, false);
+		else
+			Part->AddImpulseAtLocation((Forward * 190.f + FVector::UpVector * 22.f) * Part->GetMass(), Contact);
+		UTBAudioEvents::Emit(this, ETBSoundEvent::ToyPush, TBPS(), Contact);
+		return true;
+	}
+	return false;
+}
+
 void ATBCharacter::ServerTaunt_Implementation()
 {
 	TryTaunt();
@@ -1171,6 +1267,10 @@ void ATBCharacter::SetupPlayerInputComponent(UInputComponent* Input)
 		if (const UInputAction* TauntAction = Settings->TauntAction.LoadSynchronous())
 		{
 			Enhanced->BindAction(TauntAction, ETriggerEvent::Started, this, &ATBCharacter::RequestTaunt);
+		}
+		if (const UInputAction* PushAction = Settings->PushAction.LoadSynchronous())
+		{
+			Enhanced->BindAction(PushAction, ETriggerEvent::Started, this, &ATBCharacter::RequestPush);
 		}
 		if (const UInputAction* Action = Settings->EmoteWaveAction.LoadSynchronous())
 			Enhanced->BindAction(Action, ETriggerEvent::Started, this, &ATBCharacter::EmotePressed, ETBEmoteKind::Wave);

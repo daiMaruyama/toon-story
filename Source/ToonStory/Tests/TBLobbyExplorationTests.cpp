@@ -51,7 +51,8 @@ bool FTBLobbyExplorationTest::RunTest(const FString&)
 	HUD->NotifyHitBoxClick(TEXT("CloseSettings")); PC->PlayerTick(0);
 	TestFalse(TEXT("Host can move in lobby without a panel"), PC->IsMoveInputIgnored());
 	TestFalse(TEXT("Host can look in lobby without a panel"), PC->IsLookInputIgnored());
-	TestTrue(TEXT("Lobby exploration uses the pawn camera"), PC->GetViewTarget() == Pawn);
+	AActor* LobbyCamera = PC->GetViewTarget();
+	TestTrue(TEXT("Lobby exploration uses the fixed camera"), LobbyCamera && LobbyCamera->ActorHasTag(TEXT("TBLobbyCamera")));
 	const FVector Before = Pawn->GetActorLocation();
 	Pawn->AddMovementInput(FVector::ForwardVector, 1);
 	Movement->TickComponent(.1f, LEVELTICK_All, nullptr);
@@ -79,6 +80,7 @@ bool FTBLobbyExplorationTest::RunTest(const FString&)
 	TestFalse(TEXT("Closing settings releases input lock"), PC->IsMoveInputIgnored() || PC->IsLookInputIgnored());
 	PC->OpenChat(); PC->PlayerTick(0);
 	TestTrue(TEXT("Chat opens and blocks movement"), PC->IsChatOpen() && PC->IsMoveInputIgnored());
+	TestTrue(TEXT("Chat keeps the lobby camera"), PC->GetViewTarget() == LobbyCamera);
 	PC->CloseChat(); PC->PlayerTick(0);
 	TestFalse(TEXT("Closing chat releases input lock"), PC->IsMoveInputIgnored() || PC->IsLookInputIgnored());
 	return true;

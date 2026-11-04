@@ -35,7 +35,7 @@ namespace
 const TArray<FName>& TB::Keys::All()
 {
 	static const TArray<FName> Names = {MoveForward, MoveBack, MoveLeft, MoveRight, Jump, EmoteWave, EmoteCheer, EmoteDance, HumanCrouch, HumanInteract,
-	                                    HumanDrop, ToySprint, ToyInteract, ToyTaunt, LobbyReady, LobbyStart};
+	                                    HumanDrop, ToySprint, ToyInteract, ToyPush, ToyTaunt, LobbyReady, LobbyStart};
 	return Names;
 }
 
@@ -58,6 +58,7 @@ const TArray<TB::FKeySection>& TB::KeySections()
 	    {TEXT("おもちゃ"),
 	     {{Keys::ToySprint, TEXT("ダッシュ")},
 	      {Keys::ToyInteract, TEXT("救助")},
+	      {Keys::ToyPush, TEXT("押す")},
 	      {Keys::ToyTaunt, TEXT("音を鳴らす")}}},
 	    {TEXT("ロビー"), {{Keys::LobbyReady, TEXT("準備")}, {Keys::LobbyStart, TEXT("開始")}}},
 	};
@@ -70,6 +71,7 @@ FString TB::FormatKey(const FKey& Key)
 	{
 		return TEXT("未割り当て");
 	}
+	if (Key == EKeys::LeftMouseButton) return TEXT("左クリック");
 	if (Key == EKeys::SpaceBar)
 	{
 		return TEXT("Space");
@@ -223,6 +225,7 @@ FString TB::MatchHintText(const APlayerController* PC, bool bHuman)
 		                       *KeyLabel(PC, Keys::HumanCrouch), *Jump, *KeyLabel(PC, Keys::HumanInteract),
 		                       *KeyLabel(PC, Keys::HumanDrop));
 	}
-	return FString::Printf(TEXT("%s 移動 ／ %s ダッシュ ／ %s ジャンプ ／ %s 救助 ／ %s 音を鳴らす"), *Move,
-	                       *KeyLabel(PC, Keys::ToySprint), *Jump, *KeyLabel(PC, Keys::ToyInteract), *KeyLabel(PC, Keys::ToyTaunt));
+	return FString::Printf(TEXT("%s 移動 ／ %s ダッシュ ／ %s ジャンプ ／ %s 救助 ／ %s 押す ／ %s 音を鳴らす"), *Move,
+	                       *KeyLabel(PC, Keys::ToySprint), *Jump, *KeyLabel(PC, Keys::ToyInteract),
+	                       *KeyLabel(PC, Keys::ToyPush), *KeyLabel(PC, Keys::ToyTaunt));
 }

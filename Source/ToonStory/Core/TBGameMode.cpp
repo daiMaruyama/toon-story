@@ -27,6 +27,7 @@
 #include "GamePlay/TBBlock.h"
 #include "GamePlay/TBRuleMath.h"
 #include "Data/TBRuleData.h"
+#include "Data/TBDataSettings.h"
 #include "UI/TBHUD.h"
 #include "Components/CapsuleComponent.h"
 #include "Engine/GameInstance.h"
@@ -150,6 +151,20 @@ bool ATBGameMode::PlaceInLobby(AController* Player)
 		FailRoundStart(TEXT("ロビー配置後の元の位置へ安全に戻せませんでした。"), false);
 		return false;
 	};
+	if (auto* Info = Pawn->TBPS(); Info && Info->Team == ETBTeam::None && Info->HumanAppearance.IsNull())
+	{
+		const auto& Looks = GetDefault<UTBDataSettings>()->HumanAppearances;
+		if (!Looks.IsEmpty())
+		{
+			auto Available = Looks;
+			for (APlayerState* Member : State->PlayerArray)
+				if (const auto* Other = Cast<ATBPlayerState>(Member))
+					Available.Remove(Other->HumanAppearance);
+			const auto& Pool = Available.IsEmpty() ? Looks : Available;
+			Info->HumanAppearance = Pool[FMath::RandHelper(Pool.Num())];
+			Info->ForceNetUpdate();
+		}
+	}
 	Pawn->ApplyState();
 	if (!SameLobbyParticipant()) return false;
 	auto Occupied = [&](FVector Center, float Radius, float HalfHeight)
@@ -622,6 +637,15 @@ void ATBGameMode::StartRound(APlayerController* PlayerController)
 		Entry.Velocity = Movement->Velocity;
 		Placements.Add(Entry);
 	}
+	TArray<TSoftClassPtr<AActor>> HumanLooks;
+	for (const auto& Look : GetDefault<UTBDataSettings>()->HumanAppearances)
+		if (!Look.IsNull()) HumanLooks.AddUnique(Look);
+	if (HumanLooks.IsEmpty()) HumanLooks.AddDefaulted(); // Use the original child when no roster is configured.
+	if (MatchInfo->Settings.Humans + MatchInfo->Settings.NPCHumans > HumanLooks.Num())
+	{
+		FailRoundStart(TEXT("人間の人数が利用できるキャラクター数を超えています。"), true);
+		return;
+	}
 	auto Rollback = [&](const FString& Reason)
 	{
 		if (RoundEntrance.IsValid()) RoundEntrance->SetPreparing(false);
@@ -771,6 +795,20 @@ void ATBGameMode::StartRound(APlayerController* PlayerController)
 		Entry.AssignedTeam = Entry.Info->Team;
 		NPCPlacements.Add(Entry);
 	}
+	auto DrawLooks = [&HumanLooks](const TArray<FPlacement>& Participants)
+	{
+		for (const auto& Entry : Participants)
+		{
+			auto& Look = Entry.Info->HumanAppearance;
+			Look.Reset();
+			if (Entry.AssignedTeam != ETBTeam::Human) continue;
+			const int32 Index = FMath::RandHelper(HumanLooks.Num());
+			Look = HumanLooks[Index];
+			HumanLooks.RemoveAtSwap(Index);
+		}
+	};
+	DrawLooks(Placements);
+	DrawLooks(NPCPlacements);
 	MatchInfo->Collected = 0;
 	MatchInfo->BoxedCount = 0;
 	MatchInfo->Winner = ETBWinner::None;

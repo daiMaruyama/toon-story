@@ -70,7 +70,7 @@ Actor名は検索用です。カメラの識別には名前ではなく `TBLobby
 
 KidsRoomの扉はArchVizの既存ドア素材を使用し、広い開口部に合わせて両開きにしています。World Outlinerの `Architecture/Doors` に枠・扉・取っ手をまとめ、扉は90度開いた位置でStatic固定。`DoorFixedOpen` タグと通行テスト用TargetPointを維持してください。
 
-箱は `Gameplay/ToyChest` のTBBoxです。木箱の正面はActorの-X、幅約160cm・奥行約87cm・閉じた蓋の高さ約103cmです。親コードのTBBoxが木箱の衝突を管理します。収納先は木箱内部ではなく、StorageRoomコンポーネントの別室です。両マップで変更前の別室の位置・形状・収納座標を復元しています。Actorを拡大縮小せず位置・Yawで配置し、箱だけを移動する場合はStorageRoomのワールド位置も確認してください。前面に人間が立つスペースとおもちゃが救助する通路を空けてください。メッシュは `Content/Items/ToyChest/SM_DetailedToyChest`、共通参照はDefaultGame.iniのTBBoxセクションです。収納はE長押し3秒のままです。
+箱は `Gameplay/ToyChest` のTBBoxです。木箱の正面はActorの-X、幅約160cm・奥行約87cm・閉じた蓋の高さ約103cmです。親コードのTBBoxが木箱の衝突を管理します。収納先は木箱内部ではなく、StorageRoomコンポーネントの別室です。両マップで変更前の別室の位置・形状・収納座標を復元しています。Actorを拡大縮小せず位置・Yawで配置し、箱だけを移動する場合はStorageRoomのワールド位置も確認してください。前面に人間が立つスペースとおもちゃが救助する通路を空けてください。メッシュは `Content/Items/ToyChest/Play90/SM_LiddedToyChest`、共通参照はDefaultGame.iniのTBBoxセクションです。収納はE長押し3秒のままです。
 
 ## キャラクター変更の統合状況
 

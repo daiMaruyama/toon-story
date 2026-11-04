@@ -6,6 +6,14 @@
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 
+TOptional<ETBSoundEvent> UTBAudioEvents::PropDropSound(double FallCentimeters)
+{
+	if (FallCentimeters >= 90.0) return ETBSoundEvent::PropDropHeavy;
+	if (FallCentimeters >= 30.0) return ETBSoundEvent::PropDropMedium;
+	if (FallCentimeters >= 6.0) return ETBSoundEvent::PropDropLight;
+	return {}; // Resting contact and small bounces stay silent.
+}
+
 bool UTBAudioEvents::ShouldDeliver(ETBSoundEvent Event, const ATBPlayerState* Recipient,
                                   const APlayerState* Subject)
 {
@@ -41,6 +49,10 @@ bool UTBAudioEvents::ShouldDeliver(ETBSoundEvent Event, const ATBPlayerState* Re
 	case ETBSoundEvent::RescueComplete:
 		return Recipient->Team == ETBTeam::Toy;
 	case ETBSoundEvent::Ready:
+	case ETBSoundEvent::ToyPush:
+	case ETBSoundEvent::PropDropLight:
+	case ETBSoundEvent::PropDropMedium:
+	case ETBSoundEvent::PropDropHeavy:
 	case ETBSoundEvent::CaptureHard:
 	case ETBSoundEvent::Capture:
 	case ETBSoundEvent::Store:
