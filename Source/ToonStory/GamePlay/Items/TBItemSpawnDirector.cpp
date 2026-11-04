@@ -2,6 +2,7 @@
 #include "TBItemSpawnPoint.h"
 #include "TBItemBase.h"
 #include "TBWalkieTalkie.h"
+#include "TBDecoyToy.h"
 #include "Data/TBRuleData.h"
 #include "Core/TBGameState.h"
 #include "GamePlay/TBLightSwitch.h"
@@ -17,6 +18,9 @@ namespace
 // 表示ラベル・インタラクト範囲・音の範囲を除き、実物のモデルだけを使う。
 FBox ModelBounds(const AActor& Actor)
 {
+	// 子Actorの外見は配置直後のサーバーで未生成の場合があるため、ニセおもちゃは専用の隠しプロキシを使う。
+	if (const auto* Decoy=Cast<ATBDecoyToy>(&Actor); Decoy && Decoy->Mesh && Decoy->Mesh->GetStaticMesh())
+		return Decoy->Mesh->CalcBounds(Decoy->Mesh->GetComponentTransform()).GetBox();
 	FBox Result(ForceInit);
 	TInlineComponentArray<UPrimitiveComponent*> Parts(&Actor);
 	for(const auto* Part:Parts)
