@@ -13,17 +13,14 @@ ATBWalkieTalkie::ATBWalkieTalkie()
 	bAlwaysRelevant = true;
 	DisplayName = NSLOCTEXT("TBItems", "Walkie", "トランシーバー");
 	Actions[0].Label = NSLOCTEXT("TBItems", "WalkieTalk", "長押しで送信");
-	static ConstructorHelpers::FObjectFinder<UStaticMesh> Cube(TEXT("/Engine/BasicShapes/Cube.Cube"));
-	static ConstructorHelpers::FObjectFinder<UStaticMesh> Cylinder(TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
-	Mesh->SetStaticMesh(Cube.Object);
-	Mesh->SetRelativeScale3D(FVector(.08f, .12f, .22f));
-	Mesh->SetRelativeLocation(FVector(0, 0, 11));
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> Model(TEXT("/Game/Items/WalkieTalkie/SM_WalkieTalkie.SM_WalkieTalkie"));
+	Mesh->SetStaticMesh(Model.Object);
 	InteractionPoint->SetRelativeLocation(FVector(0, 0, 11));
+	// Retain the legacy subobject name for serialized instances; the imported model includes its antenna.
 	auto* Antenna = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Antenna"));
 	Antenna->SetupAttachment(Root);
-	Antenna->SetStaticMesh(Cylinder.Object);
-	Antenna->SetRelativeLocation(FVector(0, 4, 27));
-	Antenna->SetRelativeScale3D(FVector(.012f, .012f, .12f));
+	Antenna->SetVisibility(false);
+	Antenna->SetHiddenInGame(true);
 	Antenna->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	WalkieData = TSoftObjectPtr<UTBWalkieTalkieData>(FSoftObjectPath(TEXT("/Game/Data/DA_WalkieTalkie.DA_WalkieTalkie")));
 }
