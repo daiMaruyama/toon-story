@@ -7,6 +7,7 @@
 #include "GamePlay/TBRuleMath.h"
 #include "GameFramework/PhysicsVolume.h"
 #include "Core/TBPlayerState.h"
+#include "Core/TBGameHelpers.h"
 #include "Components/PrimitiveComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Engine/World.h"
@@ -50,9 +51,11 @@ void UTBMovement::SweepPushableProps(float DeltaSeconds)
 		auto* Part = Hit.GetComponent();
 		if (!Part || !Part->ComponentHasTag(TEXT("TBPushable")) ||
 		    FVector::DotProduct(Approach, Part->Bounds.Origin - Start) <= 0) continue;
-		bBrushingProp = true;
 		FHitResult Contact = Hit;
 		if (Hit.bStartPenetrating) Contact.ImpactPoint = Part->Bounds.Origin;
+		// The object query excludes static walls; check occlusion before applying contact effects.
+		if (!TB::ClearPath(CharacterOwner, Hit.GetActor(), Start, Contact.ImpactPoint)) continue;
+		bBrushingProp = true;
 		ApplyImpactPhysicsForces(Contact, Acceleration, Approach);
 	}
 }

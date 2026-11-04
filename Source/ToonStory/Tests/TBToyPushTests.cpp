@@ -91,6 +91,31 @@ bool FTBToyPushTest::RunTest(const FString&)
 	MakeBox(WallLane + FVector(16, 0, 0), false);
 	MakeBox(WallLane + FVector(36, 0, 0), true);
 	TestFalse(TEXT("A wall blocks a nearby prop"), BehindWall->TryPush());
+	// The passive human sweep must obey the same walls as an explicit toy push.
+	auto HumanContact = [&](FVector Lane, bool bWall)
+	{
+		auto* Human = MakeToy(Lane);
+		Human->TBPS()->Team = ETBTeam::Human;
+		Human->ApplyState();
+		if (bWall) MakeBox(Lane + FVector(16, 0, 0), false);
+		auto* Target = MakeBox(Lane + FVector(36, 0, 0), true);
+		auto* Move = CastChecked<UTBMovement>(Human->GetCharacterMovement());
+		Move->Velocity = FVector(200, 0, 0);
+		Move->PerformMovement(.05f);
+		Fixtures.Remove(Target->GetOwner());
+		return Target;
+	};
+	auto* BlockedProp = HumanContact(Start + FVector(0, 600, 0), true);
+	auto* ExposedProp = HumanContact(Start + FVector(0, 800, 0), false);
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(.2f));
+	ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([this, BlockedProp, ExposedProp]()
+	{
+		TestTrue(TEXT("Human contact cannot push through a wall"), BlockedProp->GetPhysicsLinearVelocity().IsNearlyZero());
+		TestTrue(TEXT("Unobstructed human contact still pushes the prop"), ExposedProp->GetPhysicsLinearVelocity().X > 0);
+		BlockedProp->GetOwner()->Destroy();
+		ExposedProp->GetOwner()->Destroy();
+		return true;
+	}));
 	return true;
 }
 #endif
