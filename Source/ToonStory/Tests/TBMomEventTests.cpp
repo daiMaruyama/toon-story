@@ -158,6 +158,12 @@ bool FTBMomZoneAssetTest::RunTest(const FString&)
 	ON_SCOPE_EXIT { Zone->Destroy(); };
 	if (TestNotNull(TEXT("Blueprint supplies red material"),Zone->BoundaryMaterial.Get()))
 		TestTrue(TEXT("Boundary supports instanced rendering"),Zone->BoundaryMaterial->GetMaterial()->bUsedWithInstancedStaticMeshes);
+	for (auto* Part : TInlineComponentArray<UStaticMeshComponent*>(Zone))
+		if (Part->GetName() == TEXT("PlaceholderCube"))
+		{
+			TestTrue(TEXT("Editor marker stays hidden in game"), Part->bHiddenInGame);
+			TestFalse(TEXT("Hidden marker cannot cast a cube shadow"), Part->CastShadow);
+		}
 	auto* Boundary=Zone->FindComponentByClass<UInstancedStaticMeshComponent>();
 	if (TestNotNull(TEXT("Blueprint retains dashed boundary"),Boundary))
 	{
