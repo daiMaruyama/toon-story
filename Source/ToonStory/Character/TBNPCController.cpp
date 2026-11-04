@@ -108,6 +108,7 @@ void ATBNPCController::Tick(float DeltaSeconds)
 	if (const auto* State = TB::GS(GetWorld()); State && State->IsPreparing())
 	{
 		Target.Reset(); PendingTarget.Reset(); BatteryTarget.Reset();
+		Body->SetSprintRequested(false);
 		ClearFocus(EAIFocusPriority::Gameplay);
 		Body->ClearHeldInteraction();
 		if (Body->IsHuman()) StopMovement();
@@ -120,6 +121,8 @@ void ATBNPCController::Tick(float DeltaSeconds)
 	}
 	if (!Body->CanAct())
 	{
+		// 凍結・担がれ中に走りっぱなしを残さない。
+		Body->SetSprintRequested(false);
 		StopMovement();
 		ClearFocus(EAIFocusPriority::Gameplay);
 		Body->ClearHeldInteraction();
@@ -488,6 +491,11 @@ void ATBNPCController::ThinkToy(ATBCharacter* Body)
 {
 	ClearFocus(EAIFocusPriority::Gameplay);
 	Body->ClearHeldInteraction();
+	// 人間が見えているときだけ走る。以降の早期 return でも状態が残らないよう最初に決める。
+	VisibleHumans.Reset();
+	for (TActorIterator<ATBCharacter> It(GetWorld()); It; ++It)
+		if (It->IsHuman() && CanSee(*It)) VisibleHumans.Add(*It);
+	Body->SetSprintRequested(!VisibleHumans.IsEmpty());
 	// Remain in contact until the normal collection timer completes.
 	if (IsValid(Body->ContactItem) && Body->ContactItem->Touches(Body))
 	{
@@ -496,9 +504,6 @@ void ATBNPCController::ThinkToy(ATBCharacter* Body)
 	}
 	auto* Nav = UNavigationSystemV1::GetCurrent(GetWorld());
 	if (!Nav) return;
-	VisibleHumans.Reset();
-	for (TActorIterator<ATBCharacter> It(GetWorld()); It; ++It)
-		if (It->IsHuman() && CanSee(*It)) VisibleHumans.Add(*It);
 	const FVector Origin = Body->GetActorLocation();
 	auto* Data = Nav->GetNavDataForProps(GetNavAgentPropertiesRef(), Origin);
 	if (!Data) return;

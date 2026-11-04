@@ -8,6 +8,7 @@
 #include "Audio/TBCharacterAudioComponent.h"
 #include "Blueprint/WidgetBlueprintLibrary.h"
 #include "Character/TBCharacter.h"
+#include "Data/TBCharacterData.h"
 #include "GamePlay/TBDummyToy.h"
 #include "Core/TBGameMode.h"
 #include "Core/TBGameState.h"
@@ -609,6 +610,27 @@ bool FTBHumanFootstepTest::RunTest(const FString& Parameters)
 	TestNull(TEXT("Missing human sound slot is also safe"), Audio->StartLoop(ETBSoundEvent::HumanFootstep, Source));
 	return !HasAnyErrors();
 }
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBFootstepRuleTest, "ToonStory.Audio.FootstepRule",
+                                 EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+bool FTBFootstepRuleTest::RunTest(const FString& Parameters)
+{
+	const auto& Toy = TB::CharacterData().Toy;
+	const float Walk = Toy.WalkSpeed;
+	const float Sprint = Toy.SprintSpeed;
+	const float Threshold = (Walk + Sprint) * .5f;
+	const auto& Human = TB::CharacterData().Human;
+	using C = UTBCharacterAudioComponent;
+	TestFalse(TEXT("おもちゃの歩きは鳴らない"), C::ShouldPlayFootstep(ETBTeam::Toy, false, Walk));
+	TestTrue(TEXT("おもちゃの走りは鳴る"), C::ShouldPlayFootstep(ETBTeam::Toy, false, Sprint));
+	TestTrue(TEXT("しきい値ちょうどは鳴る"), C::ShouldPlayFootstep(ETBTeam::Toy, false, Threshold));
+	TestFalse(TEXT("しきい値の少し下は鳴らない"), C::ShouldPlayFootstep(ETBTeam::Toy, false, Threshold - .5f));
+	TestTrue(TEXT("人間の通常は鳴る"), C::ShouldPlayFootstep(ETBTeam::Human, false, Human.WalkSpeed));
+	TestTrue(TEXT("人間は遅くても鳴る"), C::ShouldPlayFootstep(ETBTeam::Human, false, Walk));
+	TestFalse(TEXT("人間のしゃがみは鳴らない"), C::ShouldPlayFootstep(ETBTeam::Human, true, Human.WalkSpeed * Human.CrouchSpeedRatio));
+	return !HasAnyErrors();
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBDummyStoreAudioTest, "ToonStory.Audio.DummyStoreParity",
                                  EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
 bool FTBDummyStoreAudioTest::RunTest(const FString& Parameters)
