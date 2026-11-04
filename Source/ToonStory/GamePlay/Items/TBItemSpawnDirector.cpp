@@ -120,11 +120,25 @@ ATBItemBase* UTBItemSpawnDirector::TrySpawn(const ATBItemSpawnPoint& Point, cons
 	if(!Item->GetIsReplicated() || !Bounds.IsValid || Bounds.GetExtent().IsNearlyZero() || Bounds.Min.ContainsNaN() || Bounds.Max.ContainsNaN()) { Item->Destroy(); return nullptr; }
 	for(const auto& Existing:SpawnedItems)
 		if(Existing.IsValid() && BoundsDistanceSquared(ModelBounds(*Existing),Bounds)<FMath::Square(Rules.MinimumSeparation)) { Item->Destroy(); return nullptr; }
-	FBox Space=Bounds.ExpandBy(FVector(Rules.ObstacleClearance));
+	// Tabletop items need clearance from objects, not a floor walking lane around them.
+	const float Clearance = Point.PlacementType == TEXT("Tabletop") ? FMath::Min(Rules.ObstacleClearance, 3.f) : Rules.ObstacleClearance;
+	FBox Space=Bounds.ExpandBy(FVector(Clearance));
 	Space.Min.Z=Bounds.Min.Z; // 支持する床は余白判定に含めない。
 	const bool Blocked=GetWorld()->OverlapBlockingTestByChannel(Space.GetCenter(),FQuat::Identity,ECC_WorldDynamic,FCollisionShape::MakeBox(Space.GetExtent()),Query) ||
 		GetWorld()->OverlapBlockingTestByChannel(Space.GetCenter(),FQuat::Identity,ECC_Visibility,FCollisionShape::MakeBox(Space.GetExtent()),Query);
 	if(Blocked) { Item->Destroy(); return nullptr; }
+	// Tabletop decorations often have no collision. Do not spawn through their visible meshes.
+	if (Point.PlacementType == TEXT("Tabletop"))
+		for (TActorIterator<AActor> It(GetWorld()); It; ++It)
+		{
+			if (*It == Item || It->IsHidden() || It->IsActorBeingDestroyed()) continue;
+			for (const auto* Part : TInlineComponentArray<UStaticMeshComponent*>(*It))
+				if (Part->IsRegistered() && Part->IsVisible() && !Part->bHiddenInGame && Part->GetStaticMesh() &&
+				    Part->GetCollisionEnabled() == ECollisionEnabled::NoCollision &&
+				    Bounds.Intersect(Part->CalcBounds(Part->GetComponentTransform()).GetBox()))
+				{ Item->Destroy(); return nullptr; }
+		}
+
 	Item->ForceNetUpdate();
 	return Item;
 }
