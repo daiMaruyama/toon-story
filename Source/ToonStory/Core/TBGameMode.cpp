@@ -688,15 +688,6 @@ void ATBGameMode::StartRound(APlayerController* PlayerController)
 		Entry.Velocity = Movement->Velocity;
 		Placements.Add(Entry);
 	}
-	TArray<TSoftClassPtr<AActor>> HumanLooks;
-	for (const auto& Look : GetDefault<UTBDataSettings>()->HumanAppearances)
-		if (!Look.IsNull()) HumanLooks.AddUnique(Look);
-	if (HumanLooks.IsEmpty()) HumanLooks.AddDefaulted(); // Use the original child when no roster is configured.
-	if (MatchInfo->Settings.Humans + MatchInfo->Settings.NPCHumans > HumanLooks.Num())
-	{
-		FailRoundStart(TEXT("人間の人数が利用できるキャラクター数を超えています。"), true);
-		return;
-	}
 	auto Rollback = [&](const FString& Reason)
 	{
 		if (RoundEntrance.IsValid()) RoundEntrance->SetPreparing(false);
@@ -846,16 +837,21 @@ void ATBGameMode::StartRound(APlayerController* PlayerController)
 		Entry.AssignedTeam = Entry.Info->Team;
 		NPCPlacements.Add(Entry);
 	}
-	auto DrawLooks = [&HumanLooks](const TArray<FPlacement>& Participants)
+	TArray<TSoftClassPtr<AActor>> HumanLooks;
+	for (const auto& Look : GetDefault<UTBDataSettings>()->HumanAppearances)
+		if (!Look.IsNull()) HumanLooks.AddUnique(Look);
+	TArray<TSoftClassPtr<AActor>> RemainingLooks;
+	auto DrawLooks = [&HumanLooks, &RemainingLooks](const TArray<FPlacement>& Participants)
 	{
 		for (const auto& Entry : Participants)
 		{
 			auto& Look = Entry.Info->HumanAppearance;
 			Look.Reset();
-			if (Entry.AssignedTeam != ETBTeam::Human) continue;
-			const int32 Index = FMath::RandHelper(HumanLooks.Num());
-			Look = HumanLooks[Index];
-			HumanLooks.RemoveAtSwap(Index);
+			if (Entry.AssignedTeam != ETBTeam::Human || HumanLooks.IsEmpty()) continue;
+			if (RemainingLooks.IsEmpty()) RemainingLooks = HumanLooks;
+			const int32 Index = FMath::RandHelper(RemainingLooks.Num());
+			Look = RemainingLooks[Index];
+			RemainingLooks.RemoveAtSwap(Index);
 		}
 	};
 	DrawLooks(Placements);
