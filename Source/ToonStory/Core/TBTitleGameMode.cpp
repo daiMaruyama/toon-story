@@ -51,7 +51,9 @@ void ATBTitleController::BeginPlay()
 		}
 	}
 	GetGameInstance()->GetSubsystem<UTBSession>()->Activate();
-	Menu = CreateWidget<UTBTitleMenu>(this, UTBTitleMenu::StaticClass());
+	// デザイナーが配置を直せる WBP があればそれを使い、読めなければ C++ だけで作る。
+	UClass* MenuClass = LoadClass<UTBTitleMenu>(nullptr, TEXT("/Game/UI/Designer/WBP_TitleMenu.WBP_TitleMenu_C"), nullptr, LOAD_Quiet | LOAD_NoWarn);
+	Menu = CreateWidget<UTBTitleMenu>(this, MenuClass ? MenuClass : UTBTitleMenu::StaticClass());
 	if (Menu)
 	{
 		Menu->AddToViewport();
