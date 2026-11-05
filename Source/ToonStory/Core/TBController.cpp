@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Mamodou. All Rights Reserved.
 
 #include "TBController.h"
+#include "Character/TBCharacter.h"
 #include "Algo/AllOf.h"
 #include "Audio/TBAudioEvents.h"
 #include "Audio/TBAudioSubsystem.h"
@@ -98,10 +99,21 @@ void ATBController::PlayerTick(float DeltaTime)
 	const auto* HUD = Cast<ATBHUD>(GetHUD());
 	const bool BlockingPanel = HUD && (HUD->IsChatBlocked() || HUD->IsStagePickerOpen());
 	const bool ShowMenu = State && (InLobby ? (BlockingPanel || IsChatOpen() || State->bTravelPending) :
-	    (State->Phase != ETBPhase::Playing || bLeaveMenuOpen || BlockingPanel));
+	    (State->Phase != ETBPhase::Playing && State->Phase != ETBPhase::Results) || bLeaveMenuOpen || BlockingPanel);
 	UpdateLobbyCamera(InLobby || ShouldHidePreparationView());
 	UpdateMenuInput(ShowMenu);
 	UpdateScreenTransition();
+	if (State && State->Phase == ETBPhase::Results)
+	{
+		ATBCharacter* Winner = GetPawn<ATBCharacter>();
+		if (!Winner || !Winner->IsCelebrating())
+		{
+			Winner = nullptr;
+			for (TActorIterator<ATBCharacter> It(GetWorld()); It; ++It)
+				if (It->IsCelebrating() && (!Winner || It->TBPS()->GetPlayerId() < Winner->TBPS()->GetPlayerId())) Winner = *It;
+		}
+		if (Winner && GetViewTarget() != Winner) SetViewTargetWithBlend(Winner, .4f);
+	}
 	UpdateViewAspect();
 	SyncInputContexts();
 	if (NoticeExpires > 0 && GetWorld()->GetTimeSeconds() > NoticeExpires)

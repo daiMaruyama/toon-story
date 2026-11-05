@@ -7,6 +7,7 @@
 #include "Engine/World.h"
 #include "Engine/Level.h"
 #include "GamePlay/TBBox.h"
+#include "GamePlay/TBPushableProps.h"
 #include "Net/UnrealNetwork.h"
 
 ATBGameState::ATBGameState()
@@ -63,6 +64,7 @@ void ATBGameState::ConfigurePushableProps(ULevel* Level, UWorld* World)
 	{
 		auto* Prop = Cast<AStaticMeshActor>(Actor);
 		if (!Prop) continue;
+		TBPushableProps::TryEnable(*Prop);
 		auto* Part = Prop->GetStaticMeshComponent();
 		if (!Part || !Part->ComponentHasTag(TEXT("TBPushable"))) continue;
 		// World geometry still supports the prop. A character cannot use it as a moving floor.

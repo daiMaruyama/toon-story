@@ -51,11 +51,6 @@ void ATBHUD::NotifyHitBoxClick(FName Name)
 		PC->TBLeave();
 		return;
 	}
-	if (Name == TEXT("ReturnToLobby"))
-	{
-		PC->TBLobby();
-		return;
-	}
 	if (State->Phase != ETBPhase::Lobby)
 	{
 		return;
@@ -137,7 +132,7 @@ void ATBHUD::DrawHUD()
 	}
 	if (State->Phase == ETBPhase::Results || State->Phase == ETBPhase::Aborted)
 	{
-		DrawResults(*State, *PC);
+		DrawResults(*State);
 	}
 	else
 	{

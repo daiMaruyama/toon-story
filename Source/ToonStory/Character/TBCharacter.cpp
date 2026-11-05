@@ -480,9 +480,18 @@ bool ATBCharacter::CanAct() const
 	        (ToyPlayerInfo->Team == ETBTeam::Toy && ToyPlayerInfo->ToyState == ETBToyState::Free));
 }
 
+bool ATBCharacter::IsCelebrating() const
+{
+	const auto* State = TB::GS(GetWorld());
+	const auto* Info = TBPS();
+	return State && Info && State->Phase == ETBPhase::Results &&
+	    ((State->Winner == ETBWinner::Humans && Info->Team == ETBTeam::Human) ||
+	     (State->Winner == ETBWinner::Toys && Info->Team == ETBTeam::Toy));
+}
+
 bool ATBCharacter::IsGazeFrozen() const
 {
-	return TBPS() && TBPS()->bFrozen;
+	return !IsCelebrating() && TBPS() && TBPS()->bFrozen;
 }
 
 bool ATBCharacter::IsPhysicsLocked() const
@@ -493,7 +502,7 @@ bool ATBCharacter::IsPhysicsLocked() const
 	if (MatchInfo && MatchInfo->IsPreparing() && (!ToyPlayerInfo || ToyPlayerInfo->Team != ETBTeam::Toy)) return true;
 	if (MatchInfo && (MatchInfo->Phase == ETBPhase::Results || MatchInfo->Phase == ETBPhase::Aborted))
 	{
-		return true;
+		return !IsCelebrating();
 	}
 	return ToyPlayerInfo && ToyPlayerInfo->Team == ETBTeam::Toy &&
 	       (ToyPlayerInfo->ToyState == ETBToyState::Grabbed || ToyPlayerInfo->ToyState == ETBToyState::Carried ||
@@ -541,6 +550,9 @@ void ATBCharacter::ApplyState()
 				auto* Skinned = Cast<USkeletalMeshComponent>(Part);
 				if (Skinned && Skinned->GetSkeletalMeshAsset() && LoadedChildMesh && Skinned->GetName().Equals(TEXT("Body"), ESearchCase::IgnoreCase))
 				{
+					// Clothing follows this hidden/occluded body. Its bones must update even
+					// when only the garment (or a TV capture) is visible.
+					Skinned->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
 					Skinned->AddTickPrerequisiteComponent(GetMesh());
 					Skinned->SetAnimInstanceClass(UTBHumanBodyPose::StaticClass());
 					// Body meshes are modular and may omit the head. Size the entire assembly by its skeleton.
@@ -565,7 +577,7 @@ void ATBCharacter::ApplyState()
 	}
 	if (auto* Assembly = HumanVisual->GetChildActor())
 		for (auto* Part : TInlineComponentArray<UPrimitiveComponent*>(Assembly))
-			Part->SetOwnerNoSee(IsHuman());
+			Part->SetOwnerNoSee(IsHuman() && !IsCelebrating());
 	if (!Toy && LoadedChildMesh) GetMesh()->SetVisibility(!HumanVisual->GetChildActor());
 	const bool Held = ToyPlayerInfo->ToyState == ETBToyState::Grabbed ||
 	                  ToyPlayerInfo->ToyState == ETBToyState::Carried ||
@@ -743,6 +755,20 @@ void ATBCharacter::UpdateCarryCamera()
 void ATBCharacter::CalcCamera(float DeltaTime, FMinimalViewInfo& OutResult)
 {
 	Super::CalcCamera(DeltaTime, OutResult);
+	if (IsCelebrating())
+	{
+		const FVector Focus = GetActorLocation() + FVector(0, 0, BaseEyeHeight * .5f);
+		const FRotator View = GetBaseAimRotation();
+		const FVector Desired = Focus - View.Vector() * (IsHuman() ? 240.f : 130.f);
+		FCollisionQueryParams Query(SCENE_QUERY_STAT(TBCelebrationCamera), false, this);
+		if (HumanVisual->GetChildActor()) Query.AddIgnoredActor(HumanVisual->GetChildActor());
+		FHitResult Hit;
+		GetWorld()->SweepSingleByChannel(Hit, Focus, Desired, FQuat::Identity, ECC_Camera,
+		    FCollisionShape::MakeSphere(8.f), Query);
+		OutResult.Location = Hit.bBlockingHit ? Hit.Location : Desired;
+		OutResult.Rotation = View;
+		return;
+	}
 	// カメラの画面比（BeginPlay で基準の画面比にしてある）より横長の画面は、左右に黒帯を出して見えすぎを防ぐ。
 	// 1366×768 など、ほぼ同じ比率の画面に細い黒帯が出ないよう、1% までの差は許す。
 	const auto* Player = Cast<ATBController>(GetController());
@@ -808,6 +834,11 @@ void ATBCharacter::Tick(float DeltaSeconds)
 	UpdateEmote();
 	ApplyState();
 	UpdateCarryCamera();
+	if (IsCelebrating())
+	{
+		Body->SetOwnerNoSee(false);
+		GetMesh()->SetOwnerNoSee(false);
+	}
 	if (IsHuman())
 	{
 		CarryAnchor->SetWorldRotation(GetActorRotation());

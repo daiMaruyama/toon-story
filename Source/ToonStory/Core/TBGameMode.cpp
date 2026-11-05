@@ -20,6 +20,7 @@
 #include "Character/TBNPCNavigation.h"
 #include "Character/TBToyCharacter.h"
 #include "GamePlay/TBBox.h"
+#include "GamePlay/TBTVCamera.h"
 #include "GamePlay/TBHumanEntrance.h"
 #include "GamePlay/TBBoxEscapeCourse.h"
 #include "GamePlay/TBDummyToy.h"
@@ -42,6 +43,7 @@ namespace
 {
 	// Survives GameMode replacement during seamless travel; controllers must not accept the prior round's role.
 	uint32 NextPreparationRound = 0;
+	constexpr double ResultDurationSeconds = 10.;
 }
 
 void ATBGameMode::InitGame(const FString& MapName, const FString& Options, FString& ErrorMessage)
@@ -102,6 +104,39 @@ void ATBGameMode::BeginPlay()
 		if (It)
 		{
 			MatchInfo->Box = *It;
+		}
+	}
+	// Older house levels have no TV camera markers. Supply replicated runtime cameras
+	// from the existing toy starts, without saving or moving anything in the map.
+	if (GetWorld()->GetMapName().Contains(TEXT("TB_StylizedHouse")))
+	{
+		TArray<AActor*> CameraStarts;
+		const auto* Entrance = ATBHumanEntrance::Find(GetWorld());
+		for (const auto& StartPtr : SpawnPoints)
+		{
+			auto* Start = StartPtr.Get();
+			if (!IsValid(Start)) continue;
+			bool Door = false;
+			if (Entrance) for (const auto& Slot : Entrance->DoorSlots) Door |= Slot.Get() == Start;
+			if (!Door) CameraStarts.Add(Start);
+		}
+		CameraStarts.Sort([](const AActor& A, const AActor& B) { return A.GetName() < B.GetName(); });
+		FVector Center = FVector::ZeroVector;
+		for (const auto* Start : CameraStarts) Center += Start->GetActorLocation();
+		if (!CameraStarts.IsEmpty()) Center /= CameraStarts.Num();
+		for (int32 Channel = 0; Channel < 3 && !CameraStarts.IsEmpty(); ++Channel)
+		{
+			bool Exists = false;
+			for (TActorIterator<ATBTVCamera> It(GetWorld()); It; ++It) Exists |= It->Channel == Channel;
+			if (Exists) continue;
+			const FVector Position = CameraStarts[Channel * CameraStarts.Num() / 3]->GetActorLocation() + FVector(0, 0, 80);
+			FActorSpawnParameters Params;
+			Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+			if (auto* Camera = GetWorld()->SpawnActor<ATBTVCamera>(Position, (Center - Position).Rotation(), Params))
+			{
+				Camera->Channel = Channel;
+				Camera->ForceNetUpdate();
+			}
 		}
 	}
 	TBLobbySettings::Restore(this);
@@ -340,7 +375,23 @@ AActor* ATBGameMode::ChoosePlayerStart_Implementation(AController* Player)
 	}
 	if (!SpawnPoints.IsEmpty())
 	{
-		return SpawnPoints[SpawnCursor++ % SpawnPoints.Num()];
+		// Round placement keeps its transactional validation; only initial arrival
+		// may search for an alternative spawn marker.
+		if (bStartingRound) return SpawnPoints[SpawnCursor++ % SpawnPoints.Num()];
+		// During travel there is no pawn yet: test the actual spawn class, not
+		// the later toy-sized capsule. A blocked marker must not strand a client
+		// without a pawn in TickArrival's all-players-ready barrier.
+		const UClass* PawnClass = GetDefaultPawnClassForController(Player);
+		const APawn* Body = Player && Player->GetPawn() ? Player->GetPawn<APawn>() :
+		    (PawnClass ? PawnClass->GetDefaultObject<APawn>() : nullptr);
+		for (int32 Attempt = 0; Attempt < SpawnPoints.Num(); ++Attempt)
+		{
+			auto* Start = SpawnPoints[SpawnCursor++ % SpawnPoints.Num()].Get();
+			if (!IsValid(Start)) continue;
+			if (Body && GetWorld()->EncroachingBlockingGeometry(Body, Start->GetActorLocation(), Start->GetActorRotation())) continue;
+			return Start;
+		}
+		return nullptr;
 	}
 	return Super::ChoosePlayerStart_Implementation(Player);
 }
@@ -923,8 +974,14 @@ void ATBGameMode::FailRoundStart(const FString& Reason, bool bRecovered)
 // 接続・PlayerState・マップを保持し、試合に属する状態だけを初期化する。
 void ATBGameMode::ReturnToLobby(APlayerController* PlayerController)
 {
+	if (IsHost(PlayerController)) ReturnFinishedMatchToLobby();
+}
+
+void ATBGameMode::ReturnFinishedMatchToLobby()
+{
 	auto* State = TB::GS(GetWorld());
-	if (!IsHost(PlayerController) || !State || (State->Phase != ETBPhase::Results && State->Phase != ETBPhase::Aborted))
+	if (!HasAuthority() || !State || State->bTravelPending ||
+	    (State->Phase != ETBPhase::Results && State->Phase != ETBPhase::Aborted))
 	{
 		return;
 	}
@@ -1122,6 +1179,18 @@ void ATBGameMode::Tick(float DeltaSeconds)
 	if (const auto* State = TB::GS(GetWorld()); State && State->bTravelPending && Pending->bStartOnArrival)
 		bObservedPreparationArrival = true;
 	TBLobbySettings::TickArrival(this);
+	if (auto* Result = TB::GS(GetWorld()); Result &&
+	    (Result->Phase == ETBPhase::Results || Result->Phase == ETBPhase::Aborted) &&
+	    !Result->bTravelPending)
+	{
+		if (Result->EndTime <= 0) // A failed placement can also enter Aborted.
+		{
+			Result->EndTime = Result->GetServerWorldTimeSeconds() + ResultDurationSeconds;
+			Result->ForceNetUpdate();
+		}
+		else if (Result->GetServerWorldTimeSeconds() >= Result->EndTime)
+			ReturnFinishedMatchToLobby();
+	}
 	if (const auto* State = TB::GS(GetWorld()); State && bObservedPreparationArrival)
 	{
 		if (State->Phase == ETBPhase::Playing) bObservedPreparationArrival = false;
@@ -1239,6 +1308,7 @@ void ATBGameMode::Finish(ETBWinner Winner, const FString& Why, bool Abort)
 		return;
 	}
 	MatchInfo->Winner = Winner;
+	MatchInfo->EndTime = MatchInfo->GetServerWorldTimeSeconds() + ResultDurationSeconds;
 	if (RoundEntrance.IsValid()) RoundEntrance->SetPreparing(false);
 	MatchInfo->HidePreparation = FTBHidePreparation();
 	MatchInfo->Reason = Why;
@@ -1249,6 +1319,7 @@ void ATBGameMode::Finish(ETBWinner Winner, const FString& Why, bool Abort)
 	for (TActorIterator<ATBCharacter> It(GetWorld()); It; ++It)
 	{
 		It->ClearHeldInteraction();
+		It->DropToy();
 		It->ApplyState();
 	}
 }

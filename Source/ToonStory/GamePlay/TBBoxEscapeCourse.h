@@ -10,7 +10,7 @@ class ATargetPoint;
 class UBoxComponent;
 class UPrimitiveComponent;
 
-/** Server-owned final landing escape. No checkpoint sequence or automatic fall reset. */
+/** Server-owned height-based escape. No checkpoint sequence or automatic fall reset. */
 UCLASS()
 class TOONSTORY_API ATBBoxEscapeCourse : public AActor
 {
@@ -25,7 +25,7 @@ public:
 	TObjectPtr<UBoxComponent> CourseBounds;
 	UPROPERTY(EditInstanceOnly, Category = "Course")
 	TObjectPtr<ATBBox> Box;
-	/** Explicit landing volume above the final platform. Pure query geometry; never a height-only fallback. */
+	/** The bottom of this volume defines the finish height anywhere inside CourseBounds. */
 	UPROPERTY(EditInstanceOnly, Category = "Course", meta = (DisplayName = "最終到達領域"))
 	TObjectPtr<ATriggerBox> Goal;
 	// Resolve component tags in the loaded shared level; no cross-level actor/component hard reference.
@@ -53,7 +53,7 @@ private:
 	bool Contains(const UBoxComponent* Volume, const ATBCharacter* Toy, float Margin = 0) const;
 	bool ValidateWithSupports(FString& Error, bool CheckSafety, TArray<UPrimitiveComponent*>& Supports) const;
 	bool ResolveFinalSupports(TArray<UPrimitiveComponent*>& Out, FString& Error) const;
-	bool IsFinalLanding(const ATBCharacter* Toy, const TArray<UPrimitiveComponent*>& Supports) const;
+	bool IsAtGoalHeight(const ATBCharacter* Toy) const;
 	bool Eligible(const ATBCharacter* Toy) const;
 	bool SafeExitPoint(FVector Position, const ATBCharacter* Toy = nullptr) const;
 };

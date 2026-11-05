@@ -7,6 +7,7 @@ public class ToonStory : ModuleRules
 	public ToonStory(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
+		PrivateDependencyModuleNames.Add("PhysicsCore");
 
 		PublicDependencyModuleNames.AddRange(new string[] {
 			"Core",

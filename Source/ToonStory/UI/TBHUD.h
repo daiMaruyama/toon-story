@@ -39,7 +39,7 @@ private:
 	void PaperPanel(FLinearColor Tint, float X, float Y, float W, float H);
 	void DrawText(const FString& Text, FLinearColor Color, float X, float Y, UFont* Font = nullptr, float Scale = 1.f,
 	              bool ScalePosition = false);
-	void DrawResults(const class ATBGameState& MatchState, class ATBController& Controller);
+	void DrawResults(const class ATBGameState& MatchState);
 	void DrawMatch(const class ATBGameState& MatchState, class ATBController& Controller);
 	void DrawLobby();
 	void DrawDebugHUD();

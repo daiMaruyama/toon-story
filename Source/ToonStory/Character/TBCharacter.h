@@ -115,6 +115,7 @@ public:
 	void OnRep_Carrier();
 	ATBPlayerState* TBPS() const;
 	bool IsHuman() const;
+	bool IsCelebrating() const;
 	// Game-thread read for animation. Simulated peers must have a matching resolved snapshot.
 	bool GetHumanLook(FTBHumanLookSnapshot& Out) const;
 	bool CanRequestEmote() const;

@@ -183,6 +183,14 @@ void UTBMovement::PhysCustom(float DeltaSeconds, int32 Iterations)
 	{
 		return;
 	}
+	// Preserve walking's floor clearance when freezing; gravity must not close that gap.
+	FindFloor(UpdatedComponent->GetComponentLocation(), CurrentFloor, false);
+	if (CurrentFloor.IsWalkableFloor() && CurrentFloor.GetDistanceToFloor() <= MAX_FLOOR_DIST &&
+	    CurrentFloor.GetDistanceToFloor() >= MIN_FLOOR_DIST && Velocity.Z <= 0)
+	{
+		Velocity = FVector::ZeroVector;
+		return;
+	}
 	// 静止した床を前提とし、斜面の滑りや移動床には対応しない。
 	Velocity.X = 0;
 	Velocity.Y = 0;
@@ -196,6 +204,8 @@ void UTBMovement::PhysCustom(float DeltaSeconds, int32 Iterations)
 	if (Hit.IsValidBlockingHit() && Hit.Normal.Z > 0)
 	{
 		Velocity.Z = 0;
+		FindFloor(UpdatedComponent->GetComponentLocation(), CurrentFloor, false);
+		if (CurrentFloor.IsWalkableFloor()) AdjustFloorHeight();
 	}
 }
 
