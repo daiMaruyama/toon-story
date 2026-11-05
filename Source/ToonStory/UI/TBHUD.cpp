@@ -51,6 +51,11 @@ void ATBHUD::NotifyHitBoxClick(FName Name)
 		PC->TBLeave();
 		return;
 	}
+	if (Name == TEXT("RetryLobbyReturn") && State->IsLobbyReturnStopped() && PC->HasAuthority())
+	{
+		PC->TBLobby();
+		return;
+	}
 	if (State->Phase != ETBPhase::Lobby)
 	{
 		return;

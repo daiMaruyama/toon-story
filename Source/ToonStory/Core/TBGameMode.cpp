@@ -44,6 +44,8 @@ namespace
 	// Survives GameMode replacement during seamless travel; controllers must not accept the prior round's role.
 	uint32 NextPreparationRound = 0;
 	constexpr double ResultDurationSeconds = 10.;
+	constexpr double LobbyReturnRetrySeconds = 5.;
+	constexpr int32 MaxLobbyReturnAttempts = 3;
 }
 
 void ATBGameMode::InitGame(const FString& MapName, const FString& Options, FString& ErrorMessage)
@@ -970,7 +972,24 @@ void ATBGameMode::FailRoundStart(const FString& Reason, bool bRecovered)
 // 接続・PlayerState・マップを保持し、試合に属する状態だけを初期化する。
 void ATBGameMode::ReturnToLobby(APlayerController* PlayerController)
 {
-	if (IsHost(PlayerController)) ReturnFinishedMatchToLobby();
+	if (!IsHost(PlayerController)) return;
+	if (const auto* State = TB::GS(GetWorld()); State && !State->LobbyReturnError.IsEmpty())
+	{
+		if (!State->IsLobbyReturnStopped()) return;
+		LobbyReturnFailures = 0;
+	}
+	ReturnFinishedMatchToLobby();
+}
+
+void ATBGameMode::LobbyReturnFailed(const FString& Reason)
+{
+	auto* State = TB::GS(GetWorld());
+	if (!State || (State->Phase != ETBPhase::Results && State->Phase != ETBPhase::Aborted)) return;
+	++LobbyReturnFailures;
+	State->LobbyReturnError = Reason;
+	State->EndTime = LobbyReturnFailures < MaxLobbyReturnAttempts ?
+	    State->GetServerWorldTimeSeconds() + LobbyReturnRetrySeconds : 0.;
+	State->ForceNetUpdate();
 }
 
 void ATBGameMode::ReturnFinishedMatchToLobby()
@@ -981,14 +1000,24 @@ void ATBGameMode::ReturnFinishedMatchToLobby()
 	{
 		return;
 	}
+	const bool TravelToLobby = GetGameInstance()->GetSubsystem<UTBLobbySettings>()->bDedicatedLobby;
+	if (TravelToLobby)
+	{
+		const FString Error = TBLobbySettings::TryTravel(this, false);
+		if (!Error.IsEmpty())
+		{
+			LobbyReturnFailed(Error);
+			return;
+		}
+	}
+	State->LobbyReturnError.Reset();
 	State->HidePreparation = FTBHidePreparation();
 	for (auto It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 		if (auto* PC = Cast<ATBController>(It->Get())) PC->ClientPreparationCancelled(PreparationRound);
 	RemoveNPCs();
 	if (RoundEntrance.IsValid()) RoundEntrance->SetPreparing(false);
-	if (GetGameInstance()->GetSubsystem<UTBLobbySettings>()->bDedicatedLobby)
+	if (TravelToLobby)
 	{
-		if (!TBLobbySettings::Travel(this, false)) return;
 		for (APlayerState* Player : State->PlayerArray)
 		{
 			if (auto* Info = Cast<ATBPlayerState>(Player)) { Info->Team = ETBTeam::None; Info->bReady = false; }
@@ -996,6 +1025,7 @@ void ATBGameMode::ReturnFinishedMatchToLobby()
 		return;
 	}
 	DestroyRoundCharacters();
+	LobbyReturnFailures = 0;
 	for (APlayerState* Player : State->PlayerArray)
 	{
 		if (auto* Info = Cast<ATBPlayerState>(Player))
@@ -1177,7 +1207,7 @@ void ATBGameMode::Tick(float DeltaSeconds)
 	TBLobbySettings::TickArrival(this);
 	if (auto* Result = TB::GS(GetWorld()); Result &&
 	    (Result->Phase == ETBPhase::Results || Result->Phase == ETBPhase::Aborted) &&
-	    !Result->bTravelPending)
+	    !Result->bTravelPending && !Result->IsLobbyReturnStopped())
 	{
 		if (Result->EndTime <= 0) // A failed placement can also enter Aborted.
 		{

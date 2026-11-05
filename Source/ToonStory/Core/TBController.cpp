@@ -101,7 +101,7 @@ void ATBController::PlayerTick(float DeltaTime)
 	const bool ShowMenu = State && (InLobby ? (BlockingPanel || IsChatOpen() || State->bTravelPending) :
 	    (State->Phase != ETBPhase::Playing && State->Phase != ETBPhase::Results) || bLeaveMenuOpen || BlockingPanel);
 	UpdateLobbyCamera(InLobby || ShouldHidePreparationView());
-	UpdateMenuInput(ShowMenu);
+	UpdateMenuInput(ShowMenu || (State && State->IsLobbyReturnStopped() && HasAuthority()));
 	UpdateScreenTransition();
 	if (State && State->Phase == ETBPhase::Results)
 	{

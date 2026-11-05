@@ -96,6 +96,7 @@ void ATBGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
 	DOREPLIFETIME(ATBGameState, Winner);
 	DOREPLIFETIME(ATBGameState, Reason);
 	DOREPLIFETIME(ATBGameState, EndTime);
+	DOREPLIFETIME(ATBGameState, LobbyReturnError);
 	DOREPLIFETIME(ATBGameState, Collected);
 	DOREPLIFETIME(ATBGameState, BoxedCount);
 	DOREPLIFETIME(ATBGameState, Box);

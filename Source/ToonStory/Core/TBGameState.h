@@ -65,6 +65,9 @@ public:
 	FString Reason;
 	UPROPERTY(Replicated, BlueprintReadOnly)
 	double EndTime = 0;
+	UPROPERTY(Replicated)
+	FString LobbyReturnError;
+	bool IsLobbyReturnStopped() const { return !bTravelPending && !LobbyReturnError.IsEmpty() && EndTime == 0; }
 	UPROPERTY(Replicated, BlueprintReadOnly)
 	int32 Collected = 0;
 	UPROPERTY(Replicated, BlueprintReadOnly)
