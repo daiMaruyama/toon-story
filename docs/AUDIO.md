@@ -78,6 +78,8 @@ Childrenの足音は発生位置から立体音で鳴り、近づくほど大き
 
 単発のゲームイベントはサーバーで成功を確定してから対象クライアントへ通知し、各端末の共通処理で再生します。UI音は操作した端末のみで再生します。Dedicated Serverでは音を再生しません。
 
+おもちゃが味方か小物を押すと、接触した位置で短い打音が鳴ります。小物が床や台に着地すると、その落下の最高点からの高低差で着地音が変わります。6 cm未満は無音、6 cm以上は軽い音、30 cm以上は中くらいの音、90 cm以上は重い音です。素材は [Kenney Impact Sounds](https://kenney.nl/assets/impact-sounds)（CC0）です。
+
 発生処理は `UTBAudioEvents::Emit` を使い、通知対象を共通判定します。足音と継続音は受信したキャラ・箱の状態を各端末で観測します。過去の単発イベントは途中参加者に再生し直しません。救助音は陣営で制限します。定位の有無は設定で変更できます。1端末1プレイヤーを前提とし、画面分割で陣営の異なる複数プレイヤーが同じ音声出力を使う構成は対象外です。
 
 ## 後から付ける音量設定画面
@@ -149,3 +151,5 @@ $AudioProject = (Resolve-Path ./ToonStory.uproject).Path
 - `HumanFootstepPerspective` が成功。同じ素材に対する聞き手別音量・ピッチ、距離が近いほど大きくなる減衰、範囲外の無音、既存の音量操作、空素材を確認。レポートは `Saved/Automation/HumanFootstepsVerified/index.json`。
 - 既存の音声テスト4件と `ToonStory.Match.Rematch` も成功（`Saved/Automation/HumanFootsteps/index.json`）。この初回レポートでは新テストのピッチ比較が小数の丸め差で失敗し、許容誤差修正後に上記の個別テストで再確認しています。
 - 今回も無音環境での自動確認です。素材登録後の音色・音量バランス、歩行中の可聴確認、別PC間での聞こえ方は未確認です。
+
+ガラスのコップなど（`SM_Glass_*` / `SM_Bathroom_Water_Glass*`、またはコンポーネントタグ `TBGlass`）は、同じ高さの区切りで割れないガラスの短い接触音を鳴らします。音素材は bruno.auzet / Freesound「roll and fall of a glass-01.wav」#525026（CC0、https://freesound.org/people/bruno.auzet/sounds/525026/）。`glass_clink` は公開HQプレビューの3.300～4.380秒をモノラルにした着地音です。机上を転がる部分を除き、高さ別に音量を変えます。メッシュは破壊しません。

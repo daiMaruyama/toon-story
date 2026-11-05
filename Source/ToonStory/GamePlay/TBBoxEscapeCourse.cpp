@@ -144,24 +144,20 @@ bool ATBBoxEscapeCourse::ResolveFinalSupports(TArray<UPrimitiveComponent*>& Out,
 bool ATBBoxEscapeCourse::ReachedGoal(const ATBCharacter* Toy) const
 {
 	TArray<UPrimitiveComponent*> Supports; FString Error;
-	return ResolveFinalSupports(Supports, Error) && IsFinalLanding(Toy, Supports);
+	return ResolveFinalSupports(Supports, Error) && IsAtGoalHeight(Toy);
 }
 
-bool ATBBoxEscapeCourse::IsFinalLanding(const ATBCharacter* Toy, const TArray<UPrimitiveComponent*>& Supports) const
+bool ATBBoxEscapeCourse::IsAtGoalHeight(const ATBCharacter* Toy) const
 {
 	const auto* Volume = IsValid(Goal) ? Cast<UBoxComponent>(Goal->GetCollisionComponent()) : nullptr;
-	if (!IsValid(Toy) || !Contains(Volume, Toy, GoalMarginCm) || !Contains(CourseBounds, Toy)) return false;
-	const auto* Movement = Toy->GetCharacterMovement();
-	if (!Movement || !Movement->IsMovingOnGround() || Movement->Velocity.ContainsNaN()) return false;
-	FFindFloorResult Fresh;
-	Movement->FindFloor(Toy->GetActorLocation(), Fresh, false);
-	const FFindFloorResult* Floors[] = {&Movement->CurrentFloor, &Fresh};
-	for (const FFindFloorResult* Floor : Floors)
-		if (!Floor->IsWalkableFloor() || Floor->HitResult.bStartPenetrating || !Supports.Contains(Floor->HitResult.GetComponent()) ||
-		    Floor->HitResult.ImpactPoint.ContainsNaN() || Floor->HitResult.ImpactNormal.ContainsNaN() || !Movement->IsWalkable(Floor->HitResult) ||
-		    !FMath::IsFinite(Floor->GetDistanceToFloor()) || Floor->GetDistanceToFloor() < 0 || Floor->GetDistanceToFloor() > 4.f) return false;
-	return true;
+	if (!IsValid(Toy) || !Volume || !Contains(CourseBounds, Toy)) return false;
+	const FVector Position = Toy->GetActorLocation();
+	// The bottom of the existing goal volume defines a horizontal finish line.
+	// Jumping across it counts; no precise XY landing or platform contact is needed.
+	return !Position.ContainsNaN() &&
+	    Position.Z - Toy->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() >= Volume->Bounds.GetBox().Min.Z - GoalMarginCm;
 }
+
 bool ATBBoxEscapeCourse::SafeExitPoint(FVector Position, const ATBCharacter* Toy) const
 {
 	const float Radius = Toy ? Toy->GetCapsuleComponent()->GetScaledCapsuleRadius() : TBCharacterGeometry::ToyRadius;
@@ -235,7 +231,7 @@ void ATBBoxEscapeCourse::Tick(float DeltaSeconds)
 		if (Contains(CourseBounds, Toy) && Toy->GetActorLocation().Z + Toy->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() < GoalVolume->Bounds.GetBox().Min.Z)
 			Attempt.bDescendedBelowGoal = true;
 		if (Contains(CourseBounds, Toy)) Toy->SetFrozen(false);
-		if (!Attempt.bDescendedBelowGoal || !IsFinalLanding(Toy, Supports)) continue;
+		if (!Attempt.bDescendedBelowGoal || !IsAtGoalHeight(Toy)) continue;
 		// Server deadlines and the current capture token still govern release.
 		if (auto* Mode = GetWorld()->GetAuthGameMode<ATBGameMode>()) Mode->CheckWin();
 		if (!Eligible(Toy) || State->Phase != ETBPhase::Playing) continue;

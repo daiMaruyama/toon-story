@@ -248,6 +248,7 @@ bool FTBActionBindingsTest::RunTest(const FString& Parameters)
 	}
 	TestTrue(TEXT("Drop: Started"), Has(Settings->DropAction, ETriggerEvent::Started));
 	TestTrue(TEXT("Taunt: Started"), Has(Settings->TauntAction, ETriggerEvent::Started));
+	TestTrue(TEXT("Push: Started"), Has(Settings->PushAction, ETriggerEvent::Started));
 	return true;
 }
 #endif

@@ -356,6 +356,11 @@ bool FTBLobbyVisibleTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("Joining player fits in camera-visible lobby ground"), Mode->PlaceInLobby(PC));
 		if (I == 0)
 		{
+			const auto* JoinerInfo = PC->GetPlayerState<ATBPlayerState>();
+			const auto* HostInfo = Host->GetPlayerState<ATBPlayerState>();
+			TestTrue(TEXT("First two lobby players display distinct configured humans"), JoinerInfo && HostInfo &&
+			    !JoinerInfo->HumanAppearance.IsNull() && !HostInfo->HumanAppearance.IsNull() &&
+			    JoinerInfo->HumanAppearance != HostInfo->HumanAppearance);
 			CheckParticipants(); // Two real local players before adding further occupancy.
 			TestTrue(TEXT("Existing player can be repositioned without occupying the joiner's capsule"), Mode->PlaceInLobby(Host));
 			CheckParticipants();

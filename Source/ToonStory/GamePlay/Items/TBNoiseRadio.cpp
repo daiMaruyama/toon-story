@@ -72,6 +72,17 @@ ATBNoiseRadio::ATBNoiseRadio()
 	RadioAudio->bAutoActivate = false;
 	RadioAudio->bAutoDestroy = false;
 	RadioAudio->bStopWhenOwnerDestroyed = true;
+	// Use the kitchen radio and its authored material, retaining hidden prototype parts for BP compatibility.
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> RadioModel(TEXT("/Game/StylizedKitchen/Meshes/SM_Radio.SM_Radio"));
+	Mesh->SetStaticMesh(RadioModel.Object);
+	Mesh->SetRelativeLocation(FVector::ZeroVector);
+	Mesh->SetRelativeRotation(FRotator(0, -90, 0));
+	Mesh->SetRelativeScale3D(FVector(1.5f));
+	for (auto* Part : {Speaker.Get(), Dial, Antenna}) { Part->SetVisibility(false); Part->SetHiddenInGame(true); }
+	bUsePrototypeColors = false;
+	bAnimateSpeaker = false;
+	InteractionPoint->SetRelativeLocation(FVector(15, 0, 30));
+	StatusLabel->SetRelativeLocation(FVector(20, 0, 65));
 	RadioData = TSoftObjectPtr<UTBNoiseRadioData>(FSoftObjectPath(TEXT("/Game/Data/DA_NoiseRadio.DA_NoiseRadio")));
 }
 

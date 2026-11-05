@@ -8,7 +8,7 @@ class USoundWaveProcedural;
 class UTextRenderComponent;
 class UTBNoiseRadioData;
 
-/** Place in a level. Toys start it with E; humans stop it. No external assets required. */
+/** Place in a level. Toys start it with E; humans stop it. Uses the authored kitchen radio model. */
 UCLASS(Blueprintable)
 class TOONSTORY_API ATBNoiseRadio : public ATBItemBase
 {

@@ -9,6 +9,11 @@ git_dir=$(git rev-parse --git-dir) || exit 1
 zero=0000000000000000000000000000000000000000
 status=0
 
+# Both the quiz check and Git LFS need the complete ref list.
+push_input=$(mktemp) || exit 1
+trap 'rm -f "$push_input"' EXIT HUP INT TERM
+cat > "$push_input"
+
 while read -r local_ref local_sha remote_ref remote_sha; do
   # ブランチの削除は素通し
   [ "$local_sha" = "$zero" ] && continue
@@ -58,6 +63,11 @@ while read -r local_ref local_sha remote_ref remote_sha; do
   echo "  ブランチ名による免除はありません。本人がクイズに回答してください。" >&2
   echo "" >&2
   status=1
-done
+done < "$push_input"
 
-exit $status
+[ "$status" -eq 0 ] || exit "$status"
+# Upload LFS objects only after the quiz succeeds; preserve the shared Content hook.
+if git config --get filter.lfs.clean >/dev/null 2>&1; then
+  git lfs pre-push "$@" < "$push_input" || exit $?
+fi
+exit 0

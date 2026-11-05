@@ -156,24 +156,24 @@ void TBLobbySettings::CancelTravel(UWorld* World)
 	if (auto* Session = World->GetGameInstance()->GetSubsystem<UTBSession>()) Session->RefreshLobbyAvailability();
 }
 
-bool TBLobbySettings::Travel(ATBGameMode* Mode, bool StartMatch)
+FString TBLobbySettings::TryTravel(ATBGameMode* Mode, bool StartMatch)
 {
 	auto* World = Mode->GetWorld();
 	auto* State = World->GetGameState<ATBGameState>();
 	auto* Pending = World->GetGameInstance()->GetSubsystem<UTBLobbySettings>();
 	if (!State || State->bTravelPending || !Pending->PendingMap.IsEmpty())
 	{
-		return false;
+		return TEXT("別のマップ移動が処理中です。");
 	}
 	const TCHAR* Destination = StartMatch ? StagePath(State->SelectedStage) : TEXT("/Game/Maps/TB_Lobby");
 	if (!Destination)
 	{
-		return false;
+		return TEXT("移動先が設定されていません。");
 	}
 	const FString Path(Destination);
 	if (!FPackageName::DoesPackageExist(Path))
 	{
-		return false;
+		return TEXT("移動先のマップが見つかりません。");
 	}
 	State->SelectedStage = FindStage(State->SelectedStage)->Id;
 	if (StartMatch) State->StageName = FindStage(State->SelectedStage)->Name;
@@ -191,13 +191,13 @@ bool TBLobbySettings::Travel(ATBGameMode* Mode, bool StartMatch)
 		State->bTravelPending = false;
 		Pending->PendingMap.Reset();
 		Pending->bStartOnArrival = false;
-		return false;
+		return TEXT("サーバーがマップ移動を開始できませんでした。");
 	}
 	if (auto* Session = World->GetGameInstance()->GetSubsystem<UTBSession>())
 	{
 		Session->RefreshLobbyAvailability();
 	}
-	return true;
+	return {};
 }
 void TBLobbySettings::TickArrival(ATBGameMode* Mode)
 {

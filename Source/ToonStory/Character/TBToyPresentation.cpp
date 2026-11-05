@@ -92,10 +92,91 @@ void TBToyPresentation::BuildEmotePose(const USkeletalMeshComponent* Mesh, const
 	};
 	const FName Torso = EmoteTorso(Ref), Head = EmoteHead(Ref);
 	const FString Name = Asset->GetName();
-	const bool Animal = Name.Contains(TEXT("Duck")) || Name.Contains(TEXT("Dinosaur"));
+	// The rubber duck is rigidly skinned to pelvis. Head and spine rotations do not move its surface.
+	if (Name == TEXT("SK_Duck"))
+	{
+		const FName Body = EmoteBone(Ref, {TEXT("pelvis")});
+		switch (Sample.Kind)
+		{
+		case ETBEmoteKind::Wave:
+			Add(Body, Up, 32 * FMath::Sin(Beat * 2));
+			break;
+		case ETBEmoteKind::Cheer:
+			Add(Body, Right, -30 * FMath::Abs(FMath::Sin(Beat)));
+			break;
+		case ETBEmoteKind::Dance:
+			Add(Body, Forward, 23 * FMath::Sin(Beat * 3));
+			Add(Body, Up, 14 * FMath::Sin(Beat * 3));
+			break;
+		case ETBEmoteKind::WildDance:
+			Add(Body, Up, 40 * FMath::Sin(Beat * 5));
+			Add(Body, Forward, 28 * FMath::Cos(Beat * 6));
+			Add(Body, Right, 18 * FMath::Sin(Beat * 4));
+			break;
+		default:
+			break;
+		}
+		return;
+	}
+	const bool Animal = Name.Contains(TEXT("Dinosaur"));
 	const FName UpperL = EmoteBone(Ref, {TEXT("upperarm_l"), TEXT("L_UpperArm"), TEXT("LeftArm"), TEXT("Arm_L"), TEXT("mixamorig:LeftArm")});
 	const FName UpperR = EmoteBone(Ref, {TEXT("upperarm_r"), TEXT("R_UpperArm"), TEXT("RightArm"), TEXT("Arm_R"), TEXT("mixamorig:RightArm")});
 	const bool Arms = !Animal && !UpperL.IsNone() && !UpperR.IsNone();
+	const bool Wave = Sample.Kind == ETBEmoteKind::Wave;
+	const bool Cheer = Sample.Kind == ETBEmoteKind::Cheer;
+	const bool Wild = Sample.Kind == ETBEmoteKind::WildDance;
+	const double Swing = FMath::Sin(Beat * (Wild ? 6 : 2));
+	const auto* Character = Cast<ATBCharacter>(Mesh->GetOwner());
+	if (Arms && Character && Mesh == Character->GetMesh())
+	{
+		// Keep the human locomotion pose underneath. The look/hand IK pass runs afterwards.
+		const FName Forearm = EmoteBone(Ref, {TEXT("lowerarm_r"), TEXT("RightForeArm")});
+		if (Wave) { Add(UpperR, Forward, 68); Add(Forearm, Forward, 56 + 18 * Swing); }
+		else if (Cheer)
+		{
+			Add(UpperL, Forward, -85 - 14 * Swing); Add(UpperR, Forward, 85 + 14 * Swing);
+			Add(Forearm, Forward, 26); Add(EmoteBone(Ref, {TEXT("lowerarm_l")}), Forward, -26);
+		}
+		else
+		{
+			Add(Torso, Up, (Wild ? 21 : 12) * Swing); Add(UpperR, Right, 27 * Swing);
+			Add(UpperL, Right, -27 * Swing); Add(UpperR, Forward, Wild ? 60 : 28); Add(UpperL, Forward, Wild ? -60 : -28);
+		}
+		return;
+	}
+	if (Name == TEXT("SK_ReconSoldier"))
+	{
+		// The rifle is in the right hand. Signal and pump with the free arm.
+		if (Wave) { Add(UpperL, Forward, -48); Add(EmoteBone(Ref, {TEXT("ForeArm_L")}), Forward, -58 - 12 * Swing); }
+		else if (Cheer) { Add(UpperL, Forward, -70 - 20 * Swing); Add(Torso, Right, -6); }
+		else { Add(Torso, Up, (Wild ? 20 : 10) * Swing); Add(UpperL, Right, 24 * Swing); Add(Head, Right, 7 * Swing); }
+		return;
+	}
+	if (Name == TEXT("SK_TinRobot"))
+	{
+		// Rigid shoulder hinges: hold the extremities briefly between changes of direction.
+		const double Step = FMath::Clamp(2.4 * Swing, -1., 1.);
+		if (Wave) { Add(UpperR, Forward, 65 + 19 * Step); Add(Head, Up, 10 * Step); }
+		else if (Cheer) { Add(UpperL, Forward, -52 - 19 * Step); Add(UpperR, Forward, 52 + 19 * Step); }
+		else { Add(Torso, Up, (Wild ? 26 : 13) * Step); Add(UpperR, Right, 28 * Step); Add(UpperL, Right, -28 * Step); }
+		return;
+	}
+	if (Name == TEXT("SK_TeddyBear"))
+	{
+		// Short plush arms have no elbow; small shoulder arcs keep the paws against the body.
+		if (Wave) { Add(UpperR, Forward, 34 + 15 * Swing); Add(Head, Forward, -9); }
+		else if (Cheer) { Add(UpperR, Right, -33 - 12 * Swing); Add(UpperL, Right, -33 - 12 * Swing); Add(Head, Right, 9 * Swing); }
+		else { Add(Torso, Forward, (Wild ? 18 : 10) * Swing); Add(Head, Forward, -6 * Swing); Add(UpperR, Forward, 16 + 10 * Swing); Add(UpperL, Forward, -16 + 10 * Swing); }
+		return;
+	}
+	if (Name == TEXT("SK_SpaceRanger"))
+	{
+		// The suit has single-piece arms. Reach forward rather than folding the pauldron over the helmet.
+		if (Wave) { Add(UpperR, Right, -46); Add(UpperR, Forward, 17 + 13 * Swing); Add(Head, Up, 9); }
+		else if (Cheer) { Add(UpperR, Right, -52 - 16 * Swing); Add(UpperL, Forward, -30); Add(Torso, Right, -8); }
+		else { Add(Torso, Up, (Wild ? 24 : 12) * Swing); Add(UpperR, Right, -24 + 23 * Swing); Add(UpperL, Right, -24 - 23 * Swing); }
+		return;
+	}
 	if (Sample.Kind == ETBEmoteKind::Wave)
 	{
 		if (Arms)

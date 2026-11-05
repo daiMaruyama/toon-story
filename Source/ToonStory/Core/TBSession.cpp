@@ -27,7 +27,7 @@ namespace
 {
 	constexpr double OfflineReturnTimeoutSeconds = 30.0;
 	const FName GameKey(TEXT("TOYBOX_BUILD"));
-	const FString BuildTag(TEXT("ToonStory_DecoyToyGround_20261104"));
+	const FString BuildTag(TEXT("ToonStory_LobbyReturnRetry_20261105"));
 	const FName LobbyKey(TEXT("LOBBY_OPEN"));
 } // namespace
 void UTBSession::Initialize(FSubsystemCollectionBase& Collection)
@@ -587,9 +587,13 @@ void UTBSession::TravelFailed(UWorld* World, ETravelFailure::Type Type, const FS
 	UE_LOG(LogTemp, Warning, TEXT("[ToyBoxSession] Travel failed: %s"), *Error);
 	const FString Reason = TEXT("マップの読み込みに失敗しました。\n") + Error;
 	CurrentOperation = ESessionOperation::Idle;
+	const auto* State = World->GetGameState<ATBGameState>();
+	const bool ReturningToLobby = State && State->bTravelPending &&
+	    (State->Phase == ETBPhase::Results || State->Phase == ETBPhase::Aborted);
 	TBLobbySettings::CancelTravel(World);
-	if (World->GetAuthGameMode<ATBGameMode>() && !World->bIsTearingDown)
+	if (auto* Mode = World->GetAuthGameMode<ATBGameMode>(); Mode && !World->bIsTearingDown)
 	{
+		if (ReturningToLobby) Mode->LobbyReturnFailed(TEXT("ロビーマップの読み込みに失敗しました。"));
 		TravelRecoveryWorld = World;
 		Message(Reason, true);
 		for (auto It = World->GetPlayerControllerIterator(); It; ++It)
@@ -685,18 +689,22 @@ bool FTBSessionBuildCompatibilityTest::RunTest(const FString&)
 	const auto BeforeRemoteFeedback=MakeResult(TEXT("ToonStory_LobbyEmotes_20261102"));
 	const auto BeforeWalkie=MakeResult(TEXT("ToonStory_RemoteFeedback_20261102"));
 	const auto BeforeDecoy=MakeResult(TEXT("ToonStory_WalkieTalkie_20261102"));
-	const auto BeforeDecoyGround=MakeResult(TEXT("ToonStory_DecoyToy_20261103"));
+	const auto BeforeHumanRoster=MakeResult(TEXT("ToonStory_DecoyToy_20261103"));
+	const auto BeforeGlassAudio=MakeResult(TEXT("ToonStory_HumanRoster_ToyPush_Decoy_20261104"));
+	const auto BeforeTabletop=MakeResult(TEXT("ToonStory_GlassAudio_ItemVisuals_20261104"));
+	const auto MainDecoyGround=MakeResult(TEXT("ToonStory_DecoyToyGround_20261104"));
+	const auto BeforeLobbyReturnRetry=MakeResult(TEXT("ToonStory_Tabletop_GroundedDecoy_20261104"));
 	auto Missing=Current;
 	Missing.Session.SessionSettings.Remove(GameKey);
 	Session->Search=MakeShared<FOnlineSessionSearch>();
-	Session->Search->SearchResults={Old,ItemsOnly,MomOnly,BeforeLobbyEmotes,BeforeRemoteFeedback,BeforeWalkie,BeforeDecoy,BeforeDecoyGround,Missing,Current};
+	Session->Search->SearchResults={Old,ItemsOnly,MomOnly,BeforeLobbyEmotes,BeforeRemoteFeedback,BeforeWalkie,BeforeDecoy,BeforeHumanRoster,BeforeGlassAudio,BeforeTabletop,MainDecoyGround,BeforeLobbyReturnRetry,Missing,Current};
 	Session->CurrentOperation=UTBSession::ESessionOperation::Finding;
 	Session->Found(true);
 	TestEqual(TEXT("Search exposes only matching build"),Session->Rooms.Num(),1);
 	FString SelectedTag;
 	if (Session->Results.Num()==1) Session->Results[0].Session.SessionSettings.Get(GameKey,SelectedTag);
 	TestEqual(TEXT("Search retained the current build"),SelectedTag,BuildTag);
-	for (const auto& Incompatible:{Old,ItemsOnly,MomOnly,BeforeLobbyEmotes,BeforeRemoteFeedback,BeforeWalkie,BeforeDecoy,BeforeDecoyGround,Missing})
+	for (const auto& Incompatible:{Old,ItemsOnly,MomOnly,BeforeLobbyEmotes,BeforeRemoteFeedback,BeforeWalkie,BeforeDecoy,BeforeHumanRoster,BeforeGlassAudio,BeforeTabletop,MainDecoyGround,BeforeLobbyReturnRetry,Missing})
 	{
 		Session->Status.Reset();
 		Session->BeginJoin(Incompatible);

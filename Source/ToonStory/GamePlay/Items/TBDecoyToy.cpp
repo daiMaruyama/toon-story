@@ -134,17 +134,30 @@ void ATBDecoyToy::Tick(float DeltaSeconds)
 	const float Distance=bHasSample ? FVector::Dist2D(Location,PreviousLocation) : 0.f;
 	TBToyPresentation::Animate(Visual->GetChildActor(),bWalking ? Data().WalkSpeed : 0.f,!bWalking);
 	TBToyPresentation::Ground(Visual,Location.Z);
+	// Position replication can arrive in batches. Average over the time since the last
+	// displacement, and never mistake a packet-sized jump for a faster configured gait.
 	if (bWalking && bGrounded && DeltaSeconds>0 && DeltaSeconds<=.25f && Distance<100.f)
 	{
-		StepDistance+=Distance;
-		const float Interval=FMath::Max(1.f,GetDefault<UTBCharacterAudioComponent>()->ToyStepDistance);
-		if (StepDistance>=Interval)
+		FootstepSampleSeconds+=DeltaSeconds;
+		if (Distance>KINDA_SMALL_NUMBER)
 		{
-			StepDistance=FMath::Fmod(StepDistance,Interval);
-			if (auto* GI=GetGameInstance()) if (auto* Audio=GI->GetSubsystem<UTBAudioSubsystem>()) Audio->PlaySoundEvent(ETBSoundEvent::Footstep,Location);
+			const float Speed=FMath::Min(Data().WalkSpeed,Distance/FootstepSampleSeconds);
+			FootstepSampleSeconds=0;
+			if (UTBCharacterAudioComponent::ShouldPlayFootstep(ETBTeam::Toy,false,Speed))
+			{
+				StepDistance+=Distance;
+				const float Interval=FMath::Max(1.f,GetDefault<UTBCharacterAudioComponent>()->ToyStepDistance);
+				if (StepDistance>=Interval)
+				{
+					StepDistance=FMath::Fmod(StepDistance,Interval);
+					if (auto* GI=GetGameInstance()) if (auto* Audio=GI->GetSubsystem<UTBAudioSubsystem>()) Audio->PlaySoundEvent(ETBSoundEvent::Footstep,Location);
+				}
+			}
+			else StepDistance=0;
 		}
+		else if (FootstepSampleSeconds>.25f) StepDistance=0;
 	}
-	else StepDistance=0;
+	else { StepDistance=0; FootstepSampleSeconds=0; }
 	PreviousLocation=Location; bHasSample=true;
 }
 void ATBDecoyToy::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const

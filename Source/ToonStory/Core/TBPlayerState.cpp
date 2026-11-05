@@ -8,6 +8,7 @@ void ATBPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(ATBPlayerState, Team);
+	DOREPLIFETIME(ATBPlayerState, HumanAppearance);
 	DOREPLIFETIME(ATBPlayerState, ToyState);
 	DOREPLIFETIME(ATBPlayerState, bFrozen);
 	DOREPLIFETIME(ATBPlayerState, bReady);

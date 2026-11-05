@@ -101,6 +101,11 @@ bool FTBRegisteredSurviveGCTest::RunTest(const FString& Parameters)
 	PC->SyncInputContexts();
 	TestTrue(TEXT("Sprint is still bound to the IMC action"),
 	         IsStartedBound(PawnInput, ActionOfKey(Settings->ToyContext.LoadSynchronous(), EKeys::LeftShift)));
+	const UInputAction* Push = Settings->PushAction.LoadSynchronous();
+	const UInputMappingContext* Toys = Settings->ToyContext.LoadSynchronous();
+	TestTrue(TEXT("Mouse and gamepad both trigger toy push"), Push &&
+	         ActionOfKey(Toys, EKeys::LeftMouseButton) == Push && ActionOfKey(Toys, EKeys::Gamepad_RightShoulder) == Push &&
+	         IsStartedBound(PawnInput, Push));
 
 	// 設定のIAは、どれかのIMCに載っている（載っていないIAはIMCに保持されない）。
 	const TArray<const UInputMappingContext*> Contexts = Settings->GetAllContexts();
@@ -112,6 +117,7 @@ bool FTBRegisteredSurviveGCTest::RunTest(const FString& Parameters)
 	                                 {TEXT("Interact"), &Settings->InteractAction},
 	                                 {TEXT("Drop"), &Settings->DropAction},
 	                                 {TEXT("Taunt"), &Settings->TauntAction},
+	                                 {TEXT("Push"), &Settings->PushAction},
 	                                 {TEXT("Ready"), &Settings->ReadyAction},
 	                                 {TEXT("Start"), &Settings->StartAction},
 	                                 {TEXT("Menu"), &Settings->MenuAction},

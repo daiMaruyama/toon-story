@@ -7,6 +7,9 @@
 #include "Core/TBGameState.h"
 #include "Core/TBPlayerState.h"
 #include "Components/AudioComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "Engine/StaticMesh.h"
+#include "Materials/MaterialInterface.h"
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
@@ -53,6 +56,9 @@ bool FTBNoiseRadioTest::RunTest(const FString& Parameters)
 	auto* Second = World->SpawnActor<ATBNoiseRadio>(Character->GetPawnViewLocation() + FVector(-100, 0, -35), FRotator::ZeroRotator, Spawn);
 	if (TestNotNull(TEXT("Radio"), Radio) && TestNotNull(TEXT("Second radio"), Second))
 	{
+		TestEqual(TEXT("Radio uses the authored model"), GetNameSafe(Radio->Mesh->GetStaticMesh()), FString(TEXT("SM_Radio")));
+		TestEqual(TEXT("Radio retains its textured material"), GetNameSafe(Radio->Mesh->GetMaterial(0)), FString(TEXT("MI_Radio")));
+		TestFalse(TEXT("Prototype speaker is not drawn over the model"), Radio->Speaker->IsVisible());
 		// State-machine tests isolate sight; base Conditions covers obstructed interaction.
 		for (auto& Action : Radio->Actions) Action.bRequiresLineOfSight = false;
 		for (auto& Action : Second->Actions) Action.bRequiresLineOfSight = false;

@@ -31,6 +31,17 @@ class TOONSTORY_API ATBGameState : public AGameStateBase
 {
 	GENERATED_BODY()
 public:
+	ATBGameState();
+	virtual void Tick(float DeltaSeconds) override;
+	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndReason) override;
+private:
+	void ConfigurePushableProps(ULevel* Level, UWorld* World);
+	TMap<TWeakObjectPtr<UPrimitiveComponent>, double> PropPeakHeights;
+	UFUNCTION()
+	void OnPropHit(UPrimitiveComponent* Part, AActor* Other, UPrimitiveComponent* OtherPart,
+	               FVector Impulse, const FHitResult& Hit);
+public:
 	UPROPERTY(Replicated)
 	FTBHidePreparation HidePreparation;
 	bool IsPreparing() const;
@@ -54,6 +65,9 @@ public:
 	FString Reason;
 	UPROPERTY(Replicated, BlueprintReadOnly)
 	double EndTime = 0;
+	UPROPERTY(Replicated)
+	FString LobbyReturnError;
+	bool IsLobbyReturnStopped() const { return !bTravelPending && !LobbyReturnError.IsEmpty() && EndTime == 0; }
 	UPROPERTY(Replicated, BlueprintReadOnly)
 	int32 Collected = 0;
 	UPROPERTY(Replicated, BlueprintReadOnly)

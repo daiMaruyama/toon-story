@@ -314,35 +314,36 @@ void ATBHUD::DrawLobby()
 	Text(TEXT("おもちゃ：電池を集めて仲間を救助 ／ にんげん：おもちゃを見つけて箱へ"), 28, 722, .9f, TBPaper::Cream);
 }
 
-void ATBHUD::DrawResults(const ATBGameState& MatchState, ATBController& Controller)
+void ATBHUD::DrawResults(const ATBGameState& MatchState)
 {
-	const auto* State = &MatchState;
-	auto* PC = &Controller;
 	const float S = FMath::Min(Canvas->ClipX / 1280.f, Canvas->ClipY / 800.f);
-	const float W = Canvas->ClipX, H = Canvas->ClipY;
-	const FLinearColor Ink = TBPaper::Ink, Accent = TBPaper::Accent, Panel = FLinearColor::White;
-	DrawRect(FLinearColor(.01f, .02f, .03f, .72f), 0, 0, W, H);
-	const float X = W * .5f - 300 * S, Y = H * .5f - 140 * S;
-	PaperPanel(Panel, X, Y, 600 * S, 280 * S);
-	const FString Title = MatchState.Phase == ETBPhase::Aborted  ? TEXT("あそびはおしまい")
-	                      : MatchState.Winner == ETBWinner::Toys ? TEXT("おもちゃの勝ち！")
-	                                                             : TEXT("にんげんの勝ち！");
-	DrawText(Title, Accent, X + 32 * S, Y + 30 * S, PaperFont, 2.4f * S);
-	DrawText(MatchState.Reason.Left(70), Ink, X + 32 * S, Y + 94 * S, PaperFont, 1.05f * S);
-	DrawText(FString::Printf(TEXT("電池 %d / %d個 ／ 箱のなか %d体"), MatchState.Collected,
-	                         MatchState.Settings.RequiredItems, MatchState.BoxedCount),
-	         Ink, X + 32 * S, Y + 128 * S, PaperFont, 1.1f * S);
-	const bool Host = Controller.HasAuthority();
-	DrawRect(TBPaper::Cream, X + 32 * S, Y + 194 * S, 326 * S, 48 * S);
-	DrawText(Host ? TEXT("みんなでロビーへ") : TEXT("ホストの操作を待っています"), Ink, X + 46 * S, Y + 208 * S,
-	         PaperFont, 1.f * S);
-	if (Host)
+	const float X = Canvas->ClipX * .5f - 300 * S;
+	const bool ShowError = !MatchState.bTravelPending && !MatchState.LobbyReturnError.IsEmpty();
+	PaperPanel(FLinearColor::White, X, 24 * S, 600 * S, (ShowError ? 150 : 100) * S);
+	const FString Title = MatchState.Phase == ETBPhase::Aborted ? TEXT("あそびはおしまい") :
+	    MatchState.Winner == ETBWinner::Toys ? TEXT("おもちゃの勝ち！") : TEXT("にんげんの勝ち！");
+	DrawText(Title, TBPaper::Accent, X + 24 * S, 36 * S, PaperFont, 1.8f * S);
+	const int32 Seconds = FMath::CeilToInt(FMath::Max(0., MatchState.EndTime - MatchState.GetServerWorldTimeSeconds()));
+	if (ShowError)
 	{
-		AddHitBox(FVector2D(X + 32 * S, Y + 194 * S), FVector2D(326 * S, 48 * S), TEXT("ReturnToLobby"), true);
+		DrawText(MatchState.LobbyReturnError, TBPaper::Ink, X + 24 * S, 85 * S, PaperFont, S);
+		if (MatchState.IsLobbyReturnStopped() && GetOwningPlayerController()->HasAuthority())
+		{
+			PaperPanel(TBPaper::Cream, X + 24 * S, 117 * S, 280 * S, 44 * S);
+			DrawText(TEXT("ロビー復帰を再試行"), TBPaper::Ink, X + 38 * S, 125 * S, PaperFont, S);
+			AddHitBox(FVector2D(X + 24 * S, 117 * S), FVector2D(280 * S, 44 * S), TEXT("RetryLobbyReturn"), true);
+		}
+		else
+		{
+			const FString Status = MatchState.IsLobbyReturnStopped() ? TEXT("ホストの再試行を待っています") :
+			    FString::Printf(TEXT("あと%d秒で再試行します"), Seconds);
+			DrawText(Status, TBPaper::Ink, X + 24 * S, 125 * S, PaperFont, S);
+		}
+		return;
 	}
-	DrawRect(TBPaper::Cream, X + 374 * S, Y + 194 * S, 194 * S, 48 * S);
-	DrawText(Host ? TEXT("部屋を閉じる") : TEXT("部屋を出る"), Ink, X + 390 * S, Y + 208 * S, PaperFont, 1.f * S);
-	AddHitBox(FVector2D(X + 374 * S, Y + 194 * S), FVector2D(194 * S, 48 * S), TEXT("Leave"), true);
+	const FString Status = MatchState.bTravelPending ? TEXT("ロビーに移動しています") :
+	    FString::Printf(TEXT("あと%d秒でみんなでロビーへ"), Seconds);
+	DrawText(Status, TBPaper::Ink, X + 24 * S, 85 * S, PaperFont, S);
 }
 
 void ATBHUD::DrawMatch(const ATBGameState& MatchState, ATBController& Controller)

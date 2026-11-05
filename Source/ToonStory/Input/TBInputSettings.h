@@ -49,6 +49,8 @@ public:
 	TSoftObjectPtr<UInputAction> DropAction;
 	UPROPERTY(Config, EditAnywhere, Category = "入力", meta = (DisplayName = "挑発"))
 	TSoftObjectPtr<UInputAction> TauntAction;
+	UPROPERTY(Config, EditAnywhere, Category = "入力", meta = (DisplayName = "押す"))
+	TSoftObjectPtr<UInputAction> PushAction;
 	UPROPERTY(Config, EditAnywhere, Category = "入力", meta = (DisplayName = "準備完了"))
 	TSoftObjectPtr<UInputAction> ReadyAction;
 	UPROPERTY(Config, EditAnywhere, Category = "入力", meta = (DisplayName = "開始"))

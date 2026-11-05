@@ -182,7 +182,6 @@ namespace
 					}
 					Test->TestEqual(TEXT("Match ends through the game timer"), State->Reason,
 					                FString(TEXT("Time expired")));
-					HUD->NotifyHitBoxClick(TEXT("ReturnToLobby"));
 					Step = 21;
 					break;
 				case 21:
@@ -191,7 +190,7 @@ namespace
 					if (auto* Player = GI->GetLocalPlayerByIndex(1))
 						Second = Cast<ATBController>(Player->GetPlayerController(World));
 					if (!Test->TestTrue(TEXT("Second participant returns to the lobby"), Second.IsValid())) return true;
-					Test->TestEqual(TEXT("Rematch action returns to lobby"), State->Phase, ETBPhase::Lobby);
+					Test->TestEqual(TEXT("Results automatically return to lobby"), State->Phase, ETBPhase::Lobby);
 					Test->TestTrue(TEXT("Rematch retains players and session across lobby travel"),
 					               State->PlayerArray.Num() == 2 && HasSession(World));
 					Test->TestFalse(TEXT("Host ready reset"), Host->GetPlayerState<ATBPlayerState>()->bReady);

@@ -5,6 +5,7 @@
 #include "Character/TBCharacter.h"
 #include "Character/TBMovement.h"
 #include "Data/TBCharacterData.h"
+#include "Data/TBDataSettings.h"
 #include "Core/TBGameMode.h"
 #include "Core/TBLobbySettings.h"
 #include "Core/TBGameState.h"
@@ -695,8 +696,9 @@ bool FTBNPCTravelTest::RunTest(const FString& Parameters)
 	auto* State = World->GetGameState<ATBGameState>();
 	auto* PC = Cast<ATBController>(World->GetFirstPlayerController());
 	if (!Mode || !State || !PC) return false;
+	PC->ServerPreference(ETBTeam::Human);
 	auto Rules = State->Settings;
-	Rules.NPCHumans = 2;
+	Rules.NPCHumans = 5;
 	Rules.NPCToys = 2;
 	Mode->SetRules(PC, Rules);
 	PC->GetPlayerState<ATBPlayerState>()->bReady = true;
@@ -716,7 +718,26 @@ bool FTBNPCTravelTest::RunTest(const FString& Parameters)
 		if (*Arrived)
 		{
 			TestEqual(TEXT("NPC settings survive travel"), Match->Settings.NPCToys, 2);
-			TestEqual(TEXT("NPCs spawn only on destination"), Match->PlayerArray.Num(), 5);
+			TestEqual(TEXT("All seven NPCs join the host on the destination"), Match->PlayerArray.Num(), 8);
+			TSet<TSoftClassPtr<AActor>> Roster, Assigned;
+			for (const auto& Look : GetDefault<UTBDataSettings>()->HumanAppearances)
+				if (!Look.IsNull()) Roster.Add(Look);
+			int32 Humans = 0;
+			for (const APlayerState* Player : Match->PlayerArray)
+			{
+				const auto* Info = CastChecked<ATBPlayerState>(Player);
+				if (Info->Team != ETBTeam::Human) continue;
+				++Humans;
+				if (Roster.IsEmpty())
+					TestTrue(TEXT("An empty roster uses the default human"), Info->HumanAppearance.IsNull());
+				else
+				{
+					TestTrue(TEXT("Each human receives a configured appearance"), Roster.Contains(Info->HumanAppearance));
+					Assigned.Add(Info->HumanAppearance);
+				}
+			}
+			TestEqual(TEXT("The host and five human NPCs start together"), Humans, 6);
+			TestEqual(TEXT("All available looks are used before repeating"), Assigned.Num(), FMath::Min(Humans, Roster.Num()));
 			auto* Host = Cast<ATBController>(Current->GetFirstPlayerController());
 			auto* GM = Current->GetAuthGameMode<ATBGameMode>();
 			GM->Finish(ETBWinner::Humans, TEXT("NPC travel test"));

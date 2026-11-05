@@ -7,7 +7,10 @@
 #include "GamePlay/TBRuleMath.h"
 #include "GameFramework/PhysicsVolume.h"
 #include "Core/TBPlayerState.h"
+#include "Core/TBGameHelpers.h"
 #include "Components/PrimitiveComponent.h"
+#include "Components/CapsuleComponent.h"
+#include "Engine/World.h"
 
 void UTBMovement::ApplyImpactPhysicsForces(const FHitResult& Impact, const FVector& ImpactAcceleration,
     const FVector& ImpactVelocity)
@@ -22,11 +25,39 @@ void UTBMovement::ApplyImpactPhysicsForces(const FHitResult& Impact, const FVect
 	// character force, which is tuned for much heavier physics objects.
 	if (!CharacterOwner || !CharacterOwner->HasAuthority() || !Part->IsSimulatingPhysics()) return;
 	const FVector Direction = FVector(ImpactVelocity.X, ImpactVelocity.Y, 0).GetSafeNormal();
-	const float DesiredSpeed = FMath::Clamp(float(ImpactVelocity.Size2D()) * .35f, 0.f, 100.f);
+	const auto* Pawn = Cast<ATBCharacter>(CharacterOwner);
+	if (!Pawn || !Pawn->IsHuman()) return;
+	const float DesiredSpeed = FMath::Min(float(ImpactVelocity.Size2D()) * 1.25f, 360.f);
 	const float CurrentSpeed = FVector::DotProduct(Part->GetPhysicsLinearVelocity(), Direction);
-	const float DeltaSpeed = FMath::Clamp(DesiredSpeed - CurrentSpeed, 0.f, 15.f);
+	const float DeltaSpeed = FMath::Clamp(DesiredSpeed - CurrentSpeed, 0.f, 280.f);
 	if (!Direction.IsNearlyZero() && DeltaSpeed > 0)
 		Part->AddImpulseAtLocation(Direction * Part->GetMass() * DeltaSpeed, Impact.ImpactPoint);
+}
+
+void UTBMovement::SweepPushableProps(float DeltaSeconds)
+{
+	bBrushingProp = false;
+	const FVector Approach = (Velocity + Acceleration * DeltaSeconds) * FVector(1, 1, 0);
+	if (!CharacterOwner || Approach.IsNearlyZero() || !UpdatedComponent) return;
+	const auto* Capsule = CharacterOwner->GetCapsuleComponent();
+	const FVector Start = Capsule->GetComponentLocation();
+	FCollisionObjectQueryParams Types(ECC_PhysicsBody);
+	Types.AddObjectTypesToQuery(ECC_WorldDynamic);
+	TArray<FHitResult> Contacts;
+	GetWorld()->SweepMultiByObjectType(Contacts, Start, Start + Approach * DeltaSeconds, Capsule->GetComponentQuat(),
+	    Types, Capsule->GetCollisionShape(), FCollisionQueryParams(SCENE_QUERY_STAT(TBPushableSweep), false, CharacterOwner));
+	for (const auto& Hit : Contacts)
+	{
+		auto* Part = Hit.GetComponent();
+		if (!Part || !Part->ComponentHasTag(TEXT("TBPushable")) ||
+		    FVector::DotProduct(Approach, Part->Bounds.Origin - Start) <= 0) continue;
+		FHitResult Contact = Hit;
+		if (Hit.bStartPenetrating) Contact.ImpactPoint = Part->Bounds.Origin;
+		// The object query excludes static walls; check occlusion before applying contact effects.
+		if (!TB::ClearPath(CharacterOwner, Hit.GetActor(), Start, Contact.ImpactPoint)) continue;
+		bBrushingProp = true;
+		ApplyImpactPhysicsForces(Contact, Acceleration, Approach);
+	}
 }
 
 namespace
@@ -86,10 +117,10 @@ float UTBMovement::GetMaxSpeed() const
 	{
 		return 0.f;
 	}
-	if (bWantsToSprint && Character && Character->TBPS() && Character->TBPS()->Team == ETBTeam::Toy &&
-	    (IsMovingOnGround() || IsFalling()))
+	if (Character && Character->TBPS() && Character->TBPS()->Team == ETBTeam::Toy && (IsMovingOnGround() || IsFalling()))
 	{
-		return TB::CharacterData().Toy.SprintSpeed;
+		const float Speed = bWantsToSprint ? TB::CharacterData().Toy.SprintSpeed : Super::GetMaxSpeed();
+		return bBrushingProp ? .85f * Speed : Speed;
 	}
 	if (Character && Character->IsHuman())
 		if (const auto* NPC = Cast<ATBNPCController>(Character->GetController()))
@@ -135,7 +166,9 @@ void UTBMovement::PerformMovement(float DeltaSeconds)
 	{
 		SetMovementMode(MOVE_Falling);
 	}
+	SweepPushableProps(DeltaSeconds);
 	Super::PerformMovement(DeltaSeconds);
+	bBrushingProp = false;
 }
 
 // 凍結中の専用物理。横速度と上昇を止め、落下と床の衝突を処理する。
@@ -148,6 +181,14 @@ void UTBMovement::PhysCustom(float DeltaSeconds, int32 Iterations)
 	}
 	if (!UpdatedComponent || DeltaSeconds < MIN_TICK_TIME)
 	{
+		return;
+	}
+	// Preserve walking's floor clearance when freezing; gravity must not close that gap.
+	FindFloor(UpdatedComponent->GetComponentLocation(), CurrentFloor, false);
+	if (CurrentFloor.IsWalkableFloor() && CurrentFloor.GetDistanceToFloor() <= MAX_FLOOR_DIST &&
+	    CurrentFloor.GetDistanceToFloor() >= MIN_FLOOR_DIST && Velocity.Z <= 0)
+	{
+		Velocity = FVector::ZeroVector;
 		return;
 	}
 	// 静止した床を前提とし、斜面の滑りや移動床には対応しない。
@@ -163,6 +204,8 @@ void UTBMovement::PhysCustom(float DeltaSeconds, int32 Iterations)
 	if (Hit.IsValidBlockingHit() && Hit.Normal.Z > 0)
 	{
 		Velocity.Z = 0;
+		FindFloor(UpdatedComponent->GetComponentLocation(), CurrentFloor, false);
+		if (CurrentFloor.IsWalkableFloor()) AdjustFloorHeight();
 	}
 }
 
