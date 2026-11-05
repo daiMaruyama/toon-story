@@ -122,6 +122,7 @@ bool FTBKeyLabelTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Human_Interact"), TB::KeyLabel(PC, TB::Keys::HumanInteract), FString(TEXT("E")));
 	TestEqual(TEXT("Toy_Interact"), TB::KeyLabel(PC, TB::Keys::ToyInteract), FString(TEXT("E")));
 	TestEqual(TEXT("Toy_Taunt"), TB::KeyLabel(PC, TB::Keys::ToyTaunt), FString(TEXT("F")));
+	TestEqual(TEXT("Toy_Push"), TB::KeyLabel(PC, TB::Keys::ToyPush), FString(TEXT("左クリック")));
 	TestEqual(TEXT("Unknown row"), TB::KeyLabel(PC, TEXT("No_Such_Row")), FString(TEXT("?")));
 	TestEqual(TEXT("Move keys"), TB::MoveKeysLabel(PC), FString(TEXT("WASD")));
 
@@ -135,7 +136,9 @@ bool FTBKeyLabelTest::RunTest(const FString& Parameters)
 		const bool bKeyboard = Keys.ContainsByPredicate([](const FKey& Key) { return !Key.IsGamepadKey(); });
 		AddInfo(FString::Printf(TEXT("row %s: %d keys, keyboard=%d, gamepad=%d"), *Name.ToString(), Keys.Num(), bKeyboard, bGamepad));
 		const bool bHasPadRow = Name != TB::Keys::MoveForward && Name != TB::Keys::MoveBack && Name != TB::Keys::MoveLeft &&
-		                        Name != TB::Keys::MoveRight && Name != TB::Keys::LobbyReady && Name != TB::Keys::LobbyStart;
+		                        Name != TB::Keys::MoveRight && Name != TB::Keys::LobbyReady && Name != TB::Keys::LobbyStart &&
+		                        Name != TB::Keys::EmoteWave && Name != TB::Keys::EmoteCheer && Name != TB::Keys::EmoteDance;
+		TestTrue(*FString::Printf(TEXT("%s has a keyboard or mouse binding"), *Name.ToString()), bKeyboard);
 		if (bHasPadRow)
 		{
 			TestTrue(*FString::Printf(TEXT("%s shares one row for keyboard and gamepad"), *Name.ToString()), bKeyboard && bGamepad);

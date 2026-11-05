@@ -284,13 +284,14 @@ void UTBTitleMenu::RefreshHelpText()
 	const FString Interact = TB::KeyLabel(PC, TB::Keys::HumanInteract), ToyInteract = TB::KeyLabel(PC, TB::Keys::ToyInteract);
 	const FString Drop = TB::KeyLabel(PC, TB::Keys::HumanDrop);
 	HelpToyText->SetText(FText::FromString(FString::Printf(
-	    TEXT("電池を集めよう。にんげんに見られると動けなくなるよ。\n仲間が箱に捕まったら、箱のそばで%sを長押しして救助！"), *ToyInteract)));
+	    TEXT("電池を集めよう。にんげんに見られると動けなくなるよ。\n%sで目の前の仲間や小物を押せるよ。\n仲間が箱に捕まったら、箱のそばで%sを長押しして救助！"),
+	    *TB::KeyLabel(PC, TB::Keys::ToyPush), *ToyInteract)));
 	HelpHumanText->SetText(FText::FromString(FString::Printf(
 	    TEXT("おもちゃに近づいて%sでつかもう。\n箱の正面まで運び、%sを長押しして箱にしまおう。%sでおろせるよ。"), *Interact, *Interact, *Drop)));
 	HelpControlsText->SetText(FText::FromString(FString::Printf(
-	    TEXT("%s：移動 ／ マウス：見回す ／ %s：ジャンプ\n%s：ダッシュ（おもちゃ） ／ %s：しゃがむ（にんげん）\n%s：つかむ・収納（にんげん） ／ %s：救助（おもちゃ）\n%s：おろす ／ %s：音（おもちゃ） ／ Esc：メニュー"),
+	    TEXT("%s：移動 ／ マウス：見回す ／ %s：ジャンプ\n%s：ダッシュ（おもちゃ） ／ %s：しゃがむ（にんげん）\n%s：つかむ・収納（にんげん） ／ %s：救助（おもちゃ）\n%s：おろす ／ %s：音（おもちゃ） ／ %s：押す ／ Esc：メニュー"),
 	    *Move, *Jump, *TB::KeyLabel(PC, TB::Keys::ToySprint), *TB::KeyLabel(PC, TB::Keys::HumanCrouch), *Interact, *ToyInteract,
-	    *Drop, *TB::KeyLabel(PC, TB::Keys::ToyTaunt))));
+	    *Drop, *TB::KeyLabel(PC, TB::Keys::ToyTaunt), *TB::KeyLabel(PC, TB::Keys::ToyPush))));
 }
 
 void UTBTitleMenu::Help()

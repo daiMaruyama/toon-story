@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Mamodou. All Rights Reserved.
 
 #include "TBController.h"
+#include "Character/TBCharacter.h"
 #include "Algo/AllOf.h"
 #include "Audio/TBAudioEvents.h"
 #include "Audio/TBAudioSubsystem.h"
@@ -98,10 +99,21 @@ void ATBController::PlayerTick(float DeltaTime)
 	const auto* HUD = Cast<ATBHUD>(GetHUD());
 	const bool BlockingPanel = HUD && (HUD->IsChatBlocked() || HUD->IsStagePickerOpen());
 	const bool ShowMenu = State && (InLobby ? (BlockingPanel || IsChatOpen() || State->bTravelPending) :
-	    (State->Phase != ETBPhase::Playing || bLeaveMenuOpen || BlockingPanel));
-	UpdateLobbyCamera((InLobby && ShowMenu && !IsChatOpen()) || ShouldHidePreparationView());
-	UpdateMenuInput(ShowMenu);
+	    (State->Phase != ETBPhase::Playing && State->Phase != ETBPhase::Results) || bLeaveMenuOpen || BlockingPanel);
+	UpdateLobbyCamera(InLobby || ShouldHidePreparationView());
+	UpdateMenuInput(ShowMenu || (State && State->IsLobbyReturnStopped() && HasAuthority()));
 	UpdateScreenTransition();
+	if (State && State->Phase == ETBPhase::Results)
+	{
+		ATBCharacter* Winner = GetPawn<ATBCharacter>();
+		if (!Winner || !Winner->IsCelebrating())
+		{
+			Winner = nullptr;
+			for (TActorIterator<ATBCharacter> It(GetWorld()); It; ++It)
+				if (It->IsCelebrating() && (!Winner || It->TBPS()->GetPlayerId() < Winner->TBPS()->GetPlayerId())) Winner = *It;
+		}
+		if (Winner && GetViewTarget() != Winner) SetViewTargetWithBlend(Winner, .4f);
+	}
 	UpdateViewAspect();
 	SyncInputContexts();
 	if (NoticeExpires > 0 && GetWorld()->GetTimeSeconds() > NoticeExpires)
@@ -287,7 +299,7 @@ void ATBController::UpdateScreenTransition()
 
 void ATBController::UpdateLobbyCamera(bool InLobby)
 {
-	// ロビーの設定画面と準備中だけ固定カメラを使う。探索中はPawnの視点へ戻す。
+	// Pawn の所持で視点が戻る場合も、ロビーではマップの固定カメラを維持する。
 	if (InLobby)
 	{
 		if (!bLobbyCameraSearched)

@@ -16,6 +16,8 @@ class TOONSTORY_API ATBPlayerState : public APlayerState
 public:
 	UPROPERTY(ReplicatedUsing = OnRep_State, BlueprintReadOnly)
 	ETBTeam Team = ETBTeam::None;
+	UPROPERTY(ReplicatedUsing = OnRep_State)
+	TSoftClassPtr<AActor> HumanAppearance;
 	UPROPERTY(ReplicatedUsing = OnRep_State, BlueprintReadOnly)
 	ETBToyState ToyState = ETBToyState::Free;
 	UPROPERTY(ReplicatedUsing = OnRep_State, BlueprintReadOnly)

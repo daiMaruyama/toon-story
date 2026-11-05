@@ -31,6 +31,8 @@ ATBMomArrivalZone::ATBMomArrivalZone()
 	Marker->SetRelativeLocation(FVector(0,0,12));
 	Marker->SetRelativeScale3D(FVector(.24));
 	Marker->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	Marker->SetHiddenInGame(true);
+	Marker->SetCastShadow(false);
 	Boundary=CreateDefaultSubobject<UInstancedStaticMeshComponent>(TEXT("DashedBoundary"));
 	Boundary->SetupAttachment(RootComponent);
 	Boundary->SetStaticMesh(Cube.Object);
@@ -65,6 +67,9 @@ void ATBMomArrivalZone::OnConstruction(const FTransform& Transform)
 void ATBMomArrivalZone::BeginPlay()
 {
 	Super::BeginPlay();
+	// Existing placed instances may still serialize the old visible placeholder defaults.
+	Marker->SetHiddenInGame(true);
+	Marker->SetCastShadow(false);
 	OnRep_State();
 }
 

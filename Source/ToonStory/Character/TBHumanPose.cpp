@@ -8,6 +8,18 @@
 #include "Animation/AnimNode_LinkedInputPose.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "TwoBoneIK.h"
+#include "Animation/AnimSequence.h"
+#include "Animation/AnimationPoseData.h"
+#include "UObject/ConstructorHelpers.h"
+
+UTBHumanPose::UTBHumanPose()
+{
+	static ConstructorHelpers::FObjectFinder<UAnimSequence> Idle(TEXT("/Game/Characters/ChildAnimation/Child_MM_Idle"));
+	static ConstructorHelpers::FObjectFinder<UAnimSequence> Hop(TEXT("/Game/Characters/ChildAnimation/Child_MM_Jump"));
+	static ConstructorHelpers::FObjectFinder<UAnimSequence> Step(TEXT("/Game/Characters/ChildAnimation/Child_MF_Unarmed_Walk_Left"));
+	static ConstructorHelpers::FObjectFinder<UAnimSequence> FastStep(TEXT("/Game/Characters/ChildAnimation/Child_MF_Unarmed_Jog_Right"));
+	GestureBases = {nullptr, Idle.Object, Hop.Object, Step.Object, FastStep.Object};
+}
 
 namespace
 {
@@ -28,6 +40,8 @@ namespace
 		FVector HeadForwardRef = FVector::YAxisVector, HeadUpRef = FVector::UpVector;
 		FVector LookForwardCS = FVector::YAxisVector, LookUpCS = FVector::UpVector;
 		FTBEmotePose EmotePose;
+		UAnimSequence* GestureBase = nullptr;
+		FTBEmoteSample Gesture;
 
 		void ResetLook()
 		{
@@ -66,6 +80,10 @@ namespace
 			auto* Mesh = Instance->GetSkelMeshComponent();
 			auto* Asset = Mesh ? Mesh->GetSkeletalMeshAsset() : nullptr;
 			TBToyPresentation::BuildEmotePose(Mesh, Character, EmotePose);
+			const auto& Clips = CastChecked<UTBHumanPose>(Instance)->GestureBases;
+			GestureBase = nullptr;
+			if (Character && Character->GetEmoteSample(Gesture) && Clips.IsValidIndex(int32(Gesture.Kind)))
+				GestureBase = Clips[int32(Gesture.Kind)];
 			if (CachedMesh.Get() != Asset || CachedCharacter.Get() != Character)
 			{
 				ResetGrip();
@@ -196,6 +214,17 @@ namespace
 				return false;
 			}
 			Input->Evaluate_AnyThread(Output);
+			if (GestureBase && Gesture.Weight > 0)
+			{
+				FPoseContext Sample(Output);
+				Sample.ResetToRefPose();
+				FAnimationPoseData Data(Sample);
+				const int32 Cycles = Gesture.Kind == ETBEmoteKind::WildDance ? 8 : Gesture.Kind == ETBEmoteKind::Dance ? 3 : 1;
+				const double Phase = FMath::Fmod(double(Gesture.Progress) * Cycles, 1.);
+				GestureBase->GetAnimationPose(Data, FAnimExtractContext(Phase * GestureBase->GetPlayLength(), false));
+				for (auto Bone : Output.Pose.ForEachBoneIndex())
+					Output.Pose[Bone].BlendWith(Sample.Pose[Bone], Gesture.Weight);
+			}
 			if (CrouchAmount < .001f && GripAmount < .001f && !HasLook && EmotePose.Bones.IsEmpty())
 			{
 				return true;

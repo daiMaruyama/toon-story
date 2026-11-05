@@ -5,6 +5,26 @@
 #include "Core/TBPlayerState.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
+#include "Components/StaticMeshComponent.h"
+#include "Engine/StaticMesh.h"
+
+TOptional<ETBSoundEvent> UTBAudioEvents::PropDropSound(double FallCentimeters, bool bGlass)
+{
+	if (FallCentimeters >= 90.0) return bGlass ? ETBSoundEvent::GlassDropHeavy : ETBSoundEvent::PropDropHeavy;
+	if (FallCentimeters >= 30.0) return bGlass ? ETBSoundEvent::GlassDropMedium : ETBSoundEvent::PropDropMedium;
+	if (FallCentimeters >= 6.0) return bGlass ? ETBSoundEvent::GlassDropLight : ETBSoundEvent::PropDropLight;
+	return {}; // Resting contact and small bounces stay silent.
+}
+
+bool UTBAudioEvents::IsGlassProp(const UStaticMeshComponent* Part)
+{
+	if (!Part) return false;
+	if (Part->ComponentHasTag(TEXT("TBGlass"))) return true;
+	const UStaticMesh* Mesh = Part->GetStaticMesh();
+	if (!Mesh) return false;
+	const FString Name = Mesh->GetName();
+	return Name.StartsWith(TEXT("SM_Glass_")) || Name.StartsWith(TEXT("SM_Bathroom_Water_Glass"));
+}
 
 bool UTBAudioEvents::ShouldDeliver(ETBSoundEvent Event, const ATBPlayerState* Recipient,
                                   const APlayerState* Subject)
@@ -41,6 +61,13 @@ bool UTBAudioEvents::ShouldDeliver(ETBSoundEvent Event, const ATBPlayerState* Re
 	case ETBSoundEvent::RescueComplete:
 		return Recipient->Team == ETBTeam::Toy;
 	case ETBSoundEvent::Ready:
+	case ETBSoundEvent::ToyPush:
+	case ETBSoundEvent::PropDropLight:
+	case ETBSoundEvent::PropDropMedium:
+	case ETBSoundEvent::PropDropHeavy:
+	case ETBSoundEvent::GlassDropLight:
+	case ETBSoundEvent::GlassDropMedium:
+	case ETBSoundEvent::GlassDropHeavy:
 	case ETBSoundEvent::CaptureHard:
 	case ETBSoundEvent::Capture:
 	case ETBSoundEvent::Store:

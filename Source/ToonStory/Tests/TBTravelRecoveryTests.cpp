@@ -51,9 +51,9 @@ bool FTBTravelRecovery::RunTest(const FString&)
 	State->Phase = ETBPhase::Lobby;
 	Pending->bStageSelected = false;
 	TestFalse(TEXT("Direct arena startup remains available for rule tests"), TBLobbySettings::ShouldTravelToStage(World));
-	TBLobbySettings::SelectStage(PC, 2);
+	TBLobbySettings::SelectStage(PC, TBLobbySettings::HouseStageId);
 	TestTrue(TEXT("Explicit stage selection from Arena schedules selected stage at start"), TBLobbySettings::ShouldTravelToStage(World));
-	TestEqual(TEXT("Selected stage item limit is used before travel"), TBLobbySettings::AvailableItems(World), 8);
+	TestEqual(TEXT("House item limit is used before travel"), TBLobbySettings::AvailableItems(World), 8);
 	Pending->bStartOnArrival = true;
 	Pending->PendingMap = TEXT("/Game/Maps/Loading");
 	Pending->ArrivalDeadline = 0;
@@ -86,5 +86,46 @@ bool FTBTravelRecovery::RunTest(const FString&)
 	UGameplayStatics::RemovePlayer(Other, true);
 	TestTrue(TEXT("Disconnect during loading cancels arrival without waiting for timeout"), Pending->bArrivalCancelled);
 	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBLobbyReturnRetry, "ToonStory.Review.LobbyReturnRetry",
+                                EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+bool FTBLobbyReturnRetry::RunTest(const FString&)
+{
+	auto* World = RecoveryWorld();
+	if (!World || World->GetNetMode() != NM_Standalone) return false;
+	auto* Mode = World->GetAuthGameMode<ATBGameMode>();
+	auto* State = World->GetGameState<ATBGameState>();
+	auto* Host = Cast<ATBController>(World->GetFirstPlayerController());
+	auto* Pending = World->GetGameInstance()->GetSubsystem<UTBLobbySettings>();
+	if (!Mode || !State || !Host || !Pending || State->Phase != ETBPhase::Lobby) return false;
+	TGuardValue<bool> Dedicated(Pending->bDedicatedLobby, true);
+	TGuardValue<FString> BlockTravel(Pending->PendingMap, FString(TEXT("/Game/Maps/Loading")));
+	State->Phase = ETBPhase::Results;
+	for (int32 Attempt = 1; Attempt <= 3; ++Attempt)
+	{
+		State->EndTime = UE_DOUBLE_SMALL_NUMBER; // Expire the next scheduled attempt.
+		Mode->Tick(0);
+		TestFalse(TEXT("A refused return supplies a reason"), State->LobbyReturnError.IsEmpty());
+		if (Attempt < 3)
+		{
+			const double Deadline = State->EndTime;
+			TestTrue(TEXT("Retry is scheduled five seconds later"),
+			    FMath::IsNearlyEqual(Deadline - State->GetServerWorldTimeSeconds(), 5., .01));
+			Mode->Tick(0);
+			TestEqual(TEXT("Tick before the deadline does not retry"), State->EndTime, Deadline);
+		}
+	}
+	TestTrue(TEXT("Third failure stops automatic retries"), State->IsLobbyReturnStopped());
+	Pending->PendingMap.Reset();
+	Pending->bDedicatedLobby = false; // Exercise the same-world lobby recovery path.
+	Mode->Tick(0);
+	TestEqual(TEXT("Clearing the obstacle does not start a fourth attempt"), State->Phase, ETBPhase::Results);
+	Mode->ReturnToLobby(nullptr);
+	TestTrue(TEXT("Only the host may restart the return"), State->IsLobbyReturnStopped());
+	Mode->ReturnToLobby(Host);
+	TestEqual(TEXT("Host can recover after the retry limit"), State->Phase, ETBPhase::Lobby);
+	TestTrue(TEXT("Successful recovery clears the failure message"), State->LobbyReturnError.IsEmpty());
+	return !HasAnyErrors();
 }
 #endif

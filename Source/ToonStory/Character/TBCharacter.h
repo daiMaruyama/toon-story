@@ -94,6 +94,8 @@ public:
 	TObjectPtr<UStaticMeshComponent> Body;
 	UPROPERTY(Config, EditDefaultsOnly, Category = "Appearance")
 	TSoftObjectPtr<USkeletalMesh> ChildMesh;
+	UPROPERTY(VisibleAnywhere, Category = "Appearance")
+	TObjectPtr<class UChildActorComponent> HumanVisual;
 	UPROPERTY(Config, EditDefaultsOnly, Category = "Appearance")
 	TSoftClassPtr<UAnimInstance> ChildAnimation;
 	UPROPERTY(VisibleAnywhere)
@@ -113,6 +115,7 @@ public:
 	void OnRep_Carrier();
 	ATBPlayerState* TBPS() const;
 	bool IsHuman() const;
+	bool IsCelebrating() const;
 	// Game-thread read for animation. Simulated peers must have a matching resolved snapshot.
 	bool GetHumanLook(FTBHumanLookSnapshot& Out) const;
 	bool CanRequestEmote() const;
@@ -152,6 +155,10 @@ public:
 	void ReleaseInteract();
 	void RequestDrop();
 	void RequestTaunt();
+	void RequestPush();
+	bool TryPush();
+	UFUNCTION(Server, Reliable)
+	void ServerPush();
 	/** Validates team, state and cooldown on the server before emitting spatial audio. */
 	bool TryTaunt();
 	UFUNCTION(Server, Reliable)
@@ -227,6 +234,7 @@ private:
 	void SprintReleased();
 	double LastRequest = -1000;
 	double LastTauntTime = -1000;
+	double LastPushTime = -1000;
 	bool bWasPhysicsLocked = false;
 	// 表示用。運ばれているかの正解はCarrier。
 	bool bCarryView = false;

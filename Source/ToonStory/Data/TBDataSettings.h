@@ -36,6 +36,9 @@ public:
 	/** プレイヤーが変えられる設定の、初期値と範囲 */
 	UPROPERTY(Config, EditAnywhere, Category = "マスターデータ", meta = (DisplayName = "コンフィグ"))
 	TSoftObjectPtr<UTBConfigData> ConfigData;
+	/** Additional assembled MetaHuman blueprints. The existing child is also in the draw. */
+	UPROPERTY(Config, EditAnywhere, Category = "人間")
+	TArray<TSoftClassPtr<AActor>> HumanAppearances;
 
 #if WITH_EDITOR
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& Event) override;

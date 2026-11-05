@@ -259,7 +259,7 @@ bool FTBTVTest::RunTest(const FString& Parameters)
 				    return false;
 			    case 2:
 				    TestEqual(TEXT("Grabbed target shows static"), Noise(), 1.f);
-				    TestEqual(TEXT("Channel stays on grabbed target"), TV->GetChannel().Number, TargetNumber);
+				    this->TestEqual(TEXT("Channel stays on grabbed target"), TV->GetChannel().Number, TargetNumber);
 				    Target->SetToyState(ETBToyState::Free);
 				    return false;
 			    case 3:
@@ -269,7 +269,7 @@ bool FTBTVTest::RunTest(const FString& Parameters)
 				    return false;
 			    case 4:
 				    TestEqual(TEXT("Lost target shows static"), Noise(), 1.f);
-				    TestEqual(TEXT("Channel stays on lost target"), TV->GetChannel().Number, TargetNumber);
+				    this->TestEqual(TEXT("Channel stays on lost target"), TV->GetChannel().Number, TargetNumber);
 				    TargetController->Possess(Target);
 				    TV->SelectChannel(Viewer, ATBBoxTV::MaxChannel);
 				    return false;

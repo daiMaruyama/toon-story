@@ -259,7 +259,7 @@ bool FTBTitleToyEmoteTest::RunTest(const FString& Parameters)
 		if (It->ActorHasTag(TEXT("TitleToy")))
 		{
 			auto* Emote = It->FindComponentByClass<UTBTitleEmote>();
-			TestNotNull(*FString::Printf(TEXT("%s can emote"), *It->GetActorLabel()), Emote);
+			TestNotNull(*FString::Printf(TEXT("%s can emote"), *It->GetActorNameOrLabel()), Emote);
 			if (Emote) Toys.Add(Emote);
 		}
 	}
@@ -316,11 +316,11 @@ bool FTBTitleToyEmoteTest::RunTest(const FString& Parameters)
 		FTBEmoteSample Sample;
 		TestTrue(TEXT("Dancing toys emote"), Toy->GetSample(Sample) && Sample.Weight > .9f);
 		// 骨を回す後処理が実際に付いていないと、状態だけ動いて見た目は変わらない。
-		TestNotNull(*FString::Printf(TEXT("%s runs the emote post-process"), *Toy->GetOwner()->GetActorLabel()),
+		TestNotNull(*FString::Printf(TEXT("%s runs the emote post-process"), *Toy->GetOwner()->GetActorNameOrLabel()),
 		            Mesh ? Cast<UTBToyFacingPose>(Mesh->GetPostProcessInstance()) : nullptr);
 		FTBEmotePose Pose;
 		TBToyPresentation::BuildEmotePose(Mesh, Sample, Toy->GetOwner()->GetActorForwardVector(), Toy->GetOwner()->GetActorRightVector(), Pose);
-		TestTrue(*FString::Printf(TEXT("%s gets an emote pose"), *Toy->GetOwner()->GetActorLabel()), Pose.Bones.Num() > 0);
+		TestTrue(*FString::Printf(TEXT("%s gets an emote pose"), *Toy->GetOwner()->GetActorNameOrLabel()), Pose.Bones.Num() > 0);
 	}
 	// カメラから狙ったおもちゃだけが選ばれ、4種類を順に回る。
 	UTBTitleEmote* Target = Toys[0];
@@ -356,7 +356,7 @@ bool FTBTitleToyEmoteTest::RunTest(const FString& Parameters)
 			FVector ToyCenter, ToyExtent;
 			Toy->GetOwner()->GetActorBounds(false, ToyCenter, ToyExtent);
 			const FVector Camera = It->GetActorLocation();
-			TestTrue(*FString::Printf(TEXT("Clicking %s picks it"), *Toy->GetOwner()->GetActorLabel()),
+			TestTrue(*FString::Printf(TEXT("Clicking %s picks it"), *Toy->GetOwner()->GetActorNameOrLabel()),
 			         PC->PickToy(Camera, (ToyCenter - Camera).GetSafeNormal()) == Toy);
 		}
 		break;

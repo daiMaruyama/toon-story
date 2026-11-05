@@ -6,6 +6,9 @@
 #include "AIController.h"
 #include "Character/TBToyCharacter.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Components/ChildActorComponent.h"
+#include "Character/TBHumanPose.h"
+#include "Data/TBDataSettings.h"
 #include "Components/StaticMeshComponent.h"
 #include "Core/TBPlayerState.h"
 #include "Engine/Engine.h"
@@ -74,6 +77,30 @@ bool FTBHumanAppearanceGCTest::RunTest(const FString&)
 	TestTrue(TEXT("Returning to human restores the same mesh"), Character->GetMesh()->GetSkeletalMeshAsset() == WeakMesh.Get());
 	TestTrue(TEXT("Returning human mesh is visible"), Character->GetMesh()->IsVisible());
 	TestFalse(TEXT("Returning human does not use the fallback cube"), Character->Body->IsVisible());
+	for (const auto& Look : GetDefault<UTBDataSettings>()->HumanAppearances)
+	{
+		Info->HumanAppearance = Look;
+		Character->ApplyState();
+		auto* Assembly = Character->HumanVisual->GetChildActor();
+		if (!TestNotNull(TEXT("Configured human assembly spawns"), Assembly)) return false;
+		USkeletalMeshComponent* BodyMesh = nullptr;
+		USkeletalMeshComponent* FaceMesh = nullptr;
+		for (auto* Part : TInlineComponentArray<USkeletalMeshComponent*>(Assembly))
+		{
+			if (Cast<UTBHumanBodyPose>(Part->GetAnimInstance())) BodyMesh = Part;
+			if (Part->GetName() == TEXT("Face")) FaceMesh = Part;
+		}
+		if (!TestNotNull(TEXT("Retargeted body"), BodyMesh) || !TestNotNull(TEXT("Face"), FaceMesh)) return false;
+		for (auto* Part : {Character->GetMesh(), BodyMesh, FaceMesh})
+		{
+			Part->TickAnimation(1.f / 30.f, false);
+			Part->RefreshBoneTransforms();
+		}
+		TestTrue(*FString::Printf(TEXT("%s head stays on body"), *Assembly->GetName()),
+		    FaceMesh->DoesSocketExist(TEXT("head")) && BodyMesh->DoesSocketExist(TEXT("head")) &&
+		    FaceMesh->GetSocketLocation(TEXT("head")).Equals(BodyMesh->GetSocketLocation(TEXT("head")), 1.0));
+		TestFalse(TEXT("Original child is hidden under the selected assembly"), Character->GetMesh()->IsVisible());
+	}
 	return true;
 }
 #endif

@@ -23,4 +23,7 @@ public:
 	    const FVector& ImpactVelocity) override;
 	virtual void MoveAutonomous(float ClientTimeStamp, float DeltaTime, uint8 CompressedFlags,
 	                            const FVector& NewAccel) override;
+private:
+	bool bBrushingProp = false;
+	void SweepPushableProps(float DeltaSeconds);
 };

@@ -42,6 +42,7 @@ public:
 	void SetRules(APlayerController* PlayerController, const FTBSettings& Rules);
 	void StartRound(APlayerController* PlayerController);
 	void ReturnToLobby(APlayerController* PlayerController);
+	void LobbyReturnFailed(const FString& Reason);
 	void CheckWin();
 	void Finish(ETBWinner Winner, const FString& Why, bool bAbort = false);
 	bool Watched(ATBCharacter* Toy, ATBCharacter* Human) const;
@@ -49,8 +50,11 @@ public:
 	TArray<TObjectPtr<AActor>> SpawnPoints;
 
 private:
+	void ReturnFinishedMatchToLobby();
+	int32 LobbyReturnFailures = 0;
 #if WITH_DEV_AUTOMATION_TESTS
 	friend class FTBRoundStartTest;
+	friend class FTBHousePartyTest;
 	friend class FTBMirrorGazeTest;
 	friend class FTBHidePreparationTest;
 	friend class FTBHumanEntranceTest;

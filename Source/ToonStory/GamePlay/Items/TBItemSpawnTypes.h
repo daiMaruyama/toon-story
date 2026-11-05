@@ -40,7 +40,7 @@ struct FTBItemSpawnRules
 	bool bEnabled = true;
 	/** 候補地点がないマップには出現しない。安全な候補が不足する場合は配置可能な個数まで。 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="ランダム配置", meta=(DisplayName="試合ごとの出現数", ClampMin="0", ClampMax="100"))
-	int32 SpawnCount = 3;
+	int32 SpawnCount = 2;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="ランダム配置", meta=(DisplayName="アイテムの外形間の最短距離", ClampMin="0", Units="cm"))
 	float MinimumSeparation = 120;
 	/** 外形の左右・前後・上に確保する余白。壁や家具に接する候補を除外する。 */
