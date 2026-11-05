@@ -306,7 +306,9 @@ void UTBSession::Found(bool bSucceeded)
 		                          SearchResult.Session.NumOpenPublicConnections,
 		                          SearchResult.Session.SessionSettings.NumPublicConnections, SearchResult.PingInMs));
 	}
-	Message(FString::Printf(TEXT("Found %d rooms. Use TBJoin <index>."), Results.Num()));
+	// 画面にそのまま出る文なので日本語にする。
+	Message(Results.IsEmpty() ? FString(TEXT("部屋が見つかりませんでした。"))
+	                          : FString::Printf(TEXT("部屋が%d個見つかりました。"), Results.Num()));
 }
 
 void UTBSession::Join(int32 Index)
