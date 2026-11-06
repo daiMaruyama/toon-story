@@ -41,6 +41,13 @@ void UTBTitleMenu::BuildPaperLayout()
 	}
 	else
 	{
+		// 古いツリーは捨てるので、WBPのバインドも外す。
+		HostButton = nullptr;
+		FindButton = nullptr;
+		HelpButton = nullptr;
+		OptionsButton = nullptr;
+		QuitButton = nullptr;
+		LogoImage = nullptr;
 		Root = WidgetTree->ConstructWidget<UCanvasPanel>();
 		WidgetTree->RootWidget = Root;
 		Scale = WidgetTree->ConstructWidget<UScaleBox>();
