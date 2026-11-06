@@ -82,28 +82,18 @@ namespace
 	}
 }
 
-UTexture2D* UTBTitleMenu::MakeSideShade(UObject* Outer)
+void UTBTitleMenu::UpdateBursts()
 {
-	constexpr int32 Width = 256;
-	UTexture2D* Texture = UTexture2D::CreateTransient(Width, 1, PF_B8G8R8A8);
-	if (!Texture) return nullptr;
-	Texture->AddressX = TA_Clamp;
-	Texture->AddressY = TA_Clamp;
-	Texture->Filter = TF_Bilinear;
-	uint8* Pixels = static_cast<uint8*>(Texture->GetPlatformData()->Mips[0].BulkData.Lock(LOCK_READ_WRITE));
-	for (int32 X = 0; X < Width; ++X)
+	auto Show = [](UImage* Burst, const UButton* Button)
 	{
-		// 左端は濃く、右へなめらかに消える。
-		const float T = 1.f - static_cast<float>(X) / (Width - 1);
-		const float Alpha = .72f * T * T * (3.f - 2.f * T);
-		Pixels[X * 4 + 0] = 5;
-		Pixels[X * 4 + 1] = 7;
-		Pixels[X * 4 + 2] = 4;
-		Pixels[X * 4 + 3] = static_cast<uint8>(Alpha * 255.f);
-	}
-	Texture->GetPlatformData()->Mips[0].BulkData.Unlock();
-	Texture->UpdateResource();
-	return Texture;
+		if (Burst && Button)
+		{
+			Burst->SetVisibility(Button->IsHovered() ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+		}
+	};
+	Show(HostBurst, HostButton);
+	Show(FindBurst, FindButton);
+	Show(HelpBurst, HelpButton);
 }
 
 float UTBTitleMenu::GetMenuOpacity() const
@@ -176,11 +166,6 @@ void UTBTitleMenu::SkipStory()
 void UTBTitleMenu::StoryFinished()
 {
 	if (State == EState::Story) EnterMenu();
-}
-
-void UTBTitleMenu::WatchStory()
-{
-	EnterStory();
 }
 
 void UTBTitleMenu::StartLoop()
@@ -286,6 +271,7 @@ void UTBTitleMenu::NativeTick(const FGeometry& Geometry, float DeltaTime)
 		LastCursor = CursorPosition;
 	}
 	UpdateIdle(DeltaTime);
+	UpdateBursts();
 	WidgetTree->ForEachWidget([DeltaTime](UWidget* Widget)
 	{
 		if (auto* Button = Cast<UButton>(Widget))
@@ -313,7 +299,9 @@ void UTBTitleMenu::Refresh()
 		RoomList->AddOption(FString::Printf(TEXT("%d  %s"), Index + 1, *Session->Rooms[Index]));
 	if (!Session->Rooms.IsEmpty()) RoomList->SetSelectedIndex(FMath::Clamp(Previous, 0, Session->Rooms.Num() - 1));
 	JoinButton->SetIsEnabled(Ready && Session->Rooms.IsValidIndex(RoomList->GetSelectedIndex()));
-	StatusText->SetText(FText::FromString(TBPaper::Status(Session->Status)));
+	// 普段の案内は出さない。通信中やエラーなど、知らせることがあるときだけ出す。
+	const bool bIdle = Session->Status == TEXT("Create a room or find friends to begin.");
+	StatusText->SetText(bIdle ? FText::GetEmpty() : FText::FromString(TBPaper::Status(Session->Status)));
 }
 
 void UTBTitleMenu::SelectionChanged(FString Item, ESelectInfo::Type SelectionType)

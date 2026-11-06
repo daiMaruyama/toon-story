@@ -64,10 +64,27 @@ protected:
 	virtual void NativeDestruct() override;
 	virtual FReply NativeOnPreviewKeyDown(const FGeometry& Geometry, const FKeyEvent& KeyEvent) override;
 	virtual void NativeTick(const FGeometry& Geometry, float DeltaTime) override;
+
+	// 以下は WBP_TitleMenu に置けば、置いたものを使う。名前を合わせる。無ければ C++ が従来どおり作る。
+	// ScaleBox（TitleScale）の中の 1280×800 の Canvas（TitleCanvas）に、ボタンなどを置く。
+	UPROPERTY(Transient, meta = (BindWidgetOptional)) TObjectPtr<class UScaleBox> TitleScale;
+	UPROPERTY(Transient, meta = (BindWidgetOptional)) TObjectPtr<class UCanvasPanel> TitleCanvas;
+	UPROPERTY(Transient, meta = (BindWidgetOptional)) TObjectPtr<UButton> HostButton;
+	UPROPERTY(Transient, meta = (BindWidgetOptional)) TObjectPtr<UButton> FindButton;
+	UPROPERTY(Transient, meta = (BindWidgetOptional)) TObjectPtr<UButton> HelpButton;
+	UPROPERTY(Transient, meta = (BindWidgetOptional)) TObjectPtr<UButton> OptionsButton;
+	UPROPERTY(Transient, meta = (BindWidgetOptional)) TObjectPtr<UButton> QuitButton;
+	// ロゴの画像。ブラシに画像を設定すると、仮の TOON / STORY の文字は出さない。画像が無ければ隠す。
+	UPROPERTY(Transient, meta = (BindWidgetOptional)) TObjectPtr<class UImage> LogoImage;
+	// カーソルを乗せたボタンの左に出す集中線。普段は隠れている。
+	UPROPERTY(Transient, meta = (BindWidgetOptional)) TObjectPtr<class UImage> HostBurst;
+	UPROPERTY(Transient, meta = (BindWidgetOptional)) TObjectPtr<class UImage> FindBurst;
+	UPROPERTY(Transient, meta = (BindWidgetOptional)) TObjectPtr<class UImage> HelpBurst;
+
 private:
 	void BuildPaperLayout();
-	// 左側だけ、右へ向かって薄くなる暗幕の画像。
-	static UTexture2D* MakeSideShade(UObject* Outer);
+	// 乗せているボタンの集中線だけを出す。
+	void UpdateBursts();
 	void EnterMenu();
 	// 寸劇を流さずメニューへ入るとき、寸劇を最後のコマの状態にする。
 	void SettleStory();
@@ -79,8 +96,6 @@ private:
 	void SetRoomCardsShown(bool bShown);
 	UFUNCTION()
 	void StoryFinished();
-	UFUNCTION()
-	void WatchStory();
 	EState State = EState::Menu;
 	float MenuFade = 1.f;
 	float BlackoutFade = 0.f;
@@ -92,11 +107,7 @@ private:
 	UPROPERTY(Transient) TObjectPtr<UWidget> Blackout;
 	UPROPERTY(Transient) TObjectPtr<UWidget> MenuLayer;
 	UPROPERTY(Transient) TArray<TObjectPtr<UWidget>> RoomCardWidgets;
-	UPROPERTY(Transient) TObjectPtr<UButton> StoryButton;
-	UPROPERTY(Transient) TObjectPtr<UTexture2D> ShadeTexture;
 	UPROPERTY(Transient) TObjectPtr<UTBSession> Session;
-	UPROPERTY(Transient) TObjectPtr<UButton> HostButton;
-	UPROPERTY(Transient) TObjectPtr<UButton> FindButton;
 	UPROPERTY(Transient) TObjectPtr<UButton> JoinButton;
 	UPROPERTY(Transient) TObjectPtr<UComboBoxString> RoomList;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> StatusText;
@@ -117,11 +128,9 @@ private:
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> HelpControlsText;
 	UPROPERTY(Transient) TObjectPtr<UWidget> TitleContent;
 	UPROPERTY(Transient) TObjectPtr<UWidget> HelpOverlay;
-	UPROPERTY(Transient) TObjectPtr<UButton> HelpButton;
 	UPROPERTY(Transient) TObjectPtr<UButton> CloseHelpButton;
 	// オプション画面（UTBOptionsMenu）を開く。ロビー・試合中のメニューと同じ画面。
 	UFUNCTION() void OpenOptions();
-	UPROPERTY(Transient) TObjectPtr<UButton> OptionsButton;
 	TWeakObjectPtr<class UTBOptionsMenu> Options;
 	UFUNCTION()
 	class UWidget* RoomLabel(FString Item);

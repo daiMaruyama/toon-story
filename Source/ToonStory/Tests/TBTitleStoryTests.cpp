@@ -104,8 +104,8 @@ bool FTBTitleStoryTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("No sequence goes straight to the menu"), Menu->GetState() == UTBTitleMenu::EState::Menu);
 	TestTrue(TEXT("The story counts as shown"), Memory->bShown);
 	TestFalse(TEXT("The room cards are hidden"), Menu->AreRoomCardsShown());
-	PressStoryButton(Menu, TEXT("Story"));
-	TestTrue(TEXT("The story button does nothing without a sequence"), Menu->GetState() == UTBTitleMenu::EState::Menu);
+	Menu->EnterStory();
+	TestTrue(TEXT("Entering the story does nothing without a sequence"), Menu->GetState() == UTBTitleMenu::EState::Menu);
 	Menu->RemoveFromParent();
 
 	// 寸劇があれば、最初の1回だけStory。どのキーでも飛ばせて、飛ばすと後ろのループが始まる。
@@ -139,7 +139,7 @@ bool FTBTitleStoryTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Touching restarts the idle count"), Menu->GetState() == UTBTitleMenu::EState::Menu);
 
 	// オプションを開いている間は、放っておいても寸劇で割り込まない。
-	PressStoryButton(Menu, TEXT("Options"));
+	PressStoryButton(Menu, TEXT("OptionsButton"));
 	Menu->AdvanceIdleForTest(60.f);
 	TestTrue(TEXT("Reading the options holds off the story"), Menu->GetState() == UTBTitleMenu::EState::Menu);
 	TArray<UUserWidget*> Opened;
@@ -154,9 +154,9 @@ bool FTBTitleStoryTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("The loop stops for the idle story"), Loop->GetSequencePlayer()->IsPlaying());
 	Menu->SkipStory();
 
-	// 「ストーリーを見る」でStoryに戻る。ループは止まる。
-	PressStoryButton(Menu, TEXT("Story"));
-	TestTrue(TEXT("The story button plays the story"), Menu->GetState() == UTBTitleMenu::EState::Story);
+	// 見直すときは EnterStory で Story に戻る。ループは止まる。
+	Menu->EnterStory();
+	TestTrue(TEXT("Entering the story plays the story"), Menu->GetState() == UTBTitleMenu::EState::Story);
 	TestTrue(TEXT("The replayed story starts from the top"), Story->GetSequencePlayer()->GetCurrentTime().Time <= Story->GetSequencePlayer()->GetStartTime().Time + 1);
 	TestFalse(TEXT("The loop stops during the story"), Loop->GetSequencePlayer()->IsPlaying());
 	Menu->SkipStory();
@@ -168,7 +168,7 @@ bool FTBTitleStoryTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Coming back goes straight to the menu"), Menu->GetState() == UTBTitleMenu::EState::Menu);
 
 	// 部屋をさがすとカードが出る。探している間は、放っておいても寸劇で割り込まない。検索は終わるのを待たないので最後に。
-	PressStoryButton(Menu, TEXT("Find"));
+	PressStoryButton(Menu, TEXT("FindButton"));
 	TestTrue(TEXT("Finding rooms shows the cards"), Menu->AreRoomCardsShown());
 	if (PC->GetGameInstance()->GetSubsystem<UTBSession>()->IsBusy())
 	{

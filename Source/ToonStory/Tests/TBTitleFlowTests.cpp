@@ -69,7 +69,7 @@ namespace
 			switch (Step)
 			{
 				case 0:
-					if (!CheckTitle(World) || !ClickTitle(TEXT("Find")))
+					if (!CheckTitle(World) || !ClickTitle(TEXT("FindButton")))
 					{
 						return true;
 					}
@@ -98,7 +98,7 @@ namespace
 						Test->TestEqual(TEXT("Join requires a selected result"), Join->GetIsEnabled(),
 						                !Session->Rooms.IsEmpty());
 					}
-					if (!ClickTitle(TEXT("Host")))
+					if (!ClickTitle(TEXT("HostButton")))
 					{
 						return true;
 					}
@@ -236,7 +236,7 @@ namespace
 						return true;
 					}
 					Test->TestFalse(TEXT("In-match leave destroys session"), HasSession(World));
-					if (!ClickTitle(TEXT("Host")))
+					if (!ClickTitle(TEXT("HostButton")))
 					{
 						return true;
 					}
