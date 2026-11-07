@@ -158,6 +158,31 @@ bool FTBGazeFreezeTest::RunTest(const FString&)
 	LookAtToy(Gaze.HalfAngle + 8.f);
 	Mode->EvaluateGaze(1.f);
 	Expect(TEXT("Toy outside the gaze cone is only seen"), ETBGazeState::Seen);
+
+	// 凝視中は寄った視野で判定する。普段なら映る位置でも、凝視中は見えていない。
+	const auto& Vision = TB::Rules().Vision;
+	const auto Normal = TBRuleMath::JudgeHalfAngles(Vision.FieldOfView, Vision.AspectWidth, Vision.AspectHeight, Vision.EdgeMargin);
+	const auto Zoomed = TBRuleMath::JudgeHalfAngles(Gaze.FieldOfView, Vision.AspectWidth, Vision.AspectHeight, Vision.EdgeMargin);
+	LookAtToy((Normal.Horizontal + Zoomed.Horizontal) * .5f);
+	Human->SetGazeRequested(false);
+	Mode->EvaluateGaze(.01f);
+	Expect(TEXT("Normal view sees the toy near the edge"), ETBGazeState::Seen);
+	Human->SetGazeRequested(true);
+	Mode->EvaluateGaze(1.f);
+	Expect(TEXT("Zoomed gaze view does not see the same toy"), ETBGazeState::None);
+
+	// 凝視の円を画面より広げても、画面の外は凝視にならない。
+	Gaze.HalfAngle = 80.f;
+	LookAtToy(Zoomed.Horizontal + 10.f);
+	Mode->EvaluateGaze(1.f);
+	Expect(TEXT("Wide cone does not gaze beyond the screen side"), ETBGazeState::None);
+	HumanPC->SetControlRotation((Toy->GetActorLocation() - Human->GetPawnViewLocation()).Rotation() + FRotator(Zoomed.Vertical + 30.f, 0, 0));
+	Mode->EvaluateGaze(1.f);
+	Expect(TEXT("Wide cone does not gaze beyond the screen top"), ETBGazeState::None);
+	LookAtToy();
+	Mode->EvaluateGaze(Half);
+	Expect(TEXT("Wide cone still gazes on screen"), ETBGazeState::Gazed);
+	Gaze.HalfAngle = OldGaze.HalfAngle;
 	LookAtToy();
 
 	// 壁越しは凝視しても止まらない。

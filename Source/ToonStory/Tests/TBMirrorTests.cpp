@@ -3,6 +3,7 @@
 #include "GamePlay/Items/TBMirror.h"
 #include "GamePlay/TBRoomLighting.h"
 #include "Data/TBMirrorData.h"
+#include "Data/TBRuleData.h"
 #include "Character/TBCharacter.h"
 #include "Character/TBNPCController.h"
 #include "Core/TBController.h"
@@ -110,6 +111,19 @@ bool FTBMirrorGazeTest::RunTest(const FString&)
 	Mode->EvaluateGaze(.3f); TestFalse(TEXT("Reflection outside the gaze range does not freeze"),Toy->TBPS()->bFrozen);
 	HumanPC->SetControlRotation((Mirror->GetActorLocation()-Human->GetPawnViewLocation()).Rotation());
 	Mode->EvaluateGaze(.3f); TestTrue(TEXT("Reflection inside the gaze range freezes"),Toy->TBPS()->bFrozen);
+	// 凝視の範囲を画面より広げても、画面の外に映った像では止めない。
+	{
+		auto& Gaze=const_cast<UTBRuleData&>(TB::Rules()).Gaze; const auto OldGaze=Gaze;
+		ON_SCOPE_EXIT { Gaze=OldGaze; };
+		const auto& Vision=TB::Rules().Vision;
+		const auto Zoomed=TBRuleMath::JudgeHalfAngles(Gaze.FieldOfView,Vision.AspectWidth,Vision.AspectHeight,Vision.EdgeMargin);
+		Gaze.HalfAngle=80.f;
+		HumanPC->SetControlRotation((Mirror->GetActorLocation()-Human->GetPawnViewLocation()).Rotation()+FRotator(0,Zoomed.Horizontal+10.f,0));
+		Mode->EvaluateGaze(.3f); TestFalse(TEXT("Wide gaze range does not freeze a reflection off screen"),Toy->TBPS()->bFrozen);
+		TestEqual(TEXT("Reflection off screen is not seen"),Toy->TBPS()->GazeState,ETBGazeState::None);
+	}
+	HumanPC->SetControlRotation((Mirror->GetActorLocation()-Human->GetPawnViewLocation()).Rotation());
+	Mode->EvaluateGaze(.3f); TestTrue(TEXT("Reflection back on screen freezes again"),Toy->TBPS()->bFrozen);
 	FTBInteractionContext Use; Use.InstigatorCharacter=Human; Use.ActionId=TEXT("Use");
 	TestFalse(TEXT("Passive mirror never accepts interact"),Mirror->TryInteract(Use));
 	auto* Data=NewObject<UTBMirrorData>(); Data->Width=500; Mirror->MirrorData=Data; Mirror->OnConstruction(Mirror->GetActorTransform());

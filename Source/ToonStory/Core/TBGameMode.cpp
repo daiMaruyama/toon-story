@@ -1143,12 +1143,15 @@ void ATBGameMode::Observe(ATBCharacter* Toy, ATBCharacter* Human, bool& bSeen, b
 	// 画面が基準より狭い人は、映っている範囲まで判定を狭める。画面比は本人のPCから届いた値（届く前は基準の画面比）で、
 	// 嘘で得をできないよう基準より広げる方向には使わない。
 	const auto* HumanController = Cast<ATBController>(Human->GetController());
-	const auto Half = TBRuleMath::JudgeHalfAngles(Vision.FieldOfView, Vision.AspectWidth, Vision.AspectHeight,
+	// 凝視中はカメラが寄るので、寄った後の視野で判定する。寄るまでの短いずれは許す。
+	const auto& GazeRules = TB::Rules().Gaze;
+	const float FieldOfView = !NPC && Human->IsGazing() ? GazeRules.FieldOfView : Vision.FieldOfView;
+	const auto Half = TBRuleMath::JudgeHalfAngles(FieldOfView, Vision.AspectWidth, Vision.AspectHeight,
 	                                              Vision.EdgeMargin, HumanController ? HumanController->ViewAspect : 0.f);
 	const float TanH = FMath::Tan(FMath::DegreesToRadians(Half.Horizontal));
 	const float TanV = FMath::Tan(FMath::DegreesToRadians(Half.Vertical));
 	// NPCは見つめているおもちゃを凝視しているとみなすので、円は見ない。
-	const float GazeAngle = TB::Rules().Gaze.HalfAngle;
+	const float GazeAngle = GazeRules.HalfAngle;
 	const bool bGazing = !NPC && Human->IsGazing() && GazeAngle > 0.f;
 	const float TanG = FMath::Tan(FMath::DegreesToRadians(FMath::Min(GazeAngle, 89.f)));
 	const float SampleHeight = Toy->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() * Vision.BodySampleRatio;
@@ -1161,7 +1164,8 @@ void ATBGameMode::Observe(ATBCharacter* Toy, ATBCharacter* Human, bool& bSeen, b
 		const float Rise = FVector::DotProduct(Up, Delta);
 		// 画面外のおもちゃを凍結させないよう、縦横の視野を判定する。
 		const bool bOnScreen = Depth > 0 && FMath::Abs(Side) <= Depth * TanH && FMath::Abs(Rise) <= Depth * TanV;
-		const bool bInCone = bGazing && TBRuleMath::InGazeCone(Depth, Side, Rise, GazeAngle);
+		// 凝視は画面に映っているときだけ。円を広げても画面の外は止めない。
+		const bool bInCone = bOnScreen && bGazing && TBRuleMath::InGazeCone(Depth, Side, Rise, GazeAngle);
 		if (((bOnScreen && !bSeen) || (bInCone && !bGazed)) && TB::ClearPath(Human, Toy, Eye, SamplePosition))
 		{
 			bSeen = true;
@@ -1169,8 +1173,9 @@ void ATBGameMode::Observe(ATBCharacter* Toy, ATBCharacter* Human, bool& bSeen, b
 		}
 		FVector MirrorHit;
 		if (!bSeen && ATBMirror::FindView(Human,Toy,Eye,Human->GetControlRotation(),SamplePosition,TanH,TanV,MirrorHit)) bSeen = true;
-		// 鏡は凝視の範囲も四角で見る。
-		if (bGazing && !bGazed && ATBMirror::FindView(Human,Toy,Eye,Human->GetControlRotation(),SamplePosition,TanG,TanG,MirrorHit))
+		// 鏡は凝視の範囲も四角で見る。画面からはみ出す分は削る。
+		if (bGazing && !bGazed && ATBMirror::FindView(Human,Toy,Eye,Human->GetControlRotation(),SamplePosition,
+		                                              FMath::Min(TanG,TanH),FMath::Min(TanG,TanV),MirrorHit))
 			bSeen = bGazed = true;
 		if (bSeen && (bGazed || !bGazing)) break;
 	}
