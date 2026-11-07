@@ -797,12 +797,12 @@ void ATBCharacter::CalcCamera(float DeltaTime, FMinimalViewInfo& OutResult)
 	FrozenSepia = TBRuleMath::AdvanceShade(FrozenSepia, IsGazeFrozen() ? 1.f : 0.f, DeltaTime, .2f, .4f);
 	if (FrozenSepia > 0.f)
 	{
-		const float Saturation = 1.f - .85f * FrozenSepia;
+		const float Saturation = FMath::Lerp(1.f, Gaze.FrozenSaturation, FrozenSepia);
 		OutResult.PostProcessSettings.bOverride_ColorSaturation = true;
 		OutResult.PostProcessSettings.ColorSaturation = FVector4(Saturation, Saturation, Saturation, 1.f);
 		OutResult.PostProcessSettings.bOverride_SceneColorTint = true;
 		OutResult.PostProcessSettings.SceneColorTint =
-		    FMath::Lerp(FLinearColor::White, FLinearColor(1.f, .78f, .5f), FrozenSepia);
+		    FMath::Lerp(FLinearColor::White, Gaze.FrozenTint, FrozenSepia);
 	}
 	// 箱への収納など瞬間移動を伴う切替はつながず、壁越しに視点が流れるのを防ぐ。降ろす位置は1m程度。
 	const FVector ActorLocation = GetActorLocation();

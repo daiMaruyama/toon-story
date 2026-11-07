@@ -43,6 +43,12 @@ bool FTBRuleDataTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Gaze freeze delay"), Defaults->Gaze.FreezeDelaySeconds, .3f);
 	TestEqual(TEXT("Gazed toy speed ratio"), Defaults->Gaze.GazedToySpeedRatio, .3f);
 	TestFalse(TEXT("Frozen toy stays frozen while seen"), Defaults->Gaze.bReleaseWhenGazeEnds);
+	// 演出の初期値。影は茶色、止まったら色を抜いて暖色にする。
+	TestTrue(TEXT("Seen shadow is warm brown"),
+	         Defaults->Gaze.SeenShadowColor.R > Defaults->Gaze.SeenShadowColor.B);
+	TestEqual(TEXT("Toy shadow strength"), Defaults->Gaze.ToyShadowStrength, 1.f);
+	TestTrue(TEXT("Frozen view loses color"), Defaults->Gaze.FrozenSaturation < 1.f);
+	TestEqual(TEXT("Human edge strength"), Defaults->Gaze.HumanEdgeStrength, 1.f);
 
 	// プロジェクト設定でアセットを選んでいれば、初期値ではなくそのアセットを使う。
 	const auto& Selected = GetDefault<UTBDataSettings>()->RuleData;

@@ -6,6 +6,7 @@
 #include "Character/TBCharacter.h"
 #include "Core/TBController.h"
 #include "Core/TBPlayerState.h"
+#include "Data/TBRuleData.h"
 #include "GamePlay/TBRuleMath.h"
 #include "Engine/Canvas.h"
 #include "Engine/GameInstance.h"
@@ -14,8 +15,6 @@
 
 namespace
 {
-	// 紙の影の色。赤や黒で怖がらせず、茶色い紙をかぶせたように見せる。
-	const FLinearColor PaperShadow = FLinearColor::FromSRGBColor(FColor(92, 64, 38));
 	constexpr double DokiSeconds = .8;
 }
 
@@ -28,6 +27,8 @@ void ATBHUD::DrawGazeEffects(ATBController& Controller)
 	const double Now = GetWorld()->GetTimeSeconds();
 	const auto* Pawn = Controller.GetPawn<ATBCharacter>();
 	const auto* Player = Controller.GetPlayerState<ATBPlayerState>();
+	// 色と濃さはルールデータの「凝視|演出」で変えられる。
+	const auto& Rules = TB::Rules().Gaze;
 	using TBRuleMath::EGazeState;
 	EGazeState State = EGazeState::None;
 	if (Pawn && Player && Player->Team == ETBTeam::Toy)
@@ -45,7 +46,11 @@ void ATBHUD::DrawGazeEffects(ATBController& Controller)
 	{
 		// 見られているだけの間は、細い影をゆっくり脈打たせて気づかせる。凝視されたら太く濃く寄せきる。
 		const float Pulse = State == EGazeState::Seen ? .8f + .2f * FMath::Sin(float(Now) * 4.f) : 1.f;
-		DrawEdgeShade(PaperShadow, Short * .4f * GazeShadow, FMath::Min(1.f, GazeShadow * 1.4f) * .85f * Pulse);
+		// 見られているとき（濃さ0.5）の色から、凝視されて寄りきったとき（1）の色へ移す。
+		const FLinearColor Color =
+		    FMath::Lerp(Rules.SeenShadowColor, Rules.GazedShadowColor, FMath::Clamp(GazeShadow * 2.f - 1.f, 0.f, 1.f));
+		DrawEdgeShade(Color, Short * .4f * GazeShadow,
+		              FMath::Min(1.f, GazeShadow * 1.4f) * .85f * Pulse * Rules.ToyShadowStrength);
 	}
 	if (Gazed && !bWasGazed)
 	{
@@ -79,13 +84,13 @@ void ATBHUD::DrawGazeEffects(ATBController& Controller)
 		const float Zoom = FMath::SmoothStep(0.f, 1.f, Pawn->GetGazeZoom());
 		if (Zoom > 0.f)
 		{
-			DrawEdgeShade(FLinearColor(.02f, .02f, .03f), Short * .38f * Zoom, .7f * Zoom);
+			DrawEdgeShade(Rules.HumanEdgeColor, Short * .38f * Zoom, .7f * Zoom * Rules.HumanEdgeStrength);
 			// 線は少しずつ入れ替えて、止まった絵に見せない。
 			FRandomStream Lines(int32(Now / .07));
 			// 端だけに短く出し、中心の見たいものには重ねない。
 			const float HalfDiagonal = FMath::Sqrt(W * W + H * H) * .5f;
 			FLinearColor Color = TBPaper::Cream;
-			Color.A = .16f * Zoom;
+			Color.A = Rules.SpeedLineOpacity * Zoom;
 			constexpr int32 Count = 28;
 			for (int32 I = 0; I < Count; ++I)
 			{
@@ -107,7 +112,7 @@ void ATBHUD::DrawEdgeShade(FLinearColor Color, float Thickness, float Alpha)
 	for (int32 I = 0; I < Bands; ++I)
 	{
 		const float Inset = Band * I;
-		Color.A = Alpha * FMath::Pow(1.f - float(I) / Bands, 1.5f);
+		Color.A = FMath::Min(1.f, Alpha * FMath::Pow(1.f - float(I) / Bands, 1.5f));
 		DrawRect(Color, 0, Inset, W, Band);
 		DrawRect(Color, 0, H - Inset - Band, W, Band);
 		DrawRect(Color, Inset, 0, Band, H);

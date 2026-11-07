@@ -70,6 +70,34 @@ struct FTBGazeRules
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "凝視",
 	          meta = (DisplayName = "凝視が外れたら解く"))
 	bool bReleaseWhenGazeEnds = false;
+	/** おもちゃの画面の端に出る影。見られているだけのときの色 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "凝視|演出", meta = (DisplayName = "見られているときの影の色"))
+	FLinearColor SeenShadowColor = FLinearColor::FromSRGBColor(FColor(92, 64, 38));
+	/** 凝視されて影が寄りきったときの色。見られているときの色から移り変わる */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "凝視|演出", meta = (DisplayName = "凝視されたときの影の色"))
+	FLinearColor GazedShadowColor = FLinearColor::FromSRGBColor(FColor(92, 64, 38));
+	/** 影の濃さ。1で今の濃さ、0で影なし */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "凝視|演出",
+	          meta = (DisplayName = "おもちゃの影の濃さ", ClampMin = "0", ClampMax = "1.5"))
+	float ToyShadowStrength = 1.f;
+	/** 止まったおもちゃの画面にかける色。白なら色味を変えない */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "凝視|演出", meta = (DisplayName = "止まったときの色味"))
+	FLinearColor FrozenTint = FLinearColor(1.f, .78f, .5f);
+	/** 止まったおもちゃの画面の鮮やかさ。1でそのまま、0で白黒 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "凝視|演出",
+	          meta = (DisplayName = "止まったときの鮮やかさ", ClampMin = "0", ClampMax = "1"))
+	float FrozenSaturation = .15f;
+	/** 凝視中の人間の画面の端を暗くする色 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "凝視|演出", meta = (DisplayName = "凝視中の画面の端の色"))
+	FLinearColor HumanEdgeColor = FLinearColor(.02f, .02f, .03f);
+	/** 凝視中の人間の画面の端の暗さ。1で今の暗さ、0で暗くしない */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "凝視|演出",
+	          meta = (DisplayName = "凝視中の画面の端の暗さ", ClampMin = "0", ClampMax = "1.5"))
+	float HumanEdgeStrength = 1.f;
+	/** 凝視中の集中線の濃さ。0で線を出さない */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "凝視|演出",
+	          meta = (DisplayName = "集中線の濃さ", ClampMin = "0", ClampMax = "1"))
+	float SpeedLineOpacity = .16f;
 };
 
 USTRUCT(BlueprintType)
