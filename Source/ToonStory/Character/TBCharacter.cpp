@@ -318,7 +318,7 @@ bool ATBCharacter::EmoteGameplayEligible() const
 	const double Now = State ? State->GetServerWorldTimeSeconds() : 0;
 	const bool Lobby = State && State->Phase == ETBPhase::Lobby && !State->bTravelPending;
 	const bool Playing = State && CanAct() && FMath::IsFinite(State->EndTime) && State->EndTime > Now;
-	const bool Results = IsCelebrating() && !State->bTravelPending;
+	const bool Results = State && IsCelebrating() && !State->bTravelPending;
 	if (!State || !IsValid(Player) || (!Lobby && !Playing && !Results) || IsMovementLocked() || IsActorBeingDestroyed() ||
 	    !State->PlayerArray.Contains(Player) || !FMath::IsFinite(Now) ||
 	    !Movement || bIsCrouched || Movement->bWantsToCrouch || !Movement->IsMovingOnGround() || GetVelocity().ContainsNaN() || GetVelocity().Size2D() > 2.f ||
@@ -344,10 +344,16 @@ bool ATBCharacter::CanRequestEmote() const
 
 bool ATBCharacter::RequestEmote(ETBEmoteKind Kind)
 {
-	if (EmoteDuration(Kind) <= 0 || !CanRequestEmote()) return false;
+	if (!SupportsEmoteKind(Kind) || !CanRequestEmote()) return false;
 	if (HasAuthority()) return TryEmote(Kind);
 	ServerEmote(Kind, Emote.Round, Emote.Possession);
 	return true; // Request delivery is not a claim of server acceptance.
+}
+
+bool ATBCharacter::SupportsEmoteKind(ETBEmoteKind Kind) const
+{
+	return EmoteDuration(Kind) > 0 &&
+	    (Kind != ETBEmoteKind::HairDisappear || (TBPS() && TBPS()->Team == ETBTeam::Human));
 }
 
 void ATBCharacter::ServerEmote_Implementation(ETBEmoteKind Kind, uint32 ExpectedRound, uint32 ExpectedPossession)
@@ -359,11 +365,11 @@ void ATBCharacter::ServerEmote_Implementation(ETBEmoteKind Kind, uint32 Expected
 
 bool ATBCharacter::TryEmote(ETBEmoteKind Kind)
 {
-	if (!HasAuthority()) return false;
+	if (!HasAuthority() || !SupportsEmoteKind(Kind)) return false;
 	UpdateEmote(); // Cancellation always precedes a new request in the same frame.
 	const auto* State = TB::GS(GetWorld());
 	const double Duration = EmoteDuration(Kind);
-	if (Duration <= 0 || !EmoteEligible() || Emote.bActive || LastEmoteCancelFrame == GFrameCounter ||
+	if (!EmoteEligible() || Emote.bActive || LastEmoteCancelFrame == GFrameCounter ||
 	    State->GetServerWorldTimeSeconds() < Emote.NextAllowedAt) return false;
 	Emote.bActive = true; Emote.Kind = Kind;
 	if (++Emote.Revision == 0) ++Emote.Revision;
@@ -420,7 +426,7 @@ void ATBCharacter::OnRep_Emote()
 bool ATBCharacter::GetEmoteSample(FTBEmoteSample& Out) const
 {
 	Out = FTBEmoteSample();
-	if (!Emote.bActive) return false;
+	if (!Emote.bActive || !SupportsEmoteKind(Emote.Kind)) return false;
 	const auto* State = TB::GS(GetWorld());
 	const double Now = State ? State->GetServerWorldTimeSeconds() : 0;
 	if (bEmoteRejected || (!HasAuthority() && Emote.Revision != ObservedEmoteRevision) || !NewerEmoteRevision(Emote.Revision, BlockedEmoteRevision)) return false;

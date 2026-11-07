@@ -6,6 +6,7 @@
 #include "EngineGlobals.h"
 #include "Framework/Application/IInputProcessor.h"
 #include "Framework/Application/SlateApplication.h"
+#include "Layout/WidgetPath.h"
 #include "Slate/SGameLayerManager.h"
 #include "Widgets/SViewport.h"
 
@@ -55,6 +56,7 @@ void UTBGameViewportClient::ReleaseShortcut()
 {
 	if (UIShortcut && FSlateApplication::IsInitialized()) FSlateApplication::Get().UnregisterInputPreProcessor(UIShortcut);
 	UIShortcut.Reset();
+	FocusBeforeHiding.Reset();
 }
 
 bool UTBGameViewportClient::IsUIHidden(const UWorld* World)
@@ -71,13 +73,39 @@ void UTBGameViewportClient::ToggleUI()
 		for (auto It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 			if (auto* PC = Cast<ATBController>(It->Get()); PC && PC->IsLocalController()) PC->CloseChat();
 	}
+	if (bUIHidden && FSlateApplication::IsInitialized())
+		FocusBeforeHiding = FSlateApplication::Get().GetKeyboardFocusedWidget();
 	if (const auto Layers = GetGameLayerManager())
 	{
 		// Hidden/Collapsedはタイトル映像を進めるWidgetのTickも止めるため使わない。
 		Layers->AsWidget()->SetRenderOpacity(bUIHidden ? 0.f : 1.f);
 		Layers->AsWidget()->SetVisibility(bUIHidden ? EVisibility::HitTestInvisible : EVisibility::SelfHitTestInvisible);
 	}
-	if (FSlateApplication::IsInitialized()) FSlateApplication::Get().SetAllUserFocusToGameViewport();
+	if (FSlateApplication::IsInitialized())
+	{
+		auto& Slate = FSlateApplication::Get();
+		if (bUIHidden) Slate.SetAllUserFocusToGameViewport();
+		else
+		{
+			const auto ViewportWidget = GetGameViewportWidget();
+			auto Restore = [&](const TSharedPtr<SWidget>& Widget)
+			{
+				FWidgetPath Path;
+				if (!Widget || Widget == ViewportWidget || !Widget->SupportsKeyboardFocus() ||
+				    !Slate.GeneratePathToWidgetUnchecked(Widget.ToSharedRef(), Path) ||
+				    !Path.ContainsWidget(ViewportWidget.Get())) return false;
+				for (int32 Index = 0; Index < Path.Widgets.Num(); ++Index)
+					if (!Path.Widgets[Index].Widget->IsEnabled()) return false;
+				// Slate returns false when focus already matches; that is success here.
+				return Slate.GetKeyboardFocusedWidget() == Widget || Slate.SetKeyboardFocus(Widget, EFocusCause::SetDirectly);
+			};
+			// A menu may have changed while hidden. Prefer its new focus, and never
+			// revive a removed/collapsed widget (or a chat box closed above).
+			if (!Restore(Slate.GetKeyboardFocusedWidget()) && !Restore(FocusBeforeHiding.Pin()))
+				Slate.SetAllUserFocusToGameViewport();
+			FocusBeforeHiding.Reset();
+		}
+	}
 }
 
 void UTBGameViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanvas)

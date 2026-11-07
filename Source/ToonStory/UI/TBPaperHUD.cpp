@@ -206,9 +206,11 @@ void ATBHUD::DrawLobby()
 		       PC->HasAuthority() ? FString::Printf(TEXT("あそびはじめる [%s]"), *StartKey) : FString(TEXT("ホストを待っています")),
 		       858, Bottom, 294, CanStart, CanStart);
 		DrawNotice(Bottom - 166, 1144, 110);
-		Text(FString::Printf(TEXT("移動キーで歩く / エモート %s・%s・%s・%s・%s / Escで設定"),
+		const FString HairHint = Local && Local->Team == ETBTeam::Human
+		    ? FString::Printf(TEXT("・%s"), *TB::KeyLabel(PC, TB::Keys::EmoteHairDisappear)) : FString();
+		Text(FString::Printf(TEXT("移動キーで歩く / エモート %s・%s・%s・%s%s / Escで設定"),
 		    *TB::KeyLabel(PC, TB::Keys::EmoteWave), *TB::KeyLabel(PC, TB::Keys::EmoteCheer),
-		    *TB::KeyLabel(PC, TB::Keys::EmoteDance), *TB::KeyLabel(PC, TB::Keys::EmoteSurprise), *TB::KeyLabel(PC, TB::Keys::EmoteHairDisappear)), 48, Bottom - 76, .8f, Ink);
+		    *TB::KeyLabel(PC, TB::Keys::EmoteDance), *TB::KeyLabel(PC, TB::Keys::EmoteSurprise), *HairHint), 48, Bottom - 76, .8f, Ink);
 		return;
 	}
 	DrawRect(FLinearColor(.009f, .018f, .027f, .48f), 0, 0, Canvas->ClipX, Canvas->ClipY);

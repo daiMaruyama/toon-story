@@ -146,6 +146,14 @@ bool FTBLightSwitchItemTest::RunTest(const FString& Parameters)
 	Switch->SwitchData.Reset();
 	Switch->OnConstruction(Switch->GetActorTransform());
 	TestEqual(TEXT("Unset data falls back to original reach"), Switch->Actions[0].MaxDistance, 180.f);
+	for (float Yaw : {0.f, 90.f})
+	{
+		Switch->SetActorTransform(FTransform(FRotator(0, Yaw, 0), FVector(0, 0, 10000), FVector(.4f, .7f, 1.2f)));
+		Switch->InteractionPoint->SetRelativeLocation(FVector(30, 12, 8));
+		TestTrue(TEXT("Hand-adjusted interaction point survives rotation and scale"),
+		    Switch->GetInteractionLocation().Equals(Switch->InteractionPoint->GetComponentLocation(), .001));
+	}
+	Switch->InteractionPoint->SetRelativeLocation(FVector::ZeroVector);
 
 	// Reproduce the Demo wall: visible plate, but simple collision extends 4 cm
 	// beyond its face. The old pivot endpoint was inside that collision.

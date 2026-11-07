@@ -724,6 +724,7 @@ bool FTBEmoteTest::RunTest(const FString&)
 		ToySource->SelectedToyIndex = ToyProxy->SelectedToyIndex = Index;
 		ToySource->RefreshToyPresentation(); ToyProxy->RefreshToyPresentation(); Stand(Source); Stand(Proxy);
 		TestTrue(TEXT("Catalogue visual has explicit emote support"), Source->SupportsEmotes());
+		TestFalse(TEXT("Every toy rejects the human-only hair emote"), Source->SupportsEmoteKind(ETBEmoteKind::HairDisappear));
 		auto* Visual = ToyProxy->ToyVisual->GetChildActor();
 		if (!TestNotNull(TEXT("Catalogue visual instance"), Visual)) return false;
 		TInlineComponentArray<USkeletalMeshComponent*> Parts(Visual);
@@ -856,6 +857,19 @@ bool FTBEmoteTest::RunTest(const FString&)
 			return TestEqual(TEXT("Exactly one Started delegate handles the emote"), Count, 1);
 		};
 		ResetInputEmote();
+		if (Kinds[Index] == ETBEmoteKind::HairDisappear)
+		{
+			const auto Revision = Source->Emote.Revision;
+			const auto HairCooldown = Source->Emote.NextAllowedAt;
+			TestTrue(TEXT("Toy is otherwise eligible for a new emote"), Source->CanRequestEmote());
+			TestFalse(TEXT("Local toy hair request is rejected"), Source->RequestEmote(Kinds[Index]));
+			TestFalse(TEXT("Authority rejects a direct toy hair request"), Source->TryEmote(Kinds[Index]));
+			if (!Dispatch()) return false;
+			TestFalse(TEXT("Hair shortcut does not start an invisible toy emote"), Source->Emote.bActive);
+			TestTrue(TEXT("Rejected hair input does not consume revision or cooldown"),
+			    Source->Emote.Revision == Revision && Source->Emote.NextAllowedAt == HairCooldown);
+			continue;
+		}
 		if (!Dispatch()) return false;
 		if (!TestTrue(TEXT("Started action routes to its exact server-authorized emote kind"), Source->Emote.bActive && Source->Emote.Kind == Kinds[Index])) return false;
 		const uint32 AcceptedRevision = Source->Emote.Revision;

@@ -155,11 +155,12 @@ bool FTBRemapCheckTest::RunTest(const FString& Parameters)
 	TArray<FKey> Refused = {EKeys::MouseScrollUp, EKeys::MouseScrollDown, EKeys::LeftCommand, EKeys::RightCommand, EKeys::Escape,
 	                        EKeys::Enter, EKeys::F9, EKeys::Gamepad_FaceButton_Bottom, EKeys::Gamepad_Left2D, EKeys::MouseX, EKeys::MouseY,
 	                        EKeys::Mouse2D, EKeys::MouseWheelAxis, EKeys::Invalid};
+	const int32 FixedRefusedCount = Refused.Num();
 	for (const FKey& Key : GetDefault<UInputSettings>()->ConsoleKeys)
 	{
 		if (Key.IsValid()) Refused.Add(Key);
 	}
-	TestTrue(TEXT("ConsoleKeys are part of the refused keys"), Refused.Num() > 13);
+	TestTrue(TEXT("ConsoleKeys are part of the refused keys"), Refused.Num() > FixedRefusedCount);
 	for (const FKey& Key : Refused)
 	{
 		TestFalse(*FString::Printf(TEXT("%s is not a usable key"), *Key.ToString()), TB::IsUsableKey(Key));

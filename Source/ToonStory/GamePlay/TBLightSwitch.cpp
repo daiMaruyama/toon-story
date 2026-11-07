@@ -4,6 +4,7 @@
 #include "Character/TBCharacter.h"
 #include "Core/TBGameHelpers.h"
 #include "Components/StaticMeshComponent.h"
+#include "Components/SceneComponent.h"
 #include "Engine/StaticMesh.h"
 #include "UObject/ConstructorHelpers.h"
 #include "Net/UnrealNetwork.h"
@@ -39,6 +40,10 @@ ATBLightSwitch::ATBLightSwitch()
 
 FVector ATBLightSwitch::GetInteractionLocation() const
 {
+	// Preserve authored interaction offsets; only the untouched mounting pivot
+	// needs the automatic front-of-plate correction.
+	if (InteractionPoint && !InteractionPoint->GetComponentLocation().Equals(GetActorLocation(), KINDA_SMALL_NUMBER))
+		return Super::GetInteractionLocation();
 	if (!Mesh || !Mesh->GetStaticMesh()) return Super::GetInteractionLocation();
 	// The plate faces actor +X. Trace to its front, not the mounting pivot:
 	// a wall's simple collision can extend a few cm past its rendered surface.

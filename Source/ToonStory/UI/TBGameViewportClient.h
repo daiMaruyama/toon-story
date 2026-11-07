@@ -23,4 +23,5 @@ private:
 	void ReleaseShortcut();
 	bool bUIHidden = false;
 	TSharedPtr<class IInputProcessor> UIShortcut;
+	TWeakPtr<class SWidget> FocusBeforeHiding;
 };

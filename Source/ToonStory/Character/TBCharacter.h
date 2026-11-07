@@ -124,6 +124,8 @@ public:
 	// Game-thread read for animation. Simulated peers must have a matching resolved snapshot.
 	bool GetHumanLook(FTBHumanLookSnapshot& Out) const;
 	bool CanRequestEmote() const;
+	/** Role restriction shared by local requests, server acceptance, and presentation. */
+	bool SupportsEmoteKind(ETBEmoteKind Kind) const;
 	bool SupportsEmotes() const;
 	bool RequestEmote(ETBEmoteKind Kind);
 	bool TryEmote(ETBEmoteKind Kind);
