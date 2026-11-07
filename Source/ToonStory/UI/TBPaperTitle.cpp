@@ -318,7 +318,8 @@ void UTBTitleMenu::CloseHelp()
 
 FReply UTBTitleMenu::NativeOnPreviewKeyDown(const FGeometry& Geometry, const FKeyEvent& KeyEvent)
 {
-	if (State == EState::Story)
+	// 音量・再生などのメディアキーは UE のキーにない（無効なキーで届く）。これでは飛ばさない。
+	if (State == EState::Story && KeyEvent.GetKey().IsValid())
 	{
 		SkipStory();
 		return FReply::Handled();

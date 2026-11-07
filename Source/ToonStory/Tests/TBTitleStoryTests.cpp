@@ -122,6 +122,10 @@ bool FTBTitleStoryTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("The story is playing"), Story->GetSequencePlayer()->IsPlaying());
 	TestFalse(TEXT("The loop waits"), Loop->GetSequencePlayer()->IsPlaying());
 	TestTrue(TEXT("The story catches clicks to skip"), Menu->IsCatchingClicks());
+	// 音量などのメディアキーは、無効なキーとして届く。
+	const FKeyEvent MediaKey(EKeys::Invalid, FModifierKeysState(), 0, false, 0, 0);
+	Menu->SendKeyDownForTest(MediaKey);
+	TestTrue(TEXT("Media keys do not skip the story"), Menu->GetState() == UTBTitleMenu::EState::Story);
 	const FKeyEvent AnyKey(EKeys::K, FModifierKeysState(), 0, false, 0, 0);
 	TestTrue(TEXT("The skip key is handled"), Menu->SendKeyDownForTest(AnyKey).IsEventHandled());
 	TestTrue(TEXT("Any key skips to the menu"), Menu->GetState() == UTBTitleMenu::EState::Menu);
