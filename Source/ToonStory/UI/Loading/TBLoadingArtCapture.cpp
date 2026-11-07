@@ -143,6 +143,12 @@ namespace
 		FActorSpawnParameters Params;
 		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 		Capture.Toy = World.SpawnActor<AActor>(Class, ArtStage, FRotator::ZeroRotator, Params);
+		// 出せなかったら、ライトを出す前にやめる。残ったライトで、あとの撮影が明るくならないように。
+		if (!Capture.Toy.IsValid())
+		{
+			UE_LOG(LogTemp, Warning, TEXT("TBCaptureLoadingArt: 出せませんでした %s"), ArtToyClasses[Capture.Index]);
+			return false;
+		}
 		// 正面上からの暖かいキーライトと、反対側からの弱い補助光。家の部屋の電球の色に寄せる。
 		struct FArtLight
 		{
@@ -160,7 +166,7 @@ namespace
 			Light->PointLightComponent->SetCastShadows(false);
 			Capture.Props.Add(Light);
 		}
-		return Capture.Toy.IsValid();
+		return true;
 	}
 
 	bool TickArt(float)
@@ -175,6 +181,8 @@ namespace
 		}
 		if (!Capture.Toy.IsValid())
 		{
+			// 撮る前に消えたおもちゃの分のライトを片付けてから、出し直す。
+			ClearArt(Capture);
 			while (Capture.Index < UE_ARRAY_COUNT(ArtToyClasses) && !SpawnArt(Capture, *World)) ++Capture.Index;
 			if (Capture.Index >= UE_ARRAY_COUNT(ArtToyClasses))
 			{

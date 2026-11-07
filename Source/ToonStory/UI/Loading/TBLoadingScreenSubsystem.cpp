@@ -180,9 +180,10 @@ void UTBLoadingScreenSubsystem::Tick(float DeltaTime)
 	else if (bHardLoad)
 	{
 		// キャラのいない画面（タイトル）は待たずに明ける。
+		// 待つ上限は、コントローラーがいなくても効かせる。出てこないままだと、画面がずっと覆われてしまう。
 		const auto* Controller = GetGameInstance()->GetFirstLocalPlayerController();
-		const bool bReady = Controller && (Controller->GetPawn() || !Controller->IsA<ATBController>() ||
-		                                   FPlatformTime::Seconds() - LoadedAt > Settings->PawnWaitSeconds);
+		const bool bTimedOut = FPlatformTime::Seconds() - LoadedAt > Settings->PawnWaitSeconds;
+		const bool bReady = bTimedOut || (Controller && (Controller->GetPawn() || !Controller->IsA<ATBController>()));
 		if (bReady) bHardLoad = false;
 		else bCover = true;
 	}
