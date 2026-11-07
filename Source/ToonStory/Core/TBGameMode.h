@@ -46,6 +46,8 @@ public:
 	void CheckWin();
 	void Finish(ETBWinner Winner, const FString& Why, bool bAbort = false);
 	bool Watched(ATBCharacter* Toy, ATBCharacter* Human) const;
+	// Seenは視界に入っている、Gazedは凝視の範囲に入っている。
+	void Observe(ATBCharacter* Toy, ATBCharacter* Human, bool& bSeen, bool& bGazed) const;
 	UPROPERTY()
 	TArray<TObjectPtr<AActor>> SpawnPoints;
 
@@ -56,6 +58,7 @@ private:
 	friend class FTBRoundStartTest;
 	friend class FTBHousePartyTest;
 	friend class FTBMirrorGazeTest;
+	friend class FTBGazeFreezeTest;
 	friend class FTBHidePreparationTest;
 	friend class FTBHumanEntranceTest;
 	friend class FTBBoxEscapeTest;
@@ -91,7 +94,7 @@ private:
 	void DestroyRoundCharacters();
 	void ResetStageInteractions();
 	void BuildArena();
-	void EvaluateGaze();
+	void EvaluateGaze(float DeltaSeconds);
 	bool SpawnNPCs();
 	void RemoveNPCs();
 	int32 SpawnCursor = 0;

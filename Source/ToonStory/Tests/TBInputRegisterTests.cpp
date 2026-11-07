@@ -114,6 +114,7 @@ bool FTBRegisteredSurviveGCTest::RunTest(const FString& Parameters)
 	                                 {TEXT("Jump"), &Settings->JumpAction},
 	                                 {TEXT("Crouch"), &Settings->CrouchAction},
 	                                 {TEXT("Sprint"), &Settings->SprintAction},
+	                                 {TEXT("Gaze"), &Settings->GazeAction},
 	                                 {TEXT("Interact"), &Settings->InteractAction},
 	                                 {TEXT("Drop"), &Settings->DropAction},
 	                                 {TEXT("Taunt"), &Settings->TauntAction},

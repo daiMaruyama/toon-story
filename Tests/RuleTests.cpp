@@ -81,5 +81,47 @@ int main()
 	assert(EvaluateWin(1, 5, 5, 2, 2) == EWinReason::ItemsCollected);
 	assert(EvaluateWin(1, 0, 5, 2, 2) == EWinReason::AllToysBoxed);
 	assert(EvaluateWin(1, 0, 5, 2, 1) == EWinReason::None);
+	// 凝視の視野の寄り具合。0.25秒で寄りきり、離すと同じ時間で戻る。行き過ぎない。
+	assert(Near(AdvanceZoom(0, true, .1f, .25f), .4f));
+	assert(AdvanceZoom(.9f, true, .1f, .25f) == 1);
+	assert(Near(AdvanceZoom(1, false, .1f, .25f), .6f));
+	assert(AdvanceZoom(.1f, false, .1f, .25f) == 0);
+	assert(AdvanceZoom(0, true, .25f, .25f) == 1);   // ちょうど0.25秒で寄りきる
+	assert(AdvanceZoom(.5f, true, -1, .25f) == .5f); // 時間が負なら動かさない
+	assert(AdvanceZoom(.3f, true, .01f, 0) == 1);    // 0秒なら即座に切り替える
+	assert(AdvanceZoom(.3f, false, .01f, 0) == 0);
+	// 凝視の範囲は中心から12°の円。奥行き100で、ずれがtan12°×100≒21.3までなら内側。
+	assert(InGazeCone(100, 0, 0, 12));
+	assert(InGazeCone(100, 21, 0, 12));
+	assert(!InGazeCone(100, 22, 0, 12));
+	assert(InGazeCone(100, 0, -21, 12));                 // 縦も同じ
+	assert(!InGazeCone(100, 16, 16, 12));                // 斜めは円の外（四角なら内側）
+	assert(!InGazeCone(-100, 0, 0, 12));                 // 後ろは対象外
+	assert(!InGazeCone(100, 0, 0, 0));                   // 角度0なら誰も凝視できない
+	// 状態の進め方。初期値は止まるまで0.3秒、止まったあとは視界に入っている間止まったまま。
+	using G = EGazeState;
+	FGazeStep S = AdvanceGaze({}, true, false, .1f, .3f, false);
+	assert(S.State == G::Seen);                           // 視界に入っただけでは止まらない
+	S = AdvanceGaze(S, true, true, .1f, .3f, false);
+	assert(S.State == G::Gazed && Near(S.GazedSeconds, .1f));
+	S = AdvanceGaze(S, true, true, .1f, .3f, false);
+	assert(S.State == G::Gazed);
+	S = AdvanceGaze(S, true, true, .1f, .3f, false);
+	assert(S.State == G::Frozen && S.GazedSeconds == 0); // 0.3秒で止まる
+	FGazeStep Broken = AdvanceGaze({G::Gazed, .2f}, true, false, .1f, .3f, false);
+	assert(Broken.State == G::Seen && Broken.GazedSeconds == 0); // 途中で外れたら止めずに戻す
+	assert(AdvanceGaze(Broken, true, true, .1f, .3f, false).State == G::Gazed); // 数え直し
+	assert(AdvanceGaze({G::Gazed, .2f}, false, false, .1f, .3f, false).State == G::None);
+	assert(AdvanceGaze({}, false, true, .3f, .3f, false).State == G::Frozen); // 1回で0.3秒進めば止まる
+	assert(AdvanceGaze({}, false, true, 0, 0, false).State == G::Frozen);     // 0秒なら即止まる
+	// 解除(a): 凝視が外れても、視界に入っている間は止まったまま。視界から外れたら解く。
+	const FGazeStep Frozen{G::Frozen, 0};
+	assert(AdvanceGaze(Frozen, true, false, .1f, .3f, false).State == G::Frozen);
+	assert(AdvanceGaze(Frozen, false, false, .1f, .3f, false).State == G::None);
+	// 解除(b): 凝視が外れたら、視界に入っていても解く。
+	assert(AdvanceGaze(Frozen, true, true, .1f, .3f, true).State == G::Frozen);
+	assert(AdvanceGaze(Frozen, true, false, .1f, .3f, true).State == G::Seen);
+	assert(AdvanceGaze(Frozen, false, false, .1f, .3f, true).State == G::None);
 	std::cout << "PASS: freeze, step camera, contact, rescue, timeout priority and boxing victory\n";
+	std::cout << "PASS: gaze cone and gaze state\n";
 }

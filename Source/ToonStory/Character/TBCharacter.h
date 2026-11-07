@@ -111,6 +111,9 @@ public:
 	TObjectPtr<ATBDummyToy> CarriedDummy;
 	UFUNCTION(BlueprintCallable, Category = "Movement")
 	void SetSprintRequested(bool bRequested);
+	void SetGazeRequested(bool bRequested);
+	// 人間がボタンを押して凝視しているか。サーバーには移動のフラグで届く。
+	bool IsGazing() const;
 	UFUNCTION()
 	void OnRep_Carrier();
 	ATBPlayerState* TBPS() const;
@@ -232,6 +235,8 @@ private:
 	void CrouchReleased();
 	void SprintPressed();
 	void SprintReleased();
+	void GazePressed();
+	void GazeReleased();
 	double LastRequest = -1000;
 	double LastTauntTime = -1000;
 	double LastPushTime = -1000;
@@ -253,6 +258,8 @@ private:
 	// 前フレームの視点を出した時点で運ばれていたか・しゃがんでいたか。切り替わった分の移動は段差に数えない。
 	bool bLastViewCarried = false;
 	bool bLastViewCrouched = false;
+	// 凝視の視野の寄り具合。0で通常、1で寄りきった状態。
+	float GazeZoom = 0;
 
 protected:
 	// 親子で表示の切り替え状態を共有する。

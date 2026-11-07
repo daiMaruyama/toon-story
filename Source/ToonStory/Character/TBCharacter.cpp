@@ -776,6 +776,13 @@ void ATBCharacter::CalcCamera(float DeltaTime, FMinimalViewInfo& OutResult)
 	{
 		OutResult.bConstrainAspectRatio = true;
 	}
+	// 凝視中は視野を寄せる。揺らさず、なめらかに寄って戻る。運ばれている間（運搬カメラ）は変えない。
+	const auto& Gaze = TB::Rules().Gaze;
+	GazeZoom = TBRuleMath::AdvanceZoom(GazeZoom, IsGazing() && !Carrier, DeltaTime, Gaze.ZoomSeconds);
+	if (GazeZoom > 0.f)
+	{
+		OutResult.FOV = FMath::Lerp(OutResult.FOV, Gaze.FieldOfView, FMath::SmoothStep(0.f, 1.f, GazeZoom));
+	}
 	// 箱への収納など瞬間移動を伴う切替はつながず、壁越しに視点が流れるのを防ぐ。降ろす位置は1m程度。
 	const FVector ActorLocation = GetActorLocation();
 	const bool bTeleported =
@@ -1226,6 +1233,30 @@ void ATBCharacter::SprintReleased()
 	SetSprintRequested(false);
 }
 
+void ATBCharacter::SetGazeRequested(bool bRequested)
+{
+	CastChecked<UTBMovement>(GetCharacterMovement())->bWantsToGaze = bRequested;
+}
+
+bool ATBCharacter::IsGazing() const
+{
+	return IsHuman() && CastChecked<UTBMovement>(GetCharacterMovement())->bWantsToGaze;
+}
+
+// 押している間だけ凝視する。人間のIMCにだけあり、しゃがみと同じく動けるときだけ始める。
+void ATBCharacter::GazePressed()
+{
+	if (IsHuman() && CanAct())
+	{
+		SetGazeRequested(true);
+	}
+}
+
+void ATBCharacter::GazeReleased()
+{
+	SetGazeRequested(false);
+}
+
 void ATBCharacter::EmotePressed(ETBEmoteKind Kind)
 {
 	auto* PC = Cast<ATBController>(GetController());
@@ -1291,6 +1322,13 @@ void ATBCharacter::SetupPlayerInputComponent(UInputComponent* Input)
 			Enhanced->BindAction(SprintAction, ETriggerEvent::Started, this, &ATBCharacter::SprintPressed);
 			Enhanced->BindAction(SprintAction, ETriggerEvent::Completed, this, &ATBCharacter::SprintReleased);
 			Enhanced->BindAction(SprintAction, ETriggerEvent::Canceled, this, &ATBCharacter::SprintReleased);
+		}
+		// 凝視は人間のIMCにだけある。陣営が変わってIMCが外れるとCompletedが来て戻る。
+		if (const UInputAction* GazeAction = Settings->GazeAction.LoadSynchronous())
+		{
+			Enhanced->BindAction(GazeAction, ETriggerEvent::Started, this, &ATBCharacter::GazePressed);
+			Enhanced->BindAction(GazeAction, ETriggerEvent::Completed, this, &ATBCharacter::GazeReleased);
+			Enhanced->BindAction(GazeAction, ETriggerEvent::Canceled, this, &ATBCharacter::GazeReleased);
 		}
 		// インタラクトは両方の陣営のIMCにある。置くは人間、挑発は人形のIMCにだけある。
 		if (const UInputAction* InteractAction = Settings->InteractAction.LoadSynchronous())

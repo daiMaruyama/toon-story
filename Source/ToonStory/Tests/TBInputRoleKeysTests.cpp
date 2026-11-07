@@ -74,15 +74,19 @@ namespace
 			case PressHumanFrame:
 				SendRoleKey(PC.Get(), EKeys::LeftControl, IE_Pressed);
 				SendRoleKey(PC.Get(), EKeys::LeftShift, IE_Pressed);
+				SendRoleKey(PC.Get(), EKeys::RightMouseButton, IE_Pressed);
 				break;
 			case CheckHumanFrame:
 				Test->TestTrue(TEXT("Human: left Ctrl requests crouch"), Movement->bWantsToCrouch);
 				Test->TestFalse(TEXT("Human: left Shift does not request sprint"), Movement->bWantsToSprint);
+				Test->TestTrue(TEXT("Human: right click requests gaze"), Movement->bWantsToGaze);
 				SendRoleKey(PC.Get(), EKeys::LeftControl, IE_Released);
 				SendRoleKey(PC.Get(), EKeys::LeftShift, IE_Released);
+				SendRoleKey(PC.Get(), EKeys::RightMouseButton, IE_Released);
 				break;
 			case ReleaseCheckHumanFrame:
 				Test->TestFalse(TEXT("Human: releasing left Ctrl ends crouch"), Movement->bWantsToCrouch);
+				Test->TestFalse(TEXT("Human: releasing right click ends gaze"), Movement->bWantsToGaze);
 				break;
 			case SwitchToyFrame:
 				Body->TBPS()->Team = ETBTeam::Toy;
@@ -91,13 +95,16 @@ namespace
 			case PressToyFrame:
 				SendRoleKey(PC.Get(), EKeys::LeftControl, IE_Pressed);
 				SendRoleKey(PC.Get(), EKeys::LeftShift, IE_Pressed);
+				SendRoleKey(PC.Get(), EKeys::RightMouseButton, IE_Pressed);
 				break;
 			case CheckToyFrame:
 				Test->TestTrue(TEXT("Toy: left Shift requests sprint"), Movement->bWantsToSprint);
 				// CrouchPressedのIsHumanゲートでも通るので、IMCが無いことの確認としては弱い。
 				Test->TestFalse(TEXT("Toy: left Ctrl does not request crouch"), Movement->bWantsToCrouch);
+				Test->TestFalse(TEXT("Toy: right click does not request gaze"), Movement->bWantsToGaze);
 				SendRoleKey(PC.Get(), EKeys::LeftControl, IE_Released);
 				SendRoleKey(PC.Get(), EKeys::LeftShift, IE_Released);
+				SendRoleKey(PC.Get(), EKeys::RightMouseButton, IE_Released);
 				break;
 			case ReleaseCheckToyFrame:
 				Test->TestFalse(TEXT("Toy: releasing left Shift ends sprint"), Movement->bWantsToSprint);
@@ -108,16 +115,20 @@ namespace
 				break;
 			case PressHeldCrouchFrame:
 				SendRoleKey(PC.Get(), EKeys::LeftControl, IE_Pressed);
+				SendRoleKey(PC.Get(), EKeys::RightMouseButton, IE_Pressed);
 				break;
 			case SwitchHeldCrouchFrame:
 				Test->TestTrue(TEXT("Held: Human crouch is requested before the switch"), Movement->bWantsToCrouch);
+				Test->TestTrue(TEXT("Held: Human gaze is requested before the switch"), Movement->bWantsToGaze);
 				Body->TBPS()->Team = ETBTeam::Toy;
 				PC->SyncInputContexts();
 				break;
 			case CheckHeldCrouchFrame:
-				// 左Ctrlは押したまま。IMCが外れてCompletedが来れば戻る。
+				// 左Ctrlと右クリックは押したまま。IMCが外れてCompletedが来れば戻る。
 				Test->TestFalse(TEXT("Held: crouch ends when the role changes to Toy"), Movement->bWantsToCrouch);
+				Test->TestFalse(TEXT("Held: gaze ends when the role changes to Toy"), Movement->bWantsToGaze);
 				SendRoleKey(PC.Get(), EKeys::LeftControl, IE_Released);
+				SendRoleKey(PC.Get(), EKeys::RightMouseButton, IE_Released);
 				break;
 			case PressHeldSprintFrame:
 				SendRoleKey(PC.Get(), EKeys::LeftShift, IE_Pressed);
@@ -146,6 +157,7 @@ namespace
 			if (!PC.IsValid()) return;
 			SendRoleKey(PC.Get(), EKeys::LeftControl, IE_Released);
 			SendRoleKey(PC.Get(), EKeys::LeftShift, IE_Released);
+			SendRoleKey(PC.Get(), EKeys::RightMouseButton, IE_Released);
 			if (auto* Body = Cast<ATBCharacter>(PC->GetPawn()); Body && bStarted)
 			{
 				Body->TBPS()->Team = OriginalTeam;

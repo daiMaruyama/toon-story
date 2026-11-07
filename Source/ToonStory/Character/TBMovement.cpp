@@ -4,6 +4,7 @@
 #include "Character/TBCharacter.h"
 #include "Character/TBNPCController.h"
 #include "Data/TBCharacterData.h"
+#include "Data/TBRuleData.h"
 #include "GamePlay/TBRuleMath.h"
 #include "GameFramework/PhysicsVolume.h"
 #include "Core/TBPlayerState.h"
@@ -66,30 +67,37 @@ namespace
 	{
 	public:
 		bool bSavedSprint = false;
+		bool bSavedGaze = false;
 		virtual void Clear() override
 		{
 			Super::Clear();
 			bSavedSprint = false;
+			bSavedGaze = false;
 		}
 		virtual uint8 GetCompressedFlags() const override
 		{
-			return Super::GetCompressedFlags() | (bSavedSprint ? FLAG_Custom_0 : 0);
+			return Super::GetCompressedFlags() | (bSavedSprint ? FLAG_Custom_0 : 0) | (bSavedGaze ? FLAG_Custom_1 : 0);
 		}
 		virtual bool CanCombineWith(const FSavedMovePtr& NewMove, ACharacter* Character, float MaxDelta) const override
 		{
-			return bSavedSprint == static_cast<const FTBSavedMove*>(NewMove.Get())->bSavedSprint &&
+			const auto* Next = static_cast<const FTBSavedMove*>(NewMove.Get());
+			return bSavedSprint == Next->bSavedSprint && bSavedGaze == Next->bSavedGaze &&
 			       Super::CanCombineWith(NewMove, Character, MaxDelta);
 		}
 		virtual void SetMoveFor(ACharacter* Character, float Delta, const FVector& Accel,
 		                        FNetworkPredictionData_Client_Character& Data) override
 		{
 			Super::SetMoveFor(Character, Delta, Accel, Data);
-			bSavedSprint = CastChecked<UTBMovement>(Character->GetCharacterMovement())->bWantsToSprint;
+			const auto* Movement = CastChecked<UTBMovement>(Character->GetCharacterMovement());
+			bSavedSprint = Movement->bWantsToSprint;
+			bSavedGaze = Movement->bWantsToGaze;
 		}
 		virtual void PrepMoveFor(ACharacter* Character) override
 		{
 			Super::PrepMoveFor(Character);
-			CastChecked<UTBMovement>(Character->GetCharacterMovement())->bWantsToSprint = bSavedSprint;
+			auto* Movement = CastChecked<UTBMovement>(Character->GetCharacterMovement());
+			Movement->bWantsToSprint = bSavedSprint;
+			Movement->bWantsToGaze = bSavedGaze;
 		}
 
 	private:
@@ -119,19 +127,29 @@ float UTBMovement::GetMaxSpeed() const
 	}
 	if (Character && Character->TBPS() && Character->TBPS()->Team == ETBTeam::Toy && (IsMovingOnGround() || IsFalling()))
 	{
-		const float Speed = bWantsToSprint ? TB::CharacterData().Toy.SprintSpeed : Super::GetMaxSpeed();
+		float Speed = bWantsToSprint ? TB::CharacterData().Toy.SprintSpeed : Super::GetMaxSpeed();
+		// 凝視されている間は遅くなる。
+		if (Character->TBPS()->GazeState == ETBGazeState::Gazed)
+			Speed *= FMath::Clamp(TB::Rules().Gaze.GazedToySpeedRatio, 0.f, 1.f);
 		return bBrushingProp ? .85f * Speed : Speed;
 	}
+	float Speed = Super::GetMaxSpeed();
 	if (Character && Character->IsHuman())
+	{
 		if (const auto* NPC = Cast<ATBNPCController>(Character->GetController()))
-			return Super::GetMaxSpeed() * FMath::Clamp(NPC->HumanSpeedScale, .1f, 1.f);
-	return Super::GetMaxSpeed();
+			Speed *= FMath::Clamp(NPC->HumanSpeedScale, .1f, 1.f);
+		// 凝視中は遅く歩く。しゃがみ・運搬の速さにも掛かる。
+		if (bWantsToGaze)
+			Speed *= FMath::Clamp(TB::Rules().Gaze.WalkSpeedRatio, .1f, 1.f);
+	}
+	return Speed;
 }
 
 void UTBMovement::UpdateFromCompressedFlags(uint8 Flags)
 {
 	Super::UpdateFromCompressedFlags(Flags);
 	bWantsToSprint = (Flags & FSavedMove_Character::FLAG_Custom_0) != 0;
+	bWantsToGaze = (Flags & FSavedMove_Character::FLAG_Custom_1) != 0;
 }
 
 FNetworkPredictionData_Client* UTBMovement::GetPredictionData_Client() const

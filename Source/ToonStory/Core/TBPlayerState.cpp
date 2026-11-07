@@ -11,9 +11,18 @@ void ATBPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 	DOREPLIFETIME(ATBPlayerState, HumanAppearance);
 	DOREPLIFETIME(ATBPlayerState, ToyState);
 	DOREPLIFETIME(ATBPlayerState, bFrozen);
+	DOREPLIFETIME_CONDITION(ATBPlayerState, GazeState, COND_OwnerOnly);
 	DOREPLIFETIME(ATBPlayerState, bReady);
 	DOREPLIFETIME(ATBPlayerState, Preference);
 	DOREPLIFETIME(ATBPlayerState, Items);
+}
+
+void ATBPlayerState::SetGaze(ETBGazeState State, float Seconds)
+{
+	GazedSeconds = Seconds;
+	if (GazeState == State) return;
+	GazeState = State;
+	ForceNetUpdate();
 }
 
 void ATBPlayerState::OnRep_State()

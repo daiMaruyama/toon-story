@@ -14,6 +14,8 @@ class TOONSTORY_API UTBMovement : public UCharacterMovementComponent
 public:
 	// 移動パケットのカスタムフラグでダッシュ入力を予測・再送する。
 	bool bWantsToSprint = false;
+	// 凝視の入力も同じく移動パケットのフラグで送る。人間のときだけ効く。
+	bool bWantsToGaze = false;
 	virtual float GetMaxSpeed() const override;
 	virtual void UpdateFromCompressedFlags(uint8 Flags) override;
 	virtual FNetworkPredictionData_Client* GetPredictionData_Client() const override;

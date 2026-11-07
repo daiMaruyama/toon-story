@@ -41,6 +41,37 @@ struct FTBVisionRules
 	float AspectRatio() const { return TBRuleMath::AspectRatio(AspectWidth, AspectHeight); }
 };
 
+/** 人間がボタンを押している間の凝視。凝視されたおもちゃだけが止まる */
+USTRUCT(BlueprintType)
+struct FTBGazeRules
+{
+	GENERATED_BODY()
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "凝視",
+	          meta = (DisplayName = "凝視中の歩く速さの倍率", ClampMin = "0.1", ClampMax = "1"))
+	float WalkSpeedRatio = .5f;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "凝視",
+	          meta = (DisplayName = "凝視中の視野角", Units = "Degrees", ClampMin = "30", ClampMax = "120"))
+	float FieldOfView = 80.f;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "凝視",
+	          meta = (DisplayName = "視野が変わりきるまで", Units = "s", ClampMin = "0", ClampMax = "1"))
+	float ZoomSeconds = .25f;
+	/** 画面の中心からこの角度の円の中にいるおもちゃだけを凝視できる */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "凝視",
+	          meta = (DisplayName = "凝視の範囲（中心から）", Units = "Degrees", ClampMin = "1", ClampMax = "45"))
+	float HalfAngle = 12.f;
+	/** 凝視されてから止まるまで。この間に凝視が外れたら止めずに戻す */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "凝視",
+	          meta = (DisplayName = "凝視されてから止まるまで", Units = "s", ClampMin = "0", ClampMax = "2"))
+	float FreezeDelaySeconds = .3f;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "凝視",
+	          meta = (DisplayName = "凝視されている間のおもちゃの速さの倍率", ClampMin = "0", ClampMax = "1"))
+	float GazedToySpeedRatio = .3f;
+	/** オフなら、止まったあとは誰かの視界に入っている間止まったまま。オンなら、凝視が外れたら解ける */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "凝視",
+	          meta = (DisplayName = "凝視が外れたら解く"))
+	bool bReleaseWhenGazeEnds = false;
+};
+
 USTRUCT(BlueprintType)
 struct FTBAimRules
 {
@@ -264,6 +295,8 @@ public:
 	FTBEventRules Events;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "視界", meta = (ShowOnlyInnerProperties))
 	FTBVisionRules Vision;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "凝視", meta = (ShowOnlyInnerProperties))
+	FTBGazeRules Gaze;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "狙う・つかむ", meta = (ShowOnlyInnerProperties))
 	FTBAimRules Aim;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "箱", meta = (ShowOnlyInnerProperties))

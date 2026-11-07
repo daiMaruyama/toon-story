@@ -35,6 +35,14 @@ bool FTBRuleDataTest::RunTest(const FString& Parameters)
 	                                                 Defaults->Match.DurationStep), FVector(60, 3600, 60));
 	TestEqual(TEXT("Toy voice reaches humans only nearby"), Defaults->Voice.ToyToHumanDistance, 400.f);
 	TestEqual(TEXT("Base screen aspect is 16:9"), Defaults->Vision.AspectRatio(), 16.f / 9.f);
+	// 凝視の初期値。止まったあとは視界に入っている間止まったまま。
+	TestEqual(TEXT("Gaze walk speed ratio"), Defaults->Gaze.WalkSpeedRatio, .5f);
+	TestEqual(TEXT("Gaze field of view"), Defaults->Gaze.FieldOfView, 80.f);
+	TestEqual(TEXT("Gaze zoom seconds"), Defaults->Gaze.ZoomSeconds, .25f);
+	TestEqual(TEXT("Gaze half angle"), Defaults->Gaze.HalfAngle, 12.f);
+	TestEqual(TEXT("Gaze freeze delay"), Defaults->Gaze.FreezeDelaySeconds, .3f);
+	TestEqual(TEXT("Gazed toy speed ratio"), Defaults->Gaze.GazedToySpeedRatio, .3f);
+	TestFalse(TEXT("Frozen toy stays frozen while seen"), Defaults->Gaze.bReleaseWhenGazeEnds);
 
 	// プロジェクト設定でアセットを選んでいれば、初期値ではなくそのアセットを使う。
 	const auto& Selected = GetDefault<UTBDataSettings>()->RuleData;

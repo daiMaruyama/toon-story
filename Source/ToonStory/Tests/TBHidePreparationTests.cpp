@@ -121,10 +121,12 @@ bool FTBHidePreparationTest::RunTest(const FString&)
 	TestTrue(TEXT("Toy movement request is accepted"), !Toy->ConsumeMovementInputVector().IsNearlyZero());
 	Human->RequestInteract();
 	TestFalse(TEXT("Capture request did not attach a toy"), Human->HasCarriedToy());
-	Mode->EvaluateGaze();
+	Human->SetGazeRequested(true);
+	Mode->EvaluateGaze(1.f);
 	TestFalse(TEXT("Human gaze does not freeze toys during hiding"), Toy->TBPS()->bFrozen);
-	ATBPickup* Pickup = nullptr;
-	for (TActorIterator<ATBPickup> It(World); It; ++It) { Pickup = *It; break; }
+	Human->SetGazeRequested(false);
+	TActorIterator<ATBPickup> FirstPickup(World);
+	ATBPickup* Pickup = FirstPickup ? *FirstPickup : nullptr;
 	if (!TestNotNull(TEXT("Arena pickup"), Pickup)) return false;
 	Toy->ContactItem = Pickup; Toy->ItemProgress = 1;
 	TestFalse(TEXT("Authority pickup call rejects preparation"), Pickup->Take(Toy));
