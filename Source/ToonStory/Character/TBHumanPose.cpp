@@ -18,7 +18,8 @@ UTBHumanPose::UTBHumanPose()
 	static ConstructorHelpers::FObjectFinder<UAnimSequence> Hop(TEXT("/Game/Characters/ChildAnimation/Child_MM_Jump"));
 	static ConstructorHelpers::FObjectFinder<UAnimSequence> Step(TEXT("/Game/Characters/ChildAnimation/Child_MF_Unarmed_Walk_Left"));
 	static ConstructorHelpers::FObjectFinder<UAnimSequence> FastStep(TEXT("/Game/Characters/ChildAnimation/Child_MF_Unarmed_Jog_Right"));
-	GestureBases = {nullptr, Idle.Object, Hop.Object, Step.Object, FastStep.Object};
+	// Hair disappearance changes visibility only; retain the incoming body pose.
+	GestureBases = {nullptr, Idle.Object, Hop.Object, Step.Object, FastStep.Object, Idle.Object, nullptr};
 }
 
 namespace

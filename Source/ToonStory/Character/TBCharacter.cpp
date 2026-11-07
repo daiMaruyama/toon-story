@@ -281,6 +281,8 @@ double ATBCharacter::EmoteDuration(ETBEmoteKind Kind)
 	case ETBEmoteKind::Cheer: return 2.;
 	case ETBEmoteKind::Dance: return 3.;
 	case ETBEmoteKind::WildDance: return 6.;
+	case ETBEmoteKind::Surprise: return 2.4;
+	case ETBEmoteKind::HairDisappear: return 3.;
 	default: return 0;
 	}
 }
@@ -316,7 +318,8 @@ bool ATBCharacter::EmoteGameplayEligible() const
 	const double Now = State ? State->GetServerWorldTimeSeconds() : 0;
 	const bool Lobby = State && State->Phase == ETBPhase::Lobby && !State->bTravelPending;
 	const bool Playing = State && CanAct() && FMath::IsFinite(State->EndTime) && State->EndTime > Now;
-	if (!State || !IsValid(Player) || (!Lobby && !Playing) || IsMovementLocked() || IsActorBeingDestroyed() ||
+	const bool Results = State && IsCelebrating() && !State->bTravelPending;
+	if (!State || !IsValid(Player) || (!Lobby && !Playing && !Results) || IsMovementLocked() || IsActorBeingDestroyed() ||
 	    !State->PlayerArray.Contains(Player) || !FMath::IsFinite(Now) ||
 	    !Movement || bIsCrouched || Movement->bWantsToCrouch || !Movement->IsMovingOnGround() || GetVelocity().ContainsNaN() || GetVelocity().Size2D() > 2.f ||
 	    Carrier || HasCarriedToy() || bHoldingInteract || bRescuing || StoreStarted >= 0) return false;
@@ -341,10 +344,16 @@ bool ATBCharacter::CanRequestEmote() const
 
 bool ATBCharacter::RequestEmote(ETBEmoteKind Kind)
 {
-	if (EmoteDuration(Kind) <= 0 || !CanRequestEmote()) return false;
+	if (!SupportsEmoteKind(Kind) || !CanRequestEmote()) return false;
 	if (HasAuthority()) return TryEmote(Kind);
 	ServerEmote(Kind, Emote.Round, Emote.Possession);
 	return true; // Request delivery is not a claim of server acceptance.
+}
+
+bool ATBCharacter::SupportsEmoteKind(ETBEmoteKind Kind) const
+{
+	return EmoteDuration(Kind) > 0 &&
+	    (Kind != ETBEmoteKind::HairDisappear || (TBPS() && TBPS()->Team == ETBTeam::Human));
 }
 
 void ATBCharacter::ServerEmote_Implementation(ETBEmoteKind Kind, uint32 ExpectedRound, uint32 ExpectedPossession)
@@ -356,11 +365,11 @@ void ATBCharacter::ServerEmote_Implementation(ETBEmoteKind Kind, uint32 Expected
 
 bool ATBCharacter::TryEmote(ETBEmoteKind Kind)
 {
-	if (!HasAuthority()) return false;
+	if (!HasAuthority() || !SupportsEmoteKind(Kind)) return false;
 	UpdateEmote(); // Cancellation always precedes a new request in the same frame.
 	const auto* State = TB::GS(GetWorld());
 	const double Duration = EmoteDuration(Kind);
-	if (Duration <= 0 || !EmoteEligible() || Emote.bActive || LastEmoteCancelFrame == GFrameCounter ||
+	if (!EmoteEligible() || Emote.bActive || LastEmoteCancelFrame == GFrameCounter ||
 	    State->GetServerWorldTimeSeconds() < Emote.NextAllowedAt) return false;
 	Emote.bActive = true; Emote.Kind = Kind;
 	if (++Emote.Revision == 0) ++Emote.Revision;
@@ -417,7 +426,7 @@ void ATBCharacter::OnRep_Emote()
 bool ATBCharacter::GetEmoteSample(FTBEmoteSample& Out) const
 {
 	Out = FTBEmoteSample();
-	if (!Emote.bActive) return false;
+	if (!Emote.bActive || !SupportsEmoteKind(Emote.Kind)) return false;
 	const auto* State = TB::GS(GetWorld());
 	const double Now = State ? State->GetServerWorldTimeSeconds() : 0;
 	if (bEmoteRejected || (!HasAuthority() && Emote.Revision != ObservedEmoteRevision) || !NewerEmoteRevision(Emote.Revision, BlockedEmoteRevision)) return false;
@@ -425,7 +434,7 @@ bool ATBCharacter::GetEmoteSample(FTBEmoteSample& Out) const
 	    Emote.Team == TBPS()->Team && Emote.Round == State->HidePreparation.Round &&
 	    Emote.Possession != 0 && (HasAuthority() ? Emote.Possession == HumanLookPossession : Emote.Possession == HumanLook.Possession) &&
 	    Emote.Phase == State->Phase && !State->IsPreparing() &&
-	    (State->Phase == ETBPhase::Playing || (State->Phase == ETBPhase::Lobby && !State->bTravelPending));
+	    (State->Phase == ETBPhase::Playing || ((State->Phase == ETBPhase::Lobby || IsCelebrating()) && !State->bTravelPending));
 	if (!Ready)
 	{
 		// Actor/PS/round properties may arrive in either order. Wait before first presentation,
@@ -459,6 +468,33 @@ bool ATBCharacter::GetEmoteSample(FTBEmoteSample& Out) const
 	return true;
 }
 
+void ATBCharacter::RestoreEmoteHair()
+{
+	for (const auto& Entry : EmoteHairVisibility)
+		if (auto* Hair = Entry.Key.Get()) Hair->SetHiddenInGame(Entry.Value);
+	EmoteHairVisibility.Reset();
+}
+
+void ATBCharacter::UpdateHairEmote()
+{
+	FTBEmoteSample Sample;
+	auto* Assembly = HumanVisual->GetChildActor();
+	if (!Assembly || !TBPS() || TBPS()->Team == ETBTeam::Toy ||
+	    !GetEmoteSample(Sample) || Sample.Kind != ETBEmoteKind::HairDisappear)
+	{
+		RestoreEmoteHair();
+		return;
+	}
+	// Hide only scalp hair, preserving eyebrows, lashes and the original visibility.
+	// Use the replicated emote clock so every viewer restores it on expiry/cancellation.
+	for (auto* Part : TInlineComponentArray<UPrimitiveComponent*>(Assembly))
+		if (Part->GetFName() == TEXT("Hair"))
+		{
+			if (!EmoteHairVisibility.Contains(Part)) EmoteHairVisibility.Add(Part, Part->bHiddenInGame);
+			Part->SetHiddenInGame(true);
+		}
+}
+
 void ATBCharacter::OnEmoteVisualEndPlay(AActor* Visual, EEndPlayReason::Type Reason)
 {
 	TBToyPresentation::RestoreEmoteVisual(Visual);
@@ -467,6 +503,7 @@ void ATBCharacter::OnEmoteVisualEndPlay(AActor* Visual, EEndPlayReason::Type Rea
 void ATBCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	CancelEmote();
+	RestoreEmoteHair();
 	TBToyPresentation::RestoreEmoteOwner(this);
 	Super::EndPlay(EndPlayReason);
 }
@@ -541,6 +578,7 @@ void ATBCharacter::ApplyState()
 	UClass* Look = !Toy && GetNetMode() != NM_DedicatedServer ? ToyPlayerInfo->HumanAppearance.LoadSynchronous() : nullptr;
 	if (HumanVisual->GetChildActorClass() != Look)
 	{
+		RestoreEmoteHair();
 		HumanVisual->SetChildActorClass(Look);
 		if (AActor* Assembly = HumanVisual->GetChildActor())
 		{
@@ -558,6 +596,13 @@ void ATBCharacter::ApplyState()
 					Part->UpdateBounds();
 				}
 				auto* Skinned = Cast<USkeletalMeshComponent>(Part);
+				if (Skinned && Skinned->GetFName() == TEXT("Face"))
+				{
+					// The entrance camera sees the back of the head. Groom bindings still
+					// need current face bones when the face itself is occluded or offscreen.
+					Skinned->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
+					Skinned->bEnableUpdateRateOptimizations = false;
+				}
 				if (Skinned && Skinned->GetSkeletalMeshAsset() && LoadedChildMesh && Skinned->GetName().Equals(TEXT("Body"), ESearchCase::IgnoreCase))
 				{
 					// Clothing follows this hidden/occluded body. Its bones must update even
@@ -589,6 +634,7 @@ void ATBCharacter::ApplyState()
 		for (auto* Part : TInlineComponentArray<UPrimitiveComponent*>(Assembly))
 			Part->SetOwnerNoSee(IsHuman() && !IsCelebrating());
 	if (!Toy && LoadedChildMesh) GetMesh()->SetVisibility(!HumanVisual->GetChildActor());
+	UpdateHairEmote();
 	const bool Held = ToyPlayerInfo->ToyState == ETBToyState::Grabbed ||
 	                  ToyPlayerInfo->ToyState == ETBToyState::Carried ||
 	                  ToyPlayerInfo->ToyState == ETBToyState::Storing;
@@ -1300,7 +1346,9 @@ void ATBCharacter::EmotePressed(ETBEmoteKind Kind)
 	}
 	const FName Mapping = Kind == ETBEmoteKind::Wave ? TB::Keys::EmoteWave :
 	    Kind == ETBEmoteKind::Cheer ? TB::Keys::EmoteCheer :
-	    Kind == ETBEmoteKind::Dance ? TB::Keys::EmoteDance : NAME_None;
+	    Kind == ETBEmoteKind::Dance ? TB::Keys::EmoteDance :
+	    Kind == ETBEmoteKind::Surprise ? TB::Keys::EmoteSurprise :
+	    Kind == ETBEmoteKind::HairDisappear ? TB::Keys::EmoteHairDisappear : NAME_None;
 	TB::FKeyboardKey Row;
 	// Newly registered defaults must not silently compete with an existing saved profile.
 	// Read only: the user resolves conflicts through the existing controls page.
@@ -1379,6 +1427,10 @@ void ATBCharacter::SetupPlayerInputComponent(UInputComponent* Input)
 			Enhanced->BindAction(Action, ETriggerEvent::Started, this, &ATBCharacter::EmotePressed, ETBEmoteKind::Cheer);
 		if (const UInputAction* Action = Settings->EmoteDanceAction.LoadSynchronous())
 			Enhanced->BindAction(Action, ETriggerEvent::Started, this, &ATBCharacter::EmotePressed, ETBEmoteKind::Dance);
+		if (const UInputAction* Action = Settings->EmoteSurpriseAction.LoadSynchronous())
+			Enhanced->BindAction(Action, ETriggerEvent::Started, this, &ATBCharacter::EmotePressed, ETBEmoteKind::Surprise);
+		if (const UInputAction* Action = Settings->EmoteHairDisappearAction.LoadSynchronous())
+			Enhanced->BindAction(Action, ETriggerEvent::Started, this, &ATBCharacter::EmotePressed, ETBEmoteKind::HairDisappear);
 	}
 }
 

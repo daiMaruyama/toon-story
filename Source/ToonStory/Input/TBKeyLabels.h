@@ -17,6 +17,8 @@ namespace TB::Keys
 	inline const FName EmoteWave(TEXT("Common_EmoteWave"));
 	inline const FName EmoteCheer(TEXT("Common_EmoteCheer"));
 	inline const FName EmoteDance(TEXT("Common_EmoteDance"));
+	inline const FName EmoteSurprise(TEXT("Common_EmoteSurprise"));
+	inline const FName EmoteHairDisappear(TEXT("Common_EmoteHairDisappear"));
 	inline const FName HumanCrouch(TEXT("Human_Crouch"));
 	inline const FName HumanInteract(TEXT("Human_Interact"));
 	inline const FName HumanDrop(TEXT("Human_Drop"));

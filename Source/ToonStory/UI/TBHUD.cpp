@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Mamodou. All Rights Reserved.
 
 #include "TBHUD.h"
+#include "UI/TBGameViewportClient.h"
 #include "Core/TBLobbySettings.h"
 #include "TBPaperStyle.h"
 #include "TBOptionsMenu.h"
@@ -106,7 +107,7 @@ bool ATBHUD::IsChatBlocked() const
 void ATBHUD::DrawHUD()
 {
 	Super::DrawHUD();
-	if (!Canvas)
+	if (!Canvas || UTBGameViewportClient::IsUIHidden(GetWorld()))
 	{
 		return;
 	}

@@ -16,6 +16,7 @@
 #include "Data/TBRuleData.h"
 #include "UI/TBChatBox.h"
 #include "UI/TBHUD.h"
+#include "UI/TBGameViewportClient.h"
 #include "HAL/PlatformTime.h"
 #include "InputKeyEventArgs.h"
 #include "Framework/Application/SlateApplication.h"
@@ -99,7 +100,7 @@ void ATBController::PlayerTick(float DeltaTime)
 	const auto* HUD = Cast<ATBHUD>(GetHUD());
 	const bool BlockingPanel = HUD && (HUD->IsChatBlocked() || HUD->IsStagePickerOpen());
 	const bool ShowMenu = State && (InLobby ? (BlockingPanel || IsChatOpen() || State->bTravelPending) :
-	    (State->Phase != ETBPhase::Playing && State->Phase != ETBPhase::Results) || bLeaveMenuOpen || BlockingPanel);
+	    (State->Phase != ETBPhase::Playing && State->Phase != ETBPhase::Results) || IsChatOpen() || bLeaveMenuOpen || BlockingPanel);
 	UpdateLobbyCamera(InLobby || ShouldHidePreparationView());
 	UpdateMenuInput(ShowMenu || (State && State->IsLobbyReturnStopped() && HasAuthority()));
 	UpdateScreenTransition();
@@ -609,7 +610,7 @@ void ATBController::ClientNotice_Implementation(const FString& Message, bool bEr
 bool ATBController::CanUseChat() const
 {
 	const auto* State = TB::GS(GetWorld());
-	if (!IsLocalController() || !State || !TB::Chat::IsAvailable(State->Phase) || ShouldHidePreparationView())
+	if (!IsLocalController() || !State || !TB::Chat::IsAvailable(State->Phase) || ShouldHidePreparationView() || UTBGameViewportClient::IsUIHidden(GetWorld()))
 	{
 		return false;
 	}

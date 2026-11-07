@@ -18,6 +18,7 @@ struct FTBEmoteBone
 struct FTBEmotePose
 {
 	TArray<FTBEmoteBone> Bones;
+	TArray<TPair<FName, float>> MorphCurves;
 };
 
 struct FTBGripCache

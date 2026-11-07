@@ -504,11 +504,15 @@ bool FTBEmoteTest::RunTest(const FString&)
 	auto* World = AnimationTestWorld(); auto* State = World ? World->GetGameState<ATBGameState>() : nullptr;
 	if (!TestNotNull(TEXT("Isolated standalone emote fixture world"), State)) return false;
 	const auto OriginalPhase = State->Phase; const auto OriginalHide = State->HidePreparation; const double OriginalEnd = State->EndTime;
+	const auto OriginalWinner = State->Winner;
+	const bool bOriginalTravelPending = State->bTravelPending;
 	TArray<AActor*> Fixtures;
 	ON_SCOPE_EXIT
 	{
 		for (auto* Actor : Fixtures) if (IsValid(Actor)) Actor->Destroy();
 		State->Phase = OriginalPhase; State->HidePreparation = OriginalHide; State->EndTime = OriginalEnd;
+		State->Winner = OriginalWinner;
+		State->bTravelPending = bOriginalTravelPending;
 	};
 	State->Phase = ETBPhase::Playing; State->HidePreparation.bValid = true; State->HidePreparation.bHiding = false;
 	++State->HidePreparation.Round; State->EndTime = State->GetServerWorldTimeSeconds() + 600;
@@ -567,18 +571,70 @@ bool FTBEmoteTest::RunTest(const FString&)
 		Proxy->Emote.StartsAt = State->GetServerWorldTimeSeconds() - Duration * Progress;
 		Proxy->Emote.EndsAt = Proxy->Emote.StartsAt + Duration; Proxy->OnRep_Emote();
 	};
-	for (ETBEmoteKind Kind : {ETBEmoteKind::Wave, ETBEmoteKind::Cheer, ETBEmoteKind::Dance, ETBEmoteKind::WildDance})
+	for (ETBEmoteKind Kind : {ETBEmoteKind::Wave, ETBEmoteKind::Cheer, ETBEmoteKind::Dance, ETBEmoteKind::WildDance, ETBEmoteKind::Surprise})
 	{
 		if (!Start(Kind)) return false;
 		const FTransform Root = Proxy->GetActorTransform(); const double Half = Proxy->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+		const FQuat RestJaw = HumanMesh->GetSocketQuaternion(TEXT("cc_base_jawroot"));
 		Deliver(); TestTrue(TEXT("Peer reconstructs active elapsed emote"), Proxy->GetEmoteSample(Sample) && Sample.Kind == Kind && FMath::IsNearlyEqual(Sample.Progress, .31f, .001f));
 		PoseFrames(HumanMesh, 90);
+		if (Kind == ETBEmoteKind::Surprise)
+		{
+			auto* Face = HumanMesh->GetPostProcessInstance();
+			if (!TestNotNull(TEXT("Human surprise post-process"), Face)) return false;
+			TestTrue(TEXT("Surprise opens the mouth and widens both eyes"), Face->GetCurveValue(TEXT("Jaw_Open")) > .3f &&
+			    Face->GetCurveValue(TEXT("Eye_Wide_L")) > .5f && Face->GetCurveValue(TEXT("Eye_Wide_R")) > .5f);
+			TestTrue(TEXT("The skinned jaw opens as well as its corrective morph"),
+			    RestJaw.AngularDistance(HumanMesh->GetSocketQuaternion(TEXT("cc_base_jawroot"))) > FMath::DegreesToRadians(8.));
+		}
 		TestTrue(TEXT("Human arms/body visibly differ from ordinary idle"), PoseDistance(Hands(HumanMesh), HumanRest) > .5);
 		TestTrue(TEXT("Real human view direction survives emote composition"), FVector::DotProduct(HumanMesh->GetSocketQuaternion(TEXT("head")).RotateVector(FaceAxis), Controller->GetControlRotation().Vector()) > .995);
 		TestTrue(TEXT("Emote cannot move the actor or change its capsule"), Proxy->GetActorTransform().Equals(Root, .001) && Proxy->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() == Half);
 		Source->CancelEmote(); Proxy->Emote = Source->Emote; Proxy->OnRep_Emote(); PoseFrames(HumanMesh, 4);
 		TestTrue(TEXT("Cancellation restores the unchanged normal base pose"), PoseDistance(Hands(HumanMesh), HumanRest) < .05);
+		if (Kind == ETBEmoteKind::Surprise)
+		{
+			TestTrue(TEXT("Cancelling surprise also clears the face"), FMath::IsNearlyZero(HumanMesh->GetPostProcessInstance()->GetCurveValue(TEXT("Jaw_Open"))));
+			TestTrue(TEXT("Cancelling surprise restores the jaw"), RestJaw.AngularDistance(HumanMesh->GetSocketQuaternion(TEXT("cc_base_jawroot"))) < .01);
+		}
 	}
+	if (!Start(ETBEmoteKind::HairDisappear)) return false;
+	Deliver(); PoseFrames(HumanMesh, 90);
+	TestTrue(TEXT("Hair disappearance preserves the normal body pose"), PoseDistance(Hands(HumanMesh), HumanRest) < .05);
+	Source->CancelEmote(); Proxy->Emote = Source->Emote; Proxy->OnRep_Emote();
+	for (const auto& Look : GetDefault<UTBDataSettings>()->HumanAppearances)
+	{
+		Player->HumanAppearance = Look; Proxy->ApplyState();
+		auto* Assembly = Proxy->HumanVisual->GetChildActor();
+		if (!TestNotNull(TEXT("Hair emote human assembly"), Assembly)) return false;
+		UPrimitiveComponent* Hair = nullptr;
+		for (auto* Part : TInlineComponentArray<UPrimitiveComponent*>(Assembly))
+			if (Part->GetFName() == TEXT("Hair")) Hair = Part;
+		if (!TestNotNull(TEXT("Scalp hair exists"), Hair)) return false;
+		for (bool OriginallyHidden : {false, true})
+		{
+			Hair->SetHiddenInGame(OriginallyHidden);
+			if (!Start(ETBEmoteKind::HairDisappear)) return false;
+			Deliver(); Proxy->UpdateHairEmote();
+			TestTrue(TEXT("Peer hides scalp hair during emote"), Hair->bHiddenInGame);
+			Deliver(1.01f); Proxy->UpdateHairEmote();
+			TestEqual(TEXT("Expiry restores previous hair visibility"), bool(Hair->bHiddenInGame), OriginallyHidden);
+			if (!Start(ETBEmoteKind::HairDisappear)) return false;
+			Deliver(); Proxy->UpdateHairEmote();
+			Source->CancelEmote(); Proxy->Emote = Source->Emote; Proxy->OnRep_Emote(); Proxy->UpdateHairEmote();
+			TestEqual(TEXT("Cancellation restores previous hair visibility"), bool(Hair->bHiddenInGame), OriginallyHidden);
+		}
+		Hair->SetHiddenInGame(false);
+	}
+	Player->HumanAppearance.Reset(); Proxy->ApplyState();
+	State->Phase = ETBPhase::Results; State->Winner = ETBWinner::Humans;
+	if (!Start(ETBEmoteKind::Cheer)) return false;
+	Deliver();
+	TestTrue(TEXT("Remote winner presents a results emote"), Proxy->GetEmoteSample(Sample));
+	State->bTravelPending = true;
+	TestFalse(TEXT("Travel blocks new results emotes"), Source->EmoteGameplayEligible());
+	State->bTravelPending = false;
+	State->Phase = ETBPhase::Playing; State->Winner = OriginalWinner;
 	if (!Start(ETBEmoteKind::Dance)) return false;
 	Source->CrouchPressed();
 	auto* Move = Source->GetCharacterMovement();
@@ -668,12 +724,13 @@ bool FTBEmoteTest::RunTest(const FString&)
 		ToySource->SelectedToyIndex = ToyProxy->SelectedToyIndex = Index;
 		ToySource->RefreshToyPresentation(); ToyProxy->RefreshToyPresentation(); Stand(Source); Stand(Proxy);
 		TestTrue(TEXT("Catalogue visual has explicit emote support"), Source->SupportsEmotes());
+		TestFalse(TEXT("Every toy rejects the human-only hair emote"), Source->SupportsEmoteKind(ETBEmoteKind::HairDisappear));
 		auto* Visual = ToyProxy->ToyVisual->GetChildActor();
 		if (!TestNotNull(TEXT("Catalogue visual instance"), Visual)) return false;
 		TInlineComponentArray<USkeletalMeshComponent*> Parts(Visual);
 		for (auto* Part : Parts)
 			if (auto* Anim = Part->GetSingleNodeInstance()) { Anim->SetPlaying(false); Anim->SetPosition(0, false); }
-		for (ETBEmoteKind Kind : {ETBEmoteKind::Wave, ETBEmoteKind::Cheer, ETBEmoteKind::Dance, ETBEmoteKind::WildDance})
+		for (ETBEmoteKind Kind : {ETBEmoteKind::Wave, ETBEmoteKind::Cheer, ETBEmoteKind::Dance, ETBEmoteKind::WildDance, ETBEmoteKind::Surprise})
 		{
 			TMap<USkeletalMeshComponent*, TArray<FTransform>> RestPoses;
 			for (auto* Part : Parts)
@@ -776,9 +833,9 @@ bool FTBEmoteTest::RunTest(const FString&)
 	LocalPC->ClientPreparationRole(State->HidePreparation.Round, ETBTeam::Toy);
 	LocalPC->PlayerTick(0); // Create the ordinary chat widget through the existing local-player path.
 	const auto* InputSettings = GetDefault<UTBInputSettings>();
-	const TSoftObjectPtr<UInputAction> Actions[] = {InputSettings->EmoteWaveAction, InputSettings->EmoteCheerAction, InputSettings->EmoteDanceAction};
-	const ETBEmoteKind Kinds[] = {ETBEmoteKind::Wave, ETBEmoteKind::Cheer, ETBEmoteKind::Dance};
-	const FName Names[] = {TB::Keys::EmoteWave, TB::Keys::EmoteCheer, TB::Keys::EmoteDance};
+	const TSoftObjectPtr<UInputAction> Actions[] = {InputSettings->EmoteWaveAction, InputSettings->EmoteCheerAction, InputSettings->EmoteDanceAction, InputSettings->EmoteSurpriseAction, InputSettings->EmoteHairDisappearAction};
+	const ETBEmoteKind Kinds[] = {ETBEmoteKind::Wave, ETBEmoteKind::Cheer, ETBEmoteKind::Dance, ETBEmoteKind::Surprise, ETBEmoteKind::HairDisappear};
+	const FName Names[] = {TB::Keys::EmoteWave, TB::Keys::EmoteCheer, TB::Keys::EmoteDance, TB::Keys::EmoteSurprise, TB::Keys::EmoteHairDisappear};
 	auto ResetInputEmote = [&]()
 	{
 		Source->CancelEmote(); Source->Emote.NextAllowedAt = 0; Source->LastEmoteCancelFrame = MAX_uint64;
@@ -800,6 +857,19 @@ bool FTBEmoteTest::RunTest(const FString&)
 			return TestEqual(TEXT("Exactly one Started delegate handles the emote"), Count, 1);
 		};
 		ResetInputEmote();
+		if (Kinds[Index] == ETBEmoteKind::HairDisappear)
+		{
+			const auto Revision = Source->Emote.Revision;
+			const auto HairCooldown = Source->Emote.NextAllowedAt;
+			TestTrue(TEXT("Toy is otherwise eligible for a new emote"), Source->CanRequestEmote());
+			TestFalse(TEXT("Local toy hair request is rejected"), Source->RequestEmote(Kinds[Index]));
+			TestFalse(TEXT("Authority rejects a direct toy hair request"), Source->TryEmote(Kinds[Index]));
+			if (!Dispatch()) return false;
+			TestFalse(TEXT("Hair shortcut does not start an invisible toy emote"), Source->Emote.bActive);
+			TestTrue(TEXT("Rejected hair input does not consume revision or cooldown"),
+			    Source->Emote.Revision == Revision && Source->Emote.NextAllowedAt == HairCooldown);
+			continue;
+		}
 		if (!Dispatch()) return false;
 		if (!TestTrue(TEXT("Started action routes to its exact server-authorized emote kind"), Source->Emote.bActive && Source->Emote.Kind == Kinds[Index])) return false;
 		const uint32 AcceptedRevision = Source->Emote.Revision;
@@ -823,7 +893,17 @@ bool FTBEmoteTest::RunTest(const FString&)
 		LocalPS->ToyState = ETBToyState::Boxed; Dispatch(); TestFalse(TEXT("Boxed pawn cannot emote from input"), Source->Emote.bActive); LocalPS->ToyState = ETBToyState::Free;
 		Source->GetCharacterMovement()->Velocity = FVector(3, 0, 0); Dispatch();
 		TestFalse(TEXT("Moving pawn cannot emote from input"), Source->Emote.bActive); Source->GetCharacterMovement()->Velocity = FVector::ZeroVector;
-		State->Phase = ETBPhase::Results; Dispatch(); TestFalse(TEXT("Results blocks the shortcut"), Source->Emote.bActive); State->Phase = ETBPhase::Playing;
+		State->Phase = ETBPhase::Results; State->Winner = ETBWinner::Humans;
+		Dispatch(); TestFalse(TEXT("Spectating loser cannot emote"), Source->Emote.bActive);
+		State->Winner = ETBWinner::Toys;
+		LocalPC->PlayerTick(0); LocalPC->OpenChat(); LocalPC->PlayerTick(0);
+		TestTrue(TEXT("Results chat stays open across controller ticks"), LocalPC->IsChatOpen());
+		TestTrue(TEXT("Results chat retains menu input and cursor"), LocalPC->bShowMouseCursor && LocalPC->IsMoveInputIgnored());
+		Dispatch(); TestFalse(TEXT("Typing in results chat cannot emote"), Source->Emote.bActive);
+		LocalPC->CloseChat(); LocalPC->PlayerTick(0);
+		TestFalse(TEXT("Closing results chat restores game input"), LocalPC->IsMoveInputIgnored());
+		Dispatch(); TestTrue(TEXT("Winner can emote in results"), Source->Emote.bActive && Source->Emote.Kind == Kinds[Index]);
+		ResetInputEmote(); State->Phase = ETBPhase::Playing; State->Winner = OriginalWinner;
 		TestTrue(TEXT("The input route never rewrites the saved keyboard profile"), TB::FindKeyboardKey(LocalPC, Names[Index], Row) &&
 		    Row.Key == SavedKey);
 	}

@@ -69,6 +69,7 @@ bool TBToyPresentation::SupportsEmoteClass(UClass* VisualClass)
 void TBToyPresentation::BuildEmotePose(const USkeletalMeshComponent* Mesh, const ATBCharacter* Pawn, FTBEmotePose& Out)
 {
 	Out.Bones.Reset();
+	Out.MorphCurves.Reset();
 	FTBEmoteSample Sample;
 	if (!IsValid(Pawn) || !Pawn->GetEmoteSample(Sample)) return;
 	BuildEmotePose(Mesh, Sample, Pawn->GetActorForwardVector(), Pawn->GetActorRightVector(), Out);
@@ -78,8 +79,9 @@ void TBToyPresentation::BuildEmotePose(const USkeletalMeshComponent* Mesh, const
 	                                       const FVector& WorldRight, FTBEmotePose& Out)
 {
 	Out.Bones.Reset();
+	Out.MorphCurves.Reset();
 	const auto* Asset = Mesh ? Mesh->GetSkeletalMeshAsset() : nullptr;
-	if (!Asset || Sample.Weight <= 0) return;
+	if (!Asset || Sample.Weight <= 0 || Sample.Kind == ETBEmoteKind::HairDisappear) return;
 	const auto& Ref = Asset->GetRefSkeleton();
 	const FVector Forward = Mesh->GetComponentTransform().InverseTransformVectorNoScale(WorldForward).GetSafeNormal();
 	const FVector Right = Mesh->GetComponentTransform().InverseTransformVectorNoScale(WorldRight).GetSafeNormal();
@@ -92,6 +94,43 @@ void TBToyPresentation::BuildEmotePose(const USkeletalMeshComponent* Mesh, const
 	};
 	const FName Torso = EmoteTorso(Ref), Head = EmoteHead(Ref);
 	const FString Name = Asset->GetName();
+	if (Sample.Kind == ETBEmoteKind::Surprise)
+	{
+		// A sharp recoil, raised hands and a small settling tremble. Keep the
+		// collision/root and planted legs unchanged, including on toy meshes.
+		const double Recoil = 1. - FMath::SmoothStep(.35, 1., double(Sample.Progress));
+		const double Tremble = FMath::Sin(Beat * 7) * FMath::Exp(-4. * Sample.Progress);
+		if (Name == TEXT("SK_Duck"))
+		{
+			Add(EmoteBone(Ref, {TEXT("pelvis")}), Right, -28 * Recoil);
+			Add(EmoteBone(Ref, {TEXT("pelvis")}), Forward, 7 * Tremble);
+		}
+		else
+		{
+			Add(Torso, Right, -18 * Recoil); Add(Head, Right, -8 * Recoil);
+			// This child's jaw is bone-skinned; the Jaw_Open corrective alone
+			// does not separate the lips.
+			Add(EmoteBone(Ref, {TEXT("cc_base_jawroot")}), Right, 16 * Recoil);
+			Add(Torso, Forward, 3 * Tremble);
+			const FName UpperL = EmoteBone(Ref, {TEXT("upperarm_l"), TEXT("L_UpperArm"), TEXT("LeftArm"), TEXT("Arm_L"), TEXT("mixamorig:LeftArm")});
+			const FName UpperR = EmoteBone(Ref, {TEXT("upperarm_r"), TEXT("R_UpperArm"), TEXT("RightArm"), TEXT("Arm_R"), TEXT("mixamorig:RightArm")});
+			Add(UpperL, Forward, -65 * Recoil); Add(UpperL, Right, -20 * Recoil);
+			Add(EmoteBone(Ref, {TEXT("lowerarm_l"), TEXT("L_Forearm"), TEXT("LeftForeArm"), TEXT("ForeArm_L")}), Forward, -65 * Recoil);
+			// Keep the recon soldier's rifle hand on its weapon.
+			if (Name != TEXT("SK_ReconSoldier"))
+			{
+				Add(UpperR, Forward, 65 * Recoil); Add(UpperR, Right, -20 * Recoil);
+				Add(EmoteBone(Ref, {TEXT("lowerarm_r"), TEXT("R_Forearm"), TEXT("RightForeArm"), TEXT("ForeArm_R")}), Forward, 65 * Recoil);
+			}
+		}
+		const TPair<FName, float> Face[] = {
+			{TEXT("Brow_Raise_Inner_L"), .85f}, {TEXT("Brow_Raise_Inner_R"), .85f},
+			{TEXT("Brow_Raise_Outer_L"), .7f}, {TEXT("Brow_Raise_Outer_R"), .7f},
+			{TEXT("Eye_Wide_L"), .9f}, {TEXT("Eye_Wide_R"), .9f}, {TEXT("Jaw_Open"), .65f}};
+		for (const auto& Curve : Face)
+			if (Asset->FindMorphTarget(Curve.Key)) Out.MorphCurves.Emplace(Curve.Key, Curve.Value * Sample.Weight * Recoil);
+		return;
+	}
 	// The rubber duck is rigidly skinned to pelvis. Head and spine rotations do not move its surface.
 	if (Name == TEXT("SK_Duck"))
 	{
@@ -220,6 +259,13 @@ void TBToyPresentation::BuildEmotePose(const USkeletalMeshComponent* Mesh, const
 
 void TBToyPresentation::ApplyEmotePose(FPoseContext& Output, const FTBEmotePose& Pose)
 {
+	// Evaluated curves belong to this pose only; stopping restores the incoming
+	// face automatically, without sticky component-level morph overrides.
+	for (const auto& Curve : Pose.MorphCurves)
+	{
+		Output.Curve.Set(Curve.Key, Curve.Value);
+		Output.Curve.SetFlags(Curve.Key, UE::Anim::ECurveElementFlags::MorphTarget);
+	}
 	// Bone names and numeric rotations only. Never touch UObjects on the animation worker.
 	for (const FTBEmoteBone& Change : Pose.Bones)
 	{
@@ -263,7 +309,7 @@ void TBToyPresentation::ApplyCarEmote(UStaticMeshComponent* Car, ATBCharacter* P
 {
 	if (!IsValid(Car)) return;
 	FTBEmoteSample Sample;
-	if (!IsValid(Pawn) || !Pawn->GetEmoteSample(Sample)) { RestoreEmoteVisual(Car->GetOwner()); return; }
+	if (!IsValid(Pawn) || !Pawn->GetEmoteSample(Sample) || Sample.Kind == ETBEmoteKind::HairDisappear) { RestoreEmoteVisual(Car->GetOwner()); return; }
 	for (auto It = CarEmoteRest.CreateIterator(); It; ++It) if (!It.Key().IsValid()) It.RemoveCurrent();
 	if (!CarEmoteRest.Contains(Car))
 	{
@@ -273,6 +319,7 @@ void TBToyPresentation::ApplyCarEmote(UStaticMeshComponent* Car, ATBCharacter* P
 	const auto& Rest = CarEmoteRest.FindChecked(Car);
 	const double Beat = Sample.Progress * 2 * PI;
 	const FRotator Sway = Sample.Kind == ETBEmoteKind::Wave ? FRotator(0, 10 * FMath::Sin(Beat * 3), 0) :
+	    Sample.Kind == ETBEmoteKind::Surprise ? FRotator(-18 * (1. - FMath::SmoothStep(.35, 1., double(Sample.Progress))), 0, 5 * FMath::Sin(Beat * 7) * FMath::Exp(-4. * Sample.Progress)) :
 	    Sample.Kind == ETBEmoteKind::WildDance ? FRotator(18 * FMath::Sin(Beat * 12), 38 * FMath::Sin(Beat * 8), 24 * FMath::Cos(Beat * 10)) :
 	    Sample.Kind == ETBEmoteKind::Cheer ? FRotator(-9 * FMath::Sin(Beat * 2), 0, 0) :
 	    FRotator(5 * FMath::Sin(Beat * 6), 8 * FMath::Sin(Beat * 3), 7 * FMath::Sin(Beat * 6));

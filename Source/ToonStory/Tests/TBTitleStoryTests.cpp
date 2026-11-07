@@ -27,6 +27,11 @@
 #include "MovieScene.h"
 #include "UI/TBOptionsMenu.h"
 #include "UI/TBTitleMenu.h"
+#include "UI/TBGameViewportClient.h"
+#include "Framework/Application/SlateApplication.h"
+#include "Slate/SGameLayerManager.h"
+#include "Widgets/Input/SButton.h"
+#include "Widgets/SViewport.h"
 
 namespace
 {
@@ -180,6 +185,78 @@ bool FTBTitleStoryTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("Searching holds off the story"), Menu->GetState() == UTBTitleMenu::EState::Menu);
 	}
 	Menu->RemoveFromParent();
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBTitleUIShortcutTest, "ToonStory.Title.UIShortcut",
+                                 EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+bool FTBTitleUIShortcutTest::RunTest(const FString&)
+{
+	auto* PC = StoryTestController();
+	auto* Viewport = PC ? Cast<UTBGameViewportClient>(PC->GetWorld()->GetGameViewport()) : nullptr;
+	if (!TestNotNull(TEXT("Custom game viewport is configured"), Viewport) || !FSlateApplication::IsInitialized()) return false;
+	const auto Layers = Viewport->GetGameLayerManager();
+	if (!Layers) { AddError(TEXT("Needs a game viewport with Slate layers")); return false; }
+	ON_SCOPE_EXIT { if (Viewport->IsUIHidden()) Viewport->ToggleUI(); };
+	TArray<UUserWidget*> Menus;
+	UWidgetBlueprintLibrary::GetAllWidgetsOfClass(PC, Menus, UTBTitleMenu::StaticClass(), true);
+	if (!TestEqual(TEXT("Title menu available for focus test"), Menus.Num(), 1)) return false;
+	auto* Menu = Cast<UTBTitleMenu>(Menus[0]);
+	Menu->SetKeyboardFocus();
+	const auto OriginalFocus = FSlateApplication::Get().GetKeyboardFocusedWidget();
+	TestTrue(TEXT("Title focus fixture really owns keyboard focus"), Menu->HasKeyboardFocus());
+	const auto State = Menu->GetState();
+	auto Press = [](bool Repeat)
+	{
+		FSlateApplication::Get().ProcessKeyDownEvent(FKeyEvent(EKeys::F9, FModifierKeysState(), 0, Repeat, 0, 0));
+	};
+	Press(false);
+	TestTrue(TEXT("F9 reaches viewport while UMG owns focus"), Viewport->IsUIHidden());
+	TestEqual(TEXT("All widget layers are transparent"), Layers->AsWidget()->GetRenderOpacity(), 0.f);
+	TestFalse(TEXT("Hidden buttons cannot receive clicks"), Layers->AsWidget()->GetVisibility().AreChildrenHitTestVisible());
+	TestTrue(TEXT("Hidden UI remains tickable for title playback"), Layers->AsWidget()->GetVisibility().IsVisible());
+	TestTrue(TEXT("F9 does not skip the title story"), Menu->GetState() == State);
+	Press(true);
+	TestTrue(TEXT("Holding the key does not toggle repeatedly"), Viewport->IsUIHidden());
+	Press(false);
+	TestFalse(TEXT("F9 restores UI from viewport focus"), Viewport->IsUIHidden());
+	TestEqual(TEXT("Restored UI is opaque"), Layers->AsWidget()->GetRenderOpacity(), 1.f);
+	TestTrue(TEXT("Restored buttons accept clicks"), Layers->AsWidget()->GetVisibility().AreChildrenHitTestVisible());
+	TestTrue(TEXT("F9 restores the original title keyboard focus"), FSlateApplication::Get().GetKeyboardFocusedWidget() == OriginalFocus);
+	if (State == UTBTitleMenu::EState::Story)
+	{
+		FSlateApplication::Get().ProcessKeyDownEvent(FKeyEvent(EKeys::SpaceBar, FModifierKeysState(), 0, false, 0, 0));
+		TestTrue(TEXT("Keyboard still skips the story after restoring UI"), Menu->GetState() != State);
+	}
+	int32 Clicks = 0;
+	const auto Button = SNew(SButton).OnClicked_Lambda([&Clicks] { ++Clicks; return FReply::Handled(); });
+	const auto Replacement = SNew(SButton);
+	ON_SCOPE_EXIT
+	{
+		Viewport->RemoveViewportWidgetForPlayer(PC->GetLocalPlayer(), Button);
+		Viewport->RemoveViewportWidgetForPlayer(PC->GetLocalPlayer(), Replacement);
+	};
+	Viewport->AddViewportWidgetForPlayer(PC->GetLocalPlayer(), Button, 100);
+	auto& Slate = FSlateApplication::Get();
+	TestTrue(TEXT("Button fixture receives focus"), Slate.SetKeyboardFocus(Button));
+	Press(false);
+	TestTrue(TEXT("Button F9 actually hides UI"), Viewport->IsUIHidden());
+	Press(false);
+	Slate.ProcessKeyDownEvent(FKeyEvent(EKeys::SpaceBar, FModifierKeysState(), 0, false, 0, 0));
+	Slate.ProcessKeyUpEvent(FKeyEvent(EKeys::SpaceBar, FModifierKeysState(), 0, false, 0, 0));
+	TestEqual(TEXT("Restored button accepts keyboard activation"), Clicks, 1);
+	Press(false);
+	TestTrue(TEXT("Old screen is hidden before replacement"), Viewport->IsUIHidden());
+	Viewport->RemoveViewportWidgetForPlayer(PC->GetLocalPlayer(), Button);
+	Viewport->AddViewportWidgetForPlayer(PC->GetLocalPlayer(), Replacement, 100);
+	TestTrue(TEXT("Replacement receives focus while hidden"), Slate.SetKeyboardFocus(Replacement));
+	Press(false);
+	TestFalse(TEXT("Replacement F9 actually restores UI"), Viewport->IsUIHidden());
+	TestTrue(TEXT("New screen focus wins over the removed old button"), Slate.GetKeyboardFocusedWidget() == Replacement);
+	Press(false);
+	Viewport->RemoveViewportWidgetForPlayer(PC->GetLocalPlayer(), Replacement);
+	Viewport->ToggleUI();
+	TestTrue(TEXT("Detached widgets kept alive elsewhere cannot regain focus"), Slate.GetKeyboardFocusedWidget() == Viewport->GetGameViewportWidget());
 	return true;
 }
 

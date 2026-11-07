@@ -144,10 +144,12 @@ bool FTBAuthoredLightingTest::RunTest(const FString& Parameters)
 				for (float Side : {0.f, -40.f, 40.f})
 				{
 					FVector Position = Switch->GetActorLocation() + Switch->GetActorForwardVector() * Distance + Switch->GetActorRightVector() * Side;
-					Position.Z = Switch->GetActorLocation().Z - 55.f + HalfHeight + 2.f;
-					if (!Room->Contains(Position) || World->OverlapBlockingTestByChannel(Position, FQuat::Identity, ECC_Pawn, FCollisionShape::MakeCapsule(Radius, HalfHeight), Query)) continue;
+					// Switch height is authored independently of the floor. Probe the real
+					// surface instead of assuming every plate sits exactly 55 cm above it.
 					FHitResult Floor;
-					if (!World->LineTraceSingleByChannel(Floor, Position, Position - FVector(0, 0, HalfHeight + 10), ECC_Pawn, Query)) continue;
+					if (!World->LineTraceSingleByChannel(Floor, Position + FVector(0, 0, 50), Position - FVector(0, 0, 250), ECC_Pawn, Query) || Floor.ImpactNormal.Z < .7f) continue;
+					Position.Z = Floor.ImpactPoint.Z + HalfHeight + 2.15f;
+					if (!Room->Contains(Position) || World->OverlapBlockingTestByChannel(Position, FQuat::Identity, ECC_Pawn, FCollisionShape::MakeCapsule(Radius, HalfHeight), Query)) continue;
 					Character->SetActorLocation(Position, false, nullptr, ETeleportType::TeleportPhysics);
 					Controller->SetControlRotation((Switch->GetInteractionLocation() - Character->GetPawnViewLocation()).Rotation());
 					if (Switch->CanInteract(Use) && TB::FindInteractionTarget(Character).Actor == Switch)
