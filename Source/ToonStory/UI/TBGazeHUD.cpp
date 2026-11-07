@@ -52,7 +52,9 @@ void ATBHUD::DrawGazeEffects(ATBController& Controller)
 		DrawEdgeShade(Color, Short * .4f * GazeShadow,
 		              FMath::Min(1.f, GazeShadow * 1.4f) * .85f * Pulse * Rules.ToyShadowStrength);
 	}
-	if (Gazed && !bWasGazed)
+	// 凝視は0.3秒と短く、通信の間隔しだいで「止まっている」から届くこともあるので、どちらに入っても一度だけ鳴らす。
+	const bool Caught = Gazed || State == EGazeState::Frozen;
+	if (Caught && !bWasCaught)
 	{
 		DokiStarted = Now;
 		if (auto* Audio = GetGameInstance()->GetSubsystem<UTBAudioSubsystem>())
@@ -60,7 +62,7 @@ void ATBHUD::DrawGazeEffects(ATBController& Controller)
 			Audio->PlaySoundEvent(ETBSoundEvent::GazeAlert);
 		}
 	}
-	bWasGazed = Gazed;
+	bWasCaught = Caught;
 	// 「ドキッ」は飛び出して少し震え、薄れて消える。
 	if (DokiStarted >= 0 && Now - DokiStarted < DokiSeconds)
 	{

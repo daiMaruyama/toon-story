@@ -47,6 +47,7 @@ private:
 	void DrawGazeEffects(class ATBController& Controller);
 	void DrawEdgeShade(FLinearColor Color, float Thickness, float Alpha);
 	float GazeShadow = 0;
-	bool bWasGazed = false;
+	// 前の描画で凝視されているか止まっていたか。入った瞬間だけ「ドキッ」を出す。
+	bool bWasCaught = false;
 	double DokiStarted = -1;
 };
