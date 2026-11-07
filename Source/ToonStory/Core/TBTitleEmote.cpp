@@ -178,6 +178,7 @@ bool UTBTitleEmote::UsesBodyMoves() const
 void UTBTitleEmote::BuildArmSwing(const USkeletalMeshComponent* Mesh, FTBEmotePose& Out) const
 {
 	Out.Bones.Reset();
+	Out.MorphCurves.Reset();
 	const auto* Asset = Mesh ? Mesh->GetSkeletalMeshAsset() : nullptr;
 	const float W = Weight * Blend;
 	if (!Asset || W <= 0.f) return;

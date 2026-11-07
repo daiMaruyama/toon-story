@@ -37,7 +37,7 @@ struct FTBHumanLookSnapshot
 };
 
 UENUM()
-enum class ETBEmoteKind : uint8 { None, Wave, Cheer, Dance, WildDance };
+enum class ETBEmoteKind : uint8 { None, Wave, Cheer, Dance, WildDance, Surprise, HairDisappear };
 
 USTRUCT()
 struct FTBEmoteSnapshot
@@ -130,6 +130,8 @@ public:
 	// Game-thread read for animation. Simulated peers must have a matching resolved snapshot.
 	bool GetHumanLook(FTBHumanLookSnapshot& Out) const;
 	bool CanRequestEmote() const;
+	/** Role restriction shared by local requests, server acceptance, and presentation. */
+	bool SupportsEmoteKind(ETBEmoteKind Kind) const;
 	bool SupportsEmotes() const;
 	bool RequestEmote(ETBEmoteKind Kind);
 	bool TryEmote(ETBEmoteKind Kind);
@@ -222,6 +224,9 @@ private:
 	bool EmoteGameplayEligible() const;
 	int32 EmoteVisualIndex() const;
 	void UpdateEmote();
+	void UpdateHairEmote();
+	void RestoreEmoteHair();
+	TMap<TWeakObjectPtr<UPrimitiveComponent>, bool> EmoteHairVisibility;
 	void CancelEmote();
 	UPROPERTY(ReplicatedUsing = OnRep_HumanLook)
 	FTBHumanLookSnapshot HumanLook;

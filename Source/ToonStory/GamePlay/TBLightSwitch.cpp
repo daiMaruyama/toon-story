@@ -4,6 +4,7 @@
 #include "Character/TBCharacter.h"
 #include "Core/TBGameHelpers.h"
 #include "Components/StaticMeshComponent.h"
+#include "Components/SceneComponent.h"
 #include "Engine/StaticMesh.h"
 #include "UObject/ConstructorHelpers.h"
 #include "Net/UnrealNetwork.h"
@@ -35,6 +36,29 @@ ATBLightSwitch::ATBLightSwitch()
 	Mesh->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 	Mesh->SetCollisionResponseToAllChannels(ECR_Ignore);
 	Mesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+}
+
+FVector ATBLightSwitch::GetInteractionLocation() const
+{
+	// Preserve authored interaction offsets; only the untouched mounting pivot
+	// needs the automatic front-of-plate correction.
+	if (InteractionPoint && !InteractionPoint->GetComponentLocation().Equals(GetActorLocation(), KINDA_SMALL_NUMBER))
+		return Super::GetInteractionLocation();
+	if (!Mesh || !Mesh->GetStaticMesh()) return Super::GetInteractionLocation();
+	// The plate faces actor +X. Trace to its front, not the mounting pivot:
+	// a wall's simple collision can extend a few cm past its rendered surface.
+	// Keep clearance in world cm even for scaled switches; walls along the rest
+	// of the ray (including use from the back) still block normal item interaction.
+	const FBox LocalBounds = Mesh->GetStaticMesh()->GetBoundingBox();
+	const FTransform& Transform = Mesh->GetComponentTransform();
+	const FVector Forward = GetActorForwardVector();
+	const FVector Extent = LocalBounds.GetExtent();
+	const double FrontExtent =
+		FMath::Abs(FVector::DotProduct(Forward, Transform.TransformVector(FVector(Extent.X, 0, 0)))) +
+		FMath::Abs(FVector::DotProduct(Forward, Transform.TransformVector(FVector(0, Extent.Y, 0)))) +
+		FMath::Abs(FVector::DotProduct(Forward, Transform.TransformVector(FVector(0, 0, Extent.Z))));
+	constexpr double MountingClearance = 6.0;
+	return Transform.TransformPosition(LocalBounds.GetCenter()) + Forward * (FrontExtent + MountingClearance);
 }
 
 void ATBLightSwitch::ApplyData()

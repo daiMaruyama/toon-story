@@ -16,6 +16,7 @@ public:
 	ATBLightSwitch();
 	virtual void OnConstruction(const FTransform& Transform) override;
 	virtual void PostInitializeComponents() override;
+	virtual FVector GetInteractionLocation() const override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Switch")
 	TSoftObjectPtr<UTBLightSwitchData> SwitchData;
