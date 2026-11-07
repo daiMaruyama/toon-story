@@ -65,6 +65,10 @@ public:
 	TSoftObjectPtr<UInputAction> EmoteCheerAction;
 	UPROPERTY(Config, EditAnywhere, Category = "入力", meta = (DisplayName = "ダンス"))
 	TSoftObjectPtr<UInputAction> EmoteDanceAction;
+	UPROPERTY(Config, EditAnywhere, Category = "入力", meta = (DisplayName = "びっくり"))
+	TSoftObjectPtr<UInputAction> EmoteSurpriseAction;
+	UPROPERTY(Config, EditAnywhere, Category = "入力", meta = (DisplayName = "髪かくし"))
+	TSoftObjectPtr<UInputAction> EmoteHairDisappearAction;
 
 	/** 設定の4つのIMCを読み込んで返す（未設定は除く） */
 	TArray<const UInputMappingContext*> GetAllContexts() const;

@@ -27,6 +27,9 @@
 #include "MovieScene.h"
 #include "UI/TBOptionsMenu.h"
 #include "UI/TBTitleMenu.h"
+#include "UI/TBGameViewportClient.h"
+#include "Framework/Application/SlateApplication.h"
+#include "Slate/SGameLayerManager.h"
 
 namespace
 {
@@ -176,6 +179,41 @@ bool FTBTitleStoryTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("Searching holds off the story"), Menu->GetState() == UTBTitleMenu::EState::Menu);
 	}
 	Menu->RemoveFromParent();
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBTitleUIShortcutTest, "ToonStory.Title.UIShortcut",
+                                 EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+bool FTBTitleUIShortcutTest::RunTest(const FString&)
+{
+	auto* PC = StoryTestController();
+	auto* Viewport = PC ? Cast<UTBGameViewportClient>(PC->GetWorld()->GetGameViewport()) : nullptr;
+	if (!TestNotNull(TEXT("Custom game viewport is configured"), Viewport) || !FSlateApplication::IsInitialized()) return false;
+	const auto Layers = Viewport->GetGameLayerManager();
+	if (!Layers) { AddError(TEXT("Needs a game viewport with Slate layers")); return false; }
+	ON_SCOPE_EXIT { if (Viewport->IsUIHidden()) Viewport->ToggleUI(); };
+	TArray<UUserWidget*> Menus;
+	UWidgetBlueprintLibrary::GetAllWidgetsOfClass(PC, Menus, UTBTitleMenu::StaticClass(), true);
+	if (!TestEqual(TEXT("Title menu available for focus test"), Menus.Num(), 1)) return false;
+	auto* Menu = Cast<UTBTitleMenu>(Menus[0]);
+	Menu->SetKeyboardFocus();
+	const auto State = Menu->GetState();
+	auto Press = [](bool Repeat)
+	{
+		FSlateApplication::Get().ProcessKeyDownEvent(FKeyEvent(EKeys::F9, FModifierKeysState(), 0, Repeat, 0, 0));
+	};
+	Press(false);
+	TestTrue(TEXT("F9 reaches viewport while UMG owns focus"), Viewport->IsUIHidden());
+	TestEqual(TEXT("All widget layers are transparent"), Layers->AsWidget()->GetRenderOpacity(), 0.f);
+	TestFalse(TEXT("Hidden buttons cannot receive clicks"), Layers->AsWidget()->GetVisibility().AreChildrenHitTestVisible());
+	TestTrue(TEXT("Hidden UI remains tickable for title playback"), Layers->AsWidget()->GetVisibility().IsVisible());
+	TestTrue(TEXT("F9 does not skip the title story"), Menu->GetState() == State);
+	Press(true);
+	TestTrue(TEXT("Holding the key does not toggle repeatedly"), Viewport->IsUIHidden());
+	Press(false);
+	TestFalse(TEXT("F9 restores UI from viewport focus"), Viewport->IsUIHidden());
+	TestEqual(TEXT("Restored UI is opaque"), Layers->AsWidget()->GetRenderOpacity(), 1.f);
+	TestTrue(TEXT("Restored buttons accept clicks"), Layers->AsWidget()->GetVisibility().AreChildrenHitTestVisible());
 	return true;
 }
 

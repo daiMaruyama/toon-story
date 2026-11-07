@@ -116,8 +116,9 @@ public:
 			}
 		}
 		FTBEmoteSample Gesture;
+		const bool bEmoting = Pawn->GetEmoteSample(Gesture);
 		const bool Standing = Pawn->GetCharacterMovement()->IsMovingOnGround() && !Pawn->bIsCrouched &&
-		    !Pawn->CarriedToy && !Pawn->CarriedDummy && !Pawn->GetEmoteSample(Gesture);
+		    !Pawn->CarriedToy && !Pawn->CarriedDummy && (!bEmoting || Gesture.Kind == ETBEmoteKind::HairDisappear);
 		const float Desired = Standing ? 1.f - FMath::Clamp(float(Pawn->GetVelocity().Size2D()) / 40.f, 0.f, 1.f) : 0.f;
 		StandWeight = FMath::FInterpTo(StandWeight, Desired, Delta, 12.f);
 		const auto& Transform = Instance->GetSkelMeshComponent()->GetComponentTransform();

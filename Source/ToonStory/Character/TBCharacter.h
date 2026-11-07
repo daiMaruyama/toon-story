@@ -36,7 +36,7 @@ struct FTBHumanLookSnapshot
 };
 
 UENUM()
-enum class ETBEmoteKind : uint8 { None, Wave, Cheer, Dance, WildDance };
+enum class ETBEmoteKind : uint8 { None, Wave, Cheer, Dance, WildDance, Surprise, HairDisappear };
 
 USTRUCT()
 struct FTBEmoteSnapshot
@@ -216,6 +216,9 @@ private:
 	bool EmoteGameplayEligible() const;
 	int32 EmoteVisualIndex() const;
 	void UpdateEmote();
+	void UpdateHairEmote();
+	void RestoreEmoteHair();
+	TMap<TWeakObjectPtr<UPrimitiveComponent>, bool> EmoteHairVisibility;
 	void CancelEmote();
 	UPROPERTY(ReplicatedUsing = OnRep_HumanLook)
 	FTBHumanLookSnapshot HumanLook;

@@ -37,6 +37,25 @@ ATBLightSwitch::ATBLightSwitch()
 	Mesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
 }
 
+FVector ATBLightSwitch::GetInteractionLocation() const
+{
+	if (!Mesh || !Mesh->GetStaticMesh()) return Super::GetInteractionLocation();
+	// The plate faces actor +X. Trace to its front, not the mounting pivot:
+	// a wall's simple collision can extend a few cm past its rendered surface.
+	// Keep clearance in world cm even for scaled switches; walls along the rest
+	// of the ray (including use from the back) still block normal item interaction.
+	const FBox LocalBounds = Mesh->GetStaticMesh()->GetBoundingBox();
+	const FTransform& Transform = Mesh->GetComponentTransform();
+	const FVector Forward = GetActorForwardVector();
+	const FVector Extent = LocalBounds.GetExtent();
+	const double FrontExtent =
+		FMath::Abs(FVector::DotProduct(Forward, Transform.TransformVector(FVector(Extent.X, 0, 0)))) +
+		FMath::Abs(FVector::DotProduct(Forward, Transform.TransformVector(FVector(0, Extent.Y, 0)))) +
+		FMath::Abs(FVector::DotProduct(Forward, Transform.TransformVector(FVector(0, 0, Extent.Z))));
+	constexpr double MountingClearance = 6.0;
+	return Transform.TransformPosition(LocalBounds.GetCenter()) + Forward * (FrontExtent + MountingClearance);
+}
+
 void ATBLightSwitch::ApplyData()
 {
 	LoadedData = SwitchData.LoadSynchronous();

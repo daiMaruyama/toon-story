@@ -91,6 +91,11 @@ bool FTBHumanAppearanceGCTest::RunTest(const FString&)
 			if (Part->GetName() == TEXT("Face")) FaceMesh = Part;
 		}
 		if (!TestNotNull(TEXT("Retargeted body"), BodyMesh) || !TestNotNull(TEXT("Face"), FaceMesh)) return false;
+		// A rear-facing entrance shot can occlude the face while its bound groom
+		// is visible. Exercise the engine's visibility gate, not a forced pose tick.
+		FaceMesh->bRecentlyRendered = false;
+		TestTrue(TEXT("Offscreen face continues driving the groom binding pose"), FaceMesh->ShouldTickPose());
+		TestTrue(TEXT("Offscreen face continues refreshing groom binding bones"), FaceMesh->ShouldUpdateTransform(false));
 		for (auto* Part : {Character->GetMesh(), BodyMesh, FaceMesh})
 		{
 			Part->TickAnimation(1.f / 30.f, false);

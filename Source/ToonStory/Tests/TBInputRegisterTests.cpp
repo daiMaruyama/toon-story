@@ -124,7 +124,9 @@ bool FTBRegisteredSurviveGCTest::RunTest(const FString& Parameters)
 	                                 {TEXT("Menu"), &Settings->MenuAction},
 	                                 {TEXT("EmoteWave"), &Settings->EmoteWaveAction},
 	                                 {TEXT("EmoteCheer"), &Settings->EmoteCheerAction},
-	                                 {TEXT("EmoteDance"), &Settings->EmoteDanceAction}})
+	                                 {TEXT("EmoteDance"), &Settings->EmoteDanceAction},
+	                                 {TEXT("EmoteSurprise"), &Settings->EmoteSurpriseAction},
+	                                 {TEXT("EmoteHairDisappear"), &Settings->EmoteHairDisappearAction}})
 	{
 		const UInputAction* Action = Soft->LoadSynchronous();
 		const bool bOnContext = Action && Contexts.ContainsByPredicate([Action](const UInputMappingContext* Imc) {
@@ -134,9 +136,9 @@ bool FTBRegisteredSurviveGCTest::RunTest(const FString& Parameters)
 		TestTrue(*FString::Printf(TEXT("%s action is on one of the contexts"), Name), bOnContext);
 	}
 	const UInputMappingContext* Common = Settings->CommonContext.LoadSynchronous();
-	const TSoftObjectPtr<UInputAction> EmoteActions[] = {Settings->EmoteWaveAction, Settings->EmoteCheerAction, Settings->EmoteDanceAction};
-	const FName EmoteNames[] = {TB::Keys::EmoteWave, TB::Keys::EmoteCheer, TB::Keys::EmoteDance};
-	const FKey Defaults[] = {EKeys::One, EKeys::Two, EKeys::Three};
+	const TSoftObjectPtr<UInputAction> EmoteActions[] = {Settings->EmoteWaveAction, Settings->EmoteCheerAction, Settings->EmoteDanceAction, Settings->EmoteSurpriseAction, Settings->EmoteHairDisappearAction};
+	const FName EmoteNames[] = {TB::Keys::EmoteWave, TB::Keys::EmoteCheer, TB::Keys::EmoteDance, TB::Keys::EmoteSurprise, TB::Keys::EmoteHairDisappear};
+	const FKey Defaults[] = {EKeys::One, EKeys::Two, EKeys::Three, EKeys::Four, EKeys::Five};
 	TMap<FName, FKey> SavedKeys;
 	for (const FName& Name : TB::Keys::All())
 	{

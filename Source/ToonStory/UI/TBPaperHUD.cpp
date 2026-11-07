@@ -206,9 +206,9 @@ void ATBHUD::DrawLobby()
 		       PC->HasAuthority() ? FString::Printf(TEXT("あそびはじめる [%s]"), *StartKey) : FString(TEXT("ホストを待っています")),
 		       858, Bottom, 294, CanStart, CanStart);
 		DrawNotice(Bottom - 166, 1144, 110);
-		Text(FString::Printf(TEXT("移動キーで歩く / エモート %s・%s・%s / Escで設定"),
+		Text(FString::Printf(TEXT("移動キーで歩く / エモート %s・%s・%s・%s・%s / Escで設定"),
 		    *TB::KeyLabel(PC, TB::Keys::EmoteWave), *TB::KeyLabel(PC, TB::Keys::EmoteCheer),
-		    *TB::KeyLabel(PC, TB::Keys::EmoteDance)), 48, Bottom - 76, .8f, Ink);
+		    *TB::KeyLabel(PC, TB::Keys::EmoteDance), *TB::KeyLabel(PC, TB::Keys::EmoteSurprise), *TB::KeyLabel(PC, TB::Keys::EmoteHairDisappear)), 48, Bottom - 76, .8f, Ink);
 		return;
 	}
 	DrawRect(FLinearColor(.009f, .018f, .027f, .48f), 0, 0, Canvas->ClipX, Canvas->ClipY);
@@ -413,7 +413,9 @@ void ATBHUD::DrawMatch(const ATBGameState& MatchState, ATBController& Controller
 	FTBEmoteSample Emote;
 	if (const auto* EmoteCharacter = Controller.GetPawn<ATBCharacter>(); EmoteCharacter && EmoteCharacter->GetEmoteSample(Emote))
 		Objective = Emote.Kind == ETBEmoteKind::Wave ? TEXT("手ふり中。移動するとやめます。") :
-		    Emote.Kind == ETBEmoteKind::Cheer ? TEXT("よろこび中。移動するとやめます。") : TEXT("ダンス中。移動するとやめます。");
+		    Emote.Kind == ETBEmoteKind::Cheer ? TEXT("よろこび中。移動するとやめます。") :
+		    Emote.Kind == ETBEmoteKind::HairDisappear ? TEXT("髪かくし中。移動するとやめます。") :
+		    Emote.Kind == ETBEmoteKind::Surprise ? TEXT("びっくり中。移動するとやめます。") : TEXT("ダンス中。移動するとやめます。");
 	if (Player && Player->Team == ETBTeam::Toy)
 	{
 		switch (Player->ToyState)

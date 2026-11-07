@@ -137,7 +137,7 @@ bool FTBKeyLabelTest::RunTest(const FString& Parameters)
 		AddInfo(FString::Printf(TEXT("row %s: %d keys, keyboard=%d, gamepad=%d"), *Name.ToString(), Keys.Num(), bKeyboard, bGamepad));
 		const bool bHasPadRow = Name != TB::Keys::MoveForward && Name != TB::Keys::MoveBack && Name != TB::Keys::MoveLeft &&
 		                        Name != TB::Keys::MoveRight && Name != TB::Keys::LobbyReady && Name != TB::Keys::LobbyStart &&
-		                        Name != TB::Keys::EmoteWave && Name != TB::Keys::EmoteCheer && Name != TB::Keys::EmoteDance;
+		                        Name != TB::Keys::EmoteWave && Name != TB::Keys::EmoteCheer && Name != TB::Keys::EmoteDance && Name != TB::Keys::EmoteSurprise && Name != TB::Keys::EmoteHairDisappear;
 		TestTrue(*FString::Printf(TEXT("%s has a keyboard or mouse binding"), *Name.ToString()), bKeyboard);
 		if (bHasPadRow)
 		{
