@@ -27,6 +27,8 @@
 #include "GamePlay/Items/TBInteractable.h"
 #include "GamePlay/Items/TBInteractionTarget.h"
 #include "GamePlay/Items/TBWalkieTalkie.h"
+#include "GamePlay/Items/TBEscapeVehicle.h"
+#include "Data/TBEscapeVehicleData.h"
 #include "GamePlay/TBRuleMath.h"
 #include "Data/TBCharacterData.h"
 #include "Data/TBRuleData.h"
@@ -486,7 +488,8 @@ bool ATBCharacter::IsCelebrating() const
 	const auto* Info = TBPS();
 	return State && Info && State->Phase == ETBPhase::Results &&
 	    ((State->Winner == ETBWinner::Humans && Info->Team == ETBTeam::Human) ||
-	     (State->Winner == ETBWinner::Toys && Info->Team == ETBTeam::Toy));
+	     (State->Winner == ETBWinner::Toys && Info->Team == ETBTeam::Toy &&
+	      (!State->bVehicleEscapeResult || Info->bEscapedInVehicle)));
 }
 
 bool ATBCharacter::IsGazeFrozen() const
@@ -506,6 +509,7 @@ bool ATBCharacter::IsGazed() const
 
 bool ATBCharacter::IsPhysicsLocked() const
 {
+	if (EscapeVehicle) return true;
 	const auto* MatchInfo = TB::GS(GetWorld());
 	const auto* ToyPlayerInfo = TBPS();
 	if (MatchInfo && MatchInfo->Phase == ETBPhase::Lobby && MatchInfo->bTravelPending) return true;
@@ -589,7 +593,7 @@ void ATBCharacter::ApplyState()
 		for (auto* Part : TInlineComponentArray<UPrimitiveComponent*>(Assembly))
 			Part->SetOwnerNoSee(IsHuman() && !IsCelebrating());
 	if (!Toy && LoadedChildMesh) GetMesh()->SetVisibility(!HumanVisual->GetChildActor());
-	const bool Held = ToyPlayerInfo->ToyState == ETBToyState::Grabbed ||
+	const bool Held = EscapeVehicle || ToyPlayerInfo->ToyState == ETBToyState::Grabbed ||
 	                  ToyPlayerInfo->ToyState == ETBToyState::Carried ||
 	                  ToyPlayerInfo->ToyState == ETBToyState::Storing;
 	GetCapsuleComponent()->SetCollisionEnabled(Held ? ECollisionEnabled::NoCollision
@@ -647,7 +651,7 @@ void ATBCharacter::UnPossessed()
 
 bool ATBCharacter::CanBeFrozenBy(const ATBCharacter* Observer) const
 {
-	return Observer && !ATBRoomLighting::ProtectsFromGaze(GetWorld(), GetActorLocation(), Observer->GetActorLocation());
+	return !EscapeVehicle && Observer && !ATBRoomLighting::ProtectsFromGaze(GetWorld(), GetActorLocation(), Observer->GetActorLocation());
 }
 
 void ATBCharacter::SetFrozen(bool bFrozen)
@@ -765,6 +769,20 @@ void ATBCharacter::UpdateCarryCamera()
 void ATBCharacter::CalcCamera(float DeltaTime, FMinimalViewInfo& OutResult)
 {
 	Super::CalcCamera(DeltaTime, OutResult);
+	if (IsValid(EscapeVehicle))
+	{
+		const FVector Focus = EscapeVehicle->GetActorLocation() + FVector(0, 0, 45);
+		const FRotator View = GetControlRotation();
+		const FVector Desired = Focus - View.Vector() * 250.f;
+		FCollisionQueryParams Query(SCENE_QUERY_STAT(TBEscapeVehicleCamera), false, this);
+		Query.AddIgnoredActor(EscapeVehicle);
+		FHitResult Hit;
+		GetWorld()->SweepSingleByChannel(Hit, Focus, Desired, FQuat::Identity, ECC_Camera,
+		    FCollisionShape::MakeSphere(8.f), Query);
+		OutResult.Location = Hit.bBlockingHit ? Hit.Location : Desired;
+		OutResult.Rotation = View;
+		return;
+	}
 	if (IsCelebrating())
 	{
 		const FVector Focus = GetActorLocation() + FVector(0, 0, BaseEyeHeight * .5f);
@@ -850,6 +868,7 @@ void ATBCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
 	DOREPLIFETIME(ATBCharacter, Carrier);
 	DOREPLIFETIME(ATBCharacter, CarriedToy);
 	DOREPLIFETIME(ATBCharacter, CarriedDummy);
+	DOREPLIFETIME(ATBCharacter, EscapeVehicle);
 	DOREPLIFETIME(ATBCharacter, HumanLook);
 	DOREPLIFETIME(ATBCharacter, Emote);
 	DOREPLIFETIME_CONDITION(ATBCharacter, ContactItem, COND_OwnerOnly);
@@ -878,6 +897,11 @@ void ATBCharacter::Tick(float DeltaSeconds)
 	if (!HasAuthority())
 	{
 		return;
+	}
+	if (EscapeVehicle && VehicleExitStarted >= 0 &&
+	    GetWorld()->GetTimeSeconds() - VehicleExitStarted >= FMath::Max(.1f, EscapeVehicle->Data().ExitHoldSeconds))
+	{
+		EscapeVehicle->Leave(this);
 	}
 	auto* ToyPlayerInfo = TBPS();
 	if (!ToyPlayerInfo)
@@ -996,6 +1020,11 @@ void ATBCharacter::DropToy()
 void ATBCharacter::ServerInteract_Implementation()
 {
 	const double Now = GetWorld()->GetTimeSeconds();
+	if (EscapeVehicle)
+	{
+		if (CanAct()) VehicleExitStarted = Now;
+		return;
+	}
 	if (Now - LastRequest < .12 || !CanAct())
 	{
 		return;
@@ -1070,7 +1099,13 @@ void ATBCharacter::ServerInteract_Implementation()
 
 void ATBCharacter::ServerReleaseInteract_Implementation()
 {
+	VehicleExitStarted = -1;
 	ClearHeldInteraction();
+}
+
+void ATBCharacter::ServerVehicleInput_Implementation(FVector2D Input)
+{
+	if (IsValid(EscapeVehicle) && CanAct()) EscapeVehicle->SetDrivingInput(this, Input);
 }
 
 void ATBCharacter::ServerDrop_Implementation()
@@ -1176,6 +1211,7 @@ bool ATBCharacter::TryTaunt()
 
 void ATBCharacter::Forward(float InputValue)
 {
+	if (EscapeVehicle) return;
 	if (!IsMovementLocked())
 	{
 		AddMovementInput(FRotator(0, GetControlRotation().Yaw, 0).Vector(), InputValue);
@@ -1185,6 +1221,11 @@ void ATBCharacter::Forward(float InputValue)
 void ATBCharacter::Move(const FInputActionValue& Value)
 {
 	const FVector2D Axis = Value.Get<FVector2D>();
+	if (EscapeVehicle)
+	{
+		ServerVehicleInput(Axis);
+		return;
+	}
 	Forward(Axis.Y);
 	Right(Axis.X);
 }
@@ -1198,6 +1239,7 @@ void ATBCharacter::Look(const FInputActionValue& Value)
 
 void ATBCharacter::Right(float InputValue)
 {
+	if (EscapeVehicle) return;
 	if (!IsMovementLocked())
 	{
 		AddMovementInput(FRotationMatrix(FRotator(0, GetControlRotation().Yaw, 0)).GetUnitAxis(EAxis::Y), InputValue);
@@ -1207,7 +1249,7 @@ void ATBCharacter::Right(float InputValue)
 // 運ばれている間は移動できないが、人間の周りを左右に回り込める。
 void ATBCharacter::Yaw(float InputValue)
 {
-	if (!IsMovementLocked() || Carrier)
+	if (!IsMovementLocked() || Carrier || EscapeVehicle)
 	{
 		AddControllerYawInput(InputValue * LookScale().X);
 	}
@@ -1223,7 +1265,7 @@ FVector2D ATBCharacter::LookScale()
 // 運ばれている間の見下ろし角は掴まれた時点の値で固定する。
 void ATBCharacter::Pitch(float InputValue)
 {
-	if (!IsMovementLocked())
+	if (!IsMovementLocked() || EscapeVehicle)
 	{
 		AddControllerPitchInput(InputValue * LookScale().Y);
 	}

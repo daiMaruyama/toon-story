@@ -17,6 +17,7 @@ class USkeletalMesh;
 class UAnimInstance;
 class UTBVoiceComponent;
 class ATBDummyToy;
+class ATBEscapeVehicle;
 
 // Presentation of the server's gaze direction, independent of camera effects and root turning lag.
 USTRUCT()
@@ -109,6 +110,11 @@ public:
 	TObjectPtr<ATBCharacter> CarriedToy;
 	UPROPERTY(Replicated, BlueprintReadOnly)
 	TObjectPtr<ATBDummyToy> CarriedDummy;
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="脱出車両")
+	TObjectPtr<ATBEscapeVehicle> EscapeVehicle;
+	UFUNCTION(Server, Unreliable)
+	void ServerVehicleInput(FVector2D Input);
+	double VehicleExitStarted = -1;
 	UFUNCTION(BlueprintCallable, Category = "Movement")
 	void SetSprintRequested(bool bRequested);
 	void SetGazeRequested(bool bRequested);
