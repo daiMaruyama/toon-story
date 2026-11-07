@@ -98,6 +98,8 @@ void ATBGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
 	DOREPLIFETIME(ATBGameState, EndTime);
 	DOREPLIFETIME(ATBGameState, LobbyReturnError);
 	DOREPLIFETIME(ATBGameState, Collected);
+	DOREPLIFETIME(ATBGameState, bEscapePhase);
+	DOREPLIFETIME(ATBGameState, bVehicleEscapeResult);
 	DOREPLIFETIME(ATBGameState, BoxedCount);
 	DOREPLIFETIME(ATBGameState, Box);
 	DOREPLIFETIME(ATBGameState, HidePreparation);

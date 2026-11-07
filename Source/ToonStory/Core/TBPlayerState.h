@@ -34,6 +34,8 @@ public:
 	ETBTeam Preference = ETBTeam::None;
 	UPROPERTY(Replicated, BlueprintReadOnly)
 	int32 Items = 0;
+	UPROPERTY(Replicated, BlueprintReadOnly)
+	bool bEscapedInVehicle = false;
 	UFUNCTION()
 	void OnRep_State();
 	virtual void CopyProperties(APlayerState* NewState) override;

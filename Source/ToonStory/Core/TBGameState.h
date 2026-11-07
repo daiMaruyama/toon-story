@@ -71,6 +71,10 @@ public:
 	UPROPERTY(Replicated, BlueprintReadOnly)
 	int32 Collected = 0;
 	UPROPERTY(Replicated, BlueprintReadOnly)
+	bool bEscapePhase = false;
+	UPROPERTY(Replicated, BlueprintReadOnly)
+	bool bVehicleEscapeResult = false;
+	UPROPERTY(Replicated, BlueprintReadOnly)
 	int32 BoxedCount = 0;
 	UPROPERTY(Replicated, BlueprintReadOnly)
 	TObjectPtr<ATBBox> Box;
