@@ -43,7 +43,9 @@ void ATBHUD::DrawGazeEffects(ATBController& Controller)
 	                                      Gazed ? .12f : .5f, .4f);
 	if (GazeShadow > 0.f)
 	{
-		DrawEdgeShade(PaperShadow, Short * .3f * GazeShadow, .8f * GazeShadow);
+		// 見られているだけの間は、細い影をゆっくり脈打たせて気づかせる。凝視されたら太く濃く寄せきる。
+		const float Pulse = State == EGazeState::Seen ? .8f + .2f * FMath::Sin(float(Now) * 4.f) : 1.f;
+		DrawEdgeShade(PaperShadow, Short * .4f * GazeShadow, FMath::Min(1.f, GazeShadow * 1.4f) * .85f * Pulse);
 	}
 	if (Gazed && !bWasGazed)
 	{
@@ -77,7 +79,7 @@ void ATBHUD::DrawGazeEffects(ATBController& Controller)
 		const float Zoom = FMath::SmoothStep(0.f, 1.f, Pawn->GetGazeZoom());
 		if (Zoom > 0.f)
 		{
-			DrawEdgeShade(FLinearColor(.02f, .02f, .03f), Short * .32f * Zoom, .6f * Zoom);
+			DrawEdgeShade(FLinearColor(.02f, .02f, .03f), Short * .38f * Zoom, .7f * Zoom);
 			// 線は少しずつ入れ替えて、止まった絵に見せない。
 			FRandomStream Lines(int32(Now / .07));
 			// 端だけに短く出し、中心の見たいものには重ねない。
@@ -105,7 +107,7 @@ void ATBHUD::DrawEdgeShade(FLinearColor Color, float Thickness, float Alpha)
 	for (int32 I = 0; I < Bands; ++I)
 	{
 		const float Inset = Band * I;
-		Color.A = Alpha * FMath::Square(1.f - float(I) / Bands);
+		Color.A = Alpha * FMath::Pow(1.f - float(I) / Bands, 1.5f);
 		DrawRect(Color, 0, Inset, W, Band);
 		DrawRect(Color, 0, H - Inset - Band, W, Band);
 		DrawRect(Color, Inset, 0, Band, H);
