@@ -208,4 +208,136 @@ bool FTBGazeFreezeTest::RunTest(const FString&)
 	Expect(TEXT("NPC tracking freezes after the delay"), ETBGazeState::Frozen);
 	return true;
 }
+
+// 人間2人。誰か1人が凝視していれば止まり、両方とも凝視していなければ止まらない。
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBGazeTwoHumansTest, "ToonStory.Gaze.TwoHumans",
+                                 EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+bool FTBGazeTwoHumansTest::RunTest(const FString&)
+{
+	UWorld* World = nullptr;
+	for (const auto& Context : GEngine->GetWorldContexts())
+		if (Context.WorldType == EWorldType::Game) World = Context.World();
+	if (!World || World->GetNetMode() != NM_Standalone) return false;
+	auto* Mode = World->GetAuthGameMode<ATBGameMode>();
+	auto* State = World->GetGameState<ATBGameState>();
+	auto* PC = Cast<ATBController>(World->GetFirstPlayerController());
+	auto* Toy = PC ? PC->GetPawn<ATBCharacter>() : nullptr;
+	if (!TestNotNull(TEXT("Mode"), Mode) || !TestNotNull(TEXT("State"), State) || !TestNotNull(TEXT("Toy"), Toy) || !Toy->TBPS())
+		return false;
+	TBTest::FPlayingScope Playing(*State, World->GetTimeSeconds() + 600);
+	auto* Info = Toy->TBPS();
+	const auto OldTeam = Info->Team;
+	const auto OldState = Info->ToyState;
+	const bool OldFrozen = Info->bFrozen;
+	const auto OldTransform = Toy->GetActorTransform();
+	auto& Gaze = const_cast<UTBRuleData&>(TB::Rules()).Gaze;
+	const auto OldGaze = Gaze;
+	FActorSpawnParameters Spawn;
+	Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	TArray<ATBController*> Controllers;
+	TArray<ATBCharacter*> Humans;
+	TArray<ATBPlayerState*> States;
+	for (const FVector& Where : {FVector(0, -300, 10000), FVector(300, 0, 10000)})
+	{
+		auto* HumanPC = World->SpawnActor<ATBController>();
+		auto* Human = World->SpawnActor<ATBCharacter>(Where, FRotator::ZeroRotator, Spawn);
+		auto* HumanPS = HumanPC->GetPlayerState<ATBPlayerState>();
+		if (!HumanPS)
+		{
+			HumanPS = World->SpawnActor<ATBPlayerState>();
+			HumanPC->PlayerState = HumanPS;
+			State->AddPlayerState(HumanPS);
+		}
+		HumanPS->Team = ETBTeam::Human;
+		HumanPC->Possess(Human);
+		Human->ApplyState();
+		Controllers.Add(HumanPC);
+		Humans.Add(Human);
+		States.Add(HumanPS);
+	}
+	Info->Team = ETBTeam::Toy;
+	Info->ToyState = ETBToyState::Free;
+	Info->bFrozen = false;
+	Info->SetGaze(ETBGazeState::None);
+	Toy->ApplyState();
+	Toy->SetActorLocation(FVector(0, 0, 10000));
+	ON_SCOPE_EXIT
+	{
+		Gaze = OldGaze;
+		for (int32 I = 0; I < Humans.Num(); ++I)
+		{
+			Controllers[I]->UnPossess();
+			Humans[I]->Destroy();
+			State->RemovePlayerState(States[I]);
+			States[I]->Destroy();
+			Controllers[I]->Destroy();
+		}
+		Info->Team = OldTeam;
+		Info->ToyState = OldState;
+		Info->bFrozen = OldFrozen;
+		Info->SetGaze(ETBGazeState::None);
+		Toy->ApplyState();
+		Toy->SetActorTransform(OldTransform);
+	};
+	Gaze.FreezeDelaySeconds = .3f;
+	const float Half = Gaze.FreezeDelaySeconds * .5f;
+	auto Look = [&](int32 Index, float Yaw = 0.f)
+	{
+		Controllers[Index]->SetControlRotation(
+		    (Toy->GetActorLocation() - Humans[Index]->GetPawnViewLocation()).Rotation() + FRotator(0, Yaw, 0));
+	};
+	auto Expect = [&](const TCHAR* What, ETBGazeState Expected)
+	{
+		TestEqual(What, Info->GazeState, Expected);
+		TestEqual(*FString::Printf(TEXT("%s (frozen flag)"), What), Info->bFrozen, Expected == ETBGazeState::Frozen);
+	};
+	auto Reset = [&]()
+	{
+		for (auto* Human : Humans) Human->SetGazeRequested(false);
+		Look(0, 180.f);
+		Look(1, 180.f);
+		Mode->EvaluateGaze(.01f);
+	};
+	Look(0);
+	Look(1);
+
+	// 2人とも見ているだけなら止まらない。
+	Mode->EvaluateGaze(5.f);
+	Expect(TEXT("Two humans without gaze do not freeze"), ETBGazeState::Seen);
+	TestTrue(TEXT("Accessor reports seen"), Toy->IsSeen() && !Toy->IsGazed() && !Toy->IsGazeFrozen());
+
+	// 片方だけが凝視すれば止まる。
+	Humans[1]->SetGazeRequested(true);
+	Mode->EvaluateGaze(Half);
+	Expect(TEXT("One gazing human starts counting"), ETBGazeState::Gazed);
+	TestTrue(TEXT("Accessor reports gazed"), !Toy->IsSeen() && Toy->IsGazed() && !Toy->IsGazeFrozen());
+	Mode->EvaluateGaze(Half);
+	Expect(TEXT("One gazing human freezes the toy"), ETBGazeState::Frozen);
+	TestTrue(TEXT("Accessor reports frozen"), !Toy->IsSeen() && !Toy->IsGazed() && Toy->IsGazeFrozen());
+
+	// 2人とも凝視して止めたあと、片方がやめても、もう片方が凝視していれば止まったまま（解除a/b）。
+	for (const bool bReleaseWhenGazeEnds : {false, true})
+	{
+		Gaze.bReleaseWhenGazeEnds = bReleaseWhenGazeEnds;
+		const TCHAR* Rule = bReleaseWhenGazeEnds ? TEXT("b") : TEXT("a");
+		Reset();
+		Look(0);
+		Look(1);
+		Humans[0]->SetGazeRequested(true);
+		Humans[1]->SetGazeRequested(true);
+		Mode->EvaluateGaze(Gaze.FreezeDelaySeconds);
+		Expect(*FString::Printf(TEXT("Release %s: both gazing freezes"), Rule), ETBGazeState::Frozen);
+		Humans[0]->SetGazeRequested(false);
+		Mode->EvaluateGaze(1.f);
+		Expect(*FString::Printf(TEXT("Release %s: still frozen while the other human gazes"), Rule), ETBGazeState::Frozen);
+		Look(0, 180.f);
+		Mode->EvaluateGaze(1.f);
+		Expect(*FString::Printf(TEXT("Release %s: still frozen after the first looks away"), Rule), ETBGazeState::Frozen);
+		Humans[1]->SetGazeRequested(false);
+		Mode->EvaluateGaze(.01f);
+		Expect(*FString::Printf(TEXT("Release %s: last gaze ends"), Rule),
+		       bReleaseWhenGazeEnds ? ETBGazeState::Seen : ETBGazeState::Frozen);
+	}
+	return true;
+}
 #endif

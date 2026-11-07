@@ -59,6 +59,7 @@ private:
 	friend class FTBHousePartyTest;
 	friend class FTBMirrorGazeTest;
 	friend class FTBGazeFreezeTest;
+	friend class FTBGazeTwoHumansTest;
 	friend class FTBHidePreparationTest;
 	friend class FTBHumanEntranceTest;
 	friend class FTBBoxEscapeTest;

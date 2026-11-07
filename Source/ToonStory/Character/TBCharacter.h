@@ -136,6 +136,15 @@ public:
 	bool CanAct() const;
 	bool IsMovementLocked() const;
 	bool IsPhysicsLocked() const;
+	// 見られ方。GazeStateは本人にだけ届くので、IsSeenとIsGazedはサーバーとおもちゃ本人のPCでだけ正しい。
+	// 視界に入っているが、凝視はされていない。
+	UFUNCTION(BlueprintPure, Category = "Gaze")
+	bool IsSeen() const;
+	// 凝視されていて、止まる前。
+	UFUNCTION(BlueprintPure, Category = "Gaze")
+	bool IsGazed() const;
+	// 止まっている。bFrozenは全員に届く。
+	UFUNCTION(BlueprintPure, Category = "Gaze")
 	bool IsGazeFrozen() const;
 	// 本人のPCで、運搬カメラに切り替わっているか。降ろされた後は、視点を水平に戻してから false になる。
 	bool IsCarryViewActive() const { return bCarryView; }

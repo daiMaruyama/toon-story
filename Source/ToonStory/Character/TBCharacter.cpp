@@ -494,6 +494,16 @@ bool ATBCharacter::IsGazeFrozen() const
 	return !IsCelebrating() && TBPS() && TBPS()->bFrozen;
 }
 
+bool ATBCharacter::IsSeen() const
+{
+	return !IsGazeFrozen() && TBPS() && TBPS()->GazeState == ETBGazeState::Seen;
+}
+
+bool ATBCharacter::IsGazed() const
+{
+	return !IsGazeFrozen() && TBPS() && TBPS()->GazeState == ETBGazeState::Gazed;
+}
+
 bool ATBCharacter::IsPhysicsLocked() const
 {
 	const auto* MatchInfo = TB::GS(GetWorld());
