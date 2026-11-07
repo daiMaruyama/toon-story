@@ -5,6 +5,7 @@
 #include "TBPaperStyle.h"
 #include "TBOptionsMenu.h"
 #include "Audio/TBAudioSubsystem.h"
+#include "Character/TBCharacter.h"
 #include "Core/TBPlayerState.h"
 #include "Core/TBGameState.h"
 #include "Core/TBController.h"
@@ -201,6 +202,14 @@ void ATBHUD::DrawDebugHUD()
 	{
 		Line(FString::Printf(TEXT("Rescue: %.0f%% | Rescuers: %d"), State->Box->RescueProgress * 100,
 		                     State->Box->Rescuers));
+	}
+	// おもちゃ本人にだけ見られ方を出す。人間には出さない。
+	if (const auto* Toy = Cast<ATBCharacter>(GetOwningPawn()); Toy && Viewer && Viewer->Team == ETBTeam::Toy)
+	{
+		Line(FString::Printf(TEXT("凝視: %s"), Toy->IsGazeFrozen() ? TEXT("止まっている")
+		                                    : Toy->IsGazed()      ? TEXT("凝視されている")
+		                                    : Toy->IsSeen()       ? TEXT("見られている")
+		                                                          : TEXT("なし")));
 	}
 }
 

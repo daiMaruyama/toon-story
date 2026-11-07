@@ -111,6 +111,11 @@ public:
 	TObjectPtr<ATBDummyToy> CarriedDummy;
 	UFUNCTION(BlueprintCallable, Category = "Movement")
 	void SetSprintRequested(bool bRequested);
+	void SetGazeRequested(bool bRequested);
+	// 人間がボタンを押して凝視しているか。サーバーには移動のフラグで届く。
+	bool IsGazing() const;
+	// 凝視の視野の寄り具合（0〜1）。画面の演出に使う。
+	float GetGazeZoom() const { return GazeZoom; }
 	UFUNCTION()
 	void OnRep_Carrier();
 	ATBPlayerState* TBPS() const;
@@ -133,6 +138,15 @@ public:
 	bool CanAct() const;
 	bool IsMovementLocked() const;
 	bool IsPhysicsLocked() const;
+	// 見られ方。GazeStateは本人にだけ届くので、IsSeenとIsGazedはサーバーとおもちゃ本人のPCでだけ正しい。
+	// 視界に入っているが、凝視はされていない。
+	UFUNCTION(BlueprintPure, Category = "Gaze")
+	bool IsSeen() const;
+	// 凝視されていて、止まる前。
+	UFUNCTION(BlueprintPure, Category = "Gaze")
+	bool IsGazed() const;
+	// 止まっている。bFrozenは全員に届く。
+	UFUNCTION(BlueprintPure, Category = "Gaze")
 	bool IsGazeFrozen() const;
 	// 本人のPCで、運搬カメラに切り替わっているか。降ろされた後は、視点を水平に戻してから false になる。
 	bool IsCarryViewActive() const { return bCarryView; }
@@ -232,6 +246,8 @@ private:
 	void CrouchReleased();
 	void SprintPressed();
 	void SprintReleased();
+	void GazePressed();
+	void GazeReleased();
 	double LastRequest = -1000;
 	double LastTauntTime = -1000;
 	double LastPushTime = -1000;
@@ -253,6 +269,10 @@ private:
 	// 前フレームの視点を出した時点で運ばれていたか・しゃがんでいたか。切り替わった分の移動は段差に数えない。
 	bool bLastViewCarried = false;
 	bool bLastViewCrouched = false;
+	// 凝視の視野の寄り具合。0で通常、1で寄りきった状態。
+	float GazeZoom = 0;
+	// 凝視で止まった画面のセピアの濃さ。0で通常、1でセピア。
+	float FrozenSepia = 0;
 
 protected:
 	// 親子で表示の切り替え状態を共有する。

@@ -3,6 +3,7 @@
 #include "GamePlay/Items/TBMirror.h"
 #include "GamePlay/TBRoomLighting.h"
 #include "Data/TBMirrorData.h"
+#include "Data/TBRuleData.h"
 #include "Character/TBCharacter.h"
 #include "Character/TBNPCController.h"
 #include "Core/TBController.h"
@@ -84,15 +85,19 @@ bool FTBMirrorGazeTest::RunTest(const FString&)
 	ON_SCOPE_EXIT {
 		Room->Destroy(); Blocker->Destroy(); Mirror->Destroy(); HumanPC->UnPossess(); Human->Destroy();
 		State->RemovePlayerState(HumanPS); HumanPS->Destroy(); HumanPC->Destroy();
-		Toy->TBPS()->Team=OldTeam; Toy->TBPS()->ToyState=OldState; Toy->TBPS()->bFrozen=OldFrozen; Toy->ApplyState(); Toy->SetActorTransform(OldTransform);
+		Toy->TBPS()->Team=OldTeam; Toy->TBPS()->ToyState=OldState; Toy->TBPS()->bFrozen=OldFrozen; Toy->TBPS()->SetGaze(ETBGazeState::None); Toy->ApplyState(); Toy->SetActorTransform(OldTransform);
 	};
 	HumanPC->SetControlRotation((Mirror->GetActorLocation()-Human->GetPawnViewLocation()).Rotation());
 	Blocker->SetActorLocation(FVector(200,0,10000));
 	TestTrue(TEXT("Toy seen only through mirror"),Mode->Watched(Toy,Human));
-	Mode->EvaluateGaze(); TestTrue(TEXT("Server freezes reflected toy"),Toy->TBPS()->bFrozen);
+	// 映るだけでは止めない。凝視して初めて止まる。
+	Mode->EvaluateGaze(.3f); TestFalse(TEXT("Reflection alone does not freeze"),Toy->TBPS()->bFrozen);
+	TestEqual(TEXT("Reflected toy is seen"),Toy->TBPS()->GazeState,ETBGazeState::Seen);
+	Human->SetGazeRequested(true);
+	Mode->EvaluateGaze(.3f); TestTrue(TEXT("Server freezes gazed reflected toy"),Toy->TBPS()->bFrozen);
 	Blocker->SetActorLocation(FVector(100,-40,10000));
 	TestFalse(TEXT("Observer to mirror obstruction"),Mode->Watched(Toy,Human));
-	Mode->EvaluateGaze(); TestFalse(TEXT("Looking away or obstruction thaws toy"),Toy->TBPS()->bFrozen);
+	Mode->EvaluateGaze(.3f); TestFalse(TEXT("Looking away or obstruction thaws toy"),Toy->TBPS()->bFrozen);
 	Blocker->SetActorLocation(FVector(100,40,10000));
 	TestFalse(TEXT("Mirror to toy obstruction"),Mode->Watched(Toy,Human));
 	Box->SetCollisionEnabled(ECollisionEnabled::NoCollision);
@@ -100,14 +105,34 @@ bool FTBMirrorGazeTest::RunTest(const FString&)
 	TestFalse(TEXT("Mirror behind observer does not freeze"),Mode->Watched(Toy,Human));
 	HumanPC->SetControlRotation((Mirror->GetActorLocation()-Human->GetPawnViewLocation()).Rotation());
 	Mirror->SetActorHiddenInGame(true); TestFalse(TEXT("Hidden mirror cannot freeze"),Mode->Watched(Toy,Human)); Mirror->SetActorHiddenInGame(false);
+	// 鏡に映った像が凝視の範囲の外なら、画面に映っていても止めない。
+	HumanPC->SetControlRotation((Mirror->GetActorLocation()-Human->GetPawnViewLocation()).Rotation()+FRotator(0,20,0));
+	TestTrue(TEXT("Reflection off the gaze centre is still on screen"),Mode->Watched(Toy,Human));
+	Mode->EvaluateGaze(.3f); TestFalse(TEXT("Reflection outside the gaze range does not freeze"),Toy->TBPS()->bFrozen);
+	HumanPC->SetControlRotation((Mirror->GetActorLocation()-Human->GetPawnViewLocation()).Rotation());
+	Mode->EvaluateGaze(.3f); TestTrue(TEXT("Reflection inside the gaze range freezes"),Toy->TBPS()->bFrozen);
+	// 凝視の範囲を画面より広げても、画面の外に映った像では止めない。
+	{
+		auto& Gaze=const_cast<UTBRuleData&>(TB::Rules()).Gaze; const auto OldGaze=Gaze;
+		ON_SCOPE_EXIT { Gaze=OldGaze; };
+		const auto& Vision=TB::Rules().Vision;
+		const auto Zoomed=TBRuleMath::JudgeHalfAngles(Gaze.FieldOfView,Vision.AspectWidth,Vision.AspectHeight,Vision.EdgeMargin);
+		Gaze.HalfAngle=80.f;
+		HumanPC->SetControlRotation((Mirror->GetActorLocation()-Human->GetPawnViewLocation()).Rotation()+FRotator(0,Zoomed.Horizontal+10.f,0));
+		Mode->EvaluateGaze(.3f); TestFalse(TEXT("Wide gaze range does not freeze a reflection off screen"),Toy->TBPS()->bFrozen);
+		TestEqual(TEXT("Reflection off screen is not seen"),Toy->TBPS()->GazeState,ETBGazeState::None);
+	}
+	HumanPC->SetControlRotation((Mirror->GetActorLocation()-Human->GetPawnViewLocation()).Rotation());
+	Mode->EvaluateGaze(.3f); TestTrue(TEXT("Reflection back on screen freezes again"),Toy->TBPS()->bFrozen);
 	FTBInteractionContext Use; Use.InstigatorCharacter=Human; Use.ActionId=TEXT("Use");
 	TestFalse(TEXT("Passive mirror never accepts interact"),Mirror->TryInteract(Use));
 	auto* Data=NewObject<UTBMirrorData>(); Data->Width=500; Mirror->MirrorData=Data; Mirror->OnConstruction(Mirror->GetActorTransform());
 	Human->SetActorLocation(FVector(200,-400,10000-Human->BaseEyeHeight));
 	FVector Hit; Mirror->ReflectionPoint(Human->GetPawnViewLocation(),Toy->GetActorLocation(),Hit);
 	HumanPC->SetControlRotation((Hit-Human->GetPawnViewLocation()).Rotation());
-	Room->SetLightsOn(false); Mode->EvaluateGaze(); TestFalse(TEXT("Dark-room distance protection also applies through mirrors"),Toy->TBPS()->bFrozen);
-	Room->SetLightsOn(true); Mode->EvaluateGaze(); TestTrue(TEXT("Lit toy freezes through same reflected path"),Toy->TBPS()->bFrozen);
+	Room->SetLightsOn(false); Mode->EvaluateGaze(.3f); TestFalse(TEXT("Dark-room distance protection also applies through mirrors"),Toy->TBPS()->bFrozen);
+	Room->SetLightsOn(true); Mode->EvaluateGaze(.3f); TestTrue(TEXT("Lit toy freezes through same reflected path"),Toy->TBPS()->bFrozen);
+	Human->SetGazeRequested(false);
 	HumanPC->UnPossess();
 	auto* AI=World->SpawnActor<ATBNPCController>(); AI->SetActorTickEnabled(false); AI->Possess(Human);
 	auto* AIState=AI->GetPlayerState<ATBPlayerState>();
@@ -123,6 +148,8 @@ bool FTBMirrorGazeTest::RunTest(const FString&)
 		AI->OverlookChance=0; AI->RecognitionSeconds=0; AI->Tick(.4f); AI->UpdateControlRotation(.016f);
 		TestTrue(TEXT("NPC tracks the discovered reflected toy"),AI->IsTracking(Toy));
 		TestTrue(TEXT("NPC looks at reflection and freezes toy"),Mode->Watched(Toy,Human));
+		bool bSeen=false,bGazed=false; Mode->Observe(Toy,Human,bSeen,bGazed);
+		TestTrue(TEXT("NPC tracking the reflection counts as gazing"),bSeen && bGazed);
 		// 中心は鏡面の外、上半身だけが映る小さな鏡でも追跡を維持する。
 		FVector BoundsOrigin,BoundsExtent; Toy->GetActorBounds(true,BoundsOrigin,BoundsExtent);
 		const FVector Upper=BoundsOrigin+FVector(0,0,BoundsExtent.Z*.7f);
@@ -186,7 +213,7 @@ bool FTBMirrorVisualTest::RunTest(const FString&)
 	TArray<AActor*> Actors;
 	const bool Authored=FParse::Param(FCommandLine::Get(),TEXT("MirrorHouseScreenshot"));
 	ATBMirror* Mirror=nullptr;
-	if (Authored) { for(TActorIterator<ATBMirror> It(World);It;++It) {Mirror=*It;break;} }
+	if (Authored) { TActorIterator<ATBMirror> First(World); Mirror=First ? *First : nullptr; }
 	else { Mirror=World->SpawnActor<ATBMirror>(FVector(0,0,10000),FRotator::ZeroRotator); Actors.Add(Mirror); }
 	if (!TestNotNull(TEXT("Mirror to photograph"),Mirror)) { Mode->SetActorTickEnabled(ModeTick); Player->Team=OldTeam; return false; }
 	const FVector CameraPosition=Authored ? FVector(260,-430,150) : FVector(220,15,10015);

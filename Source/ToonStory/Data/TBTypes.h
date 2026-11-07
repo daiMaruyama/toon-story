@@ -20,6 +20,15 @@ enum class ETBToyState : uint8
 	Storing,
 	Boxed
 };
+// おもちゃの見られ方。並びはTBRuleMath::EGazeStateと同じ。
+UENUM(BlueprintType)
+enum class ETBGazeState : uint8
+{
+	None,
+	Seen,
+	Gazed,
+	Frozen
+};
 UENUM(BlueprintType)
 enum class ETBPhase : uint8
 {

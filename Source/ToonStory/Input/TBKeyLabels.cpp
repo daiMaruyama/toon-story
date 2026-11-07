@@ -35,7 +35,7 @@ namespace
 const TArray<FName>& TB::Keys::All()
 {
 	static const TArray<FName> Names = {MoveForward, MoveBack, MoveLeft, MoveRight, Jump, EmoteWave, EmoteCheer, EmoteDance, HumanCrouch, HumanInteract,
-	                                    HumanDrop, ToySprint, ToyInteract, ToyPush, ToyTaunt, LobbyReady, LobbyStart};
+	                                    HumanDrop, HumanGaze, ToySprint, ToyInteract, ToyPush, ToyTaunt, LobbyReady, LobbyStart};
 	return Names;
 }
 
@@ -54,7 +54,8 @@ const TArray<TB::FKeySection>& TB::KeySections()
 	    {TEXT("にんげん"),
 	     {{Keys::HumanCrouch, TEXT("しゃがむ")},
 	      {Keys::HumanInteract, TEXT("つかむ・収納")},
-	      {Keys::HumanDrop, TEXT("おろす")}}},
+	      {Keys::HumanDrop, TEXT("おろす")},
+	      {Keys::HumanGaze, TEXT("凝視")}}},
 	    {TEXT("おもちゃ"),
 	     {{Keys::ToySprint, TEXT("ダッシュ")},
 	      {Keys::ToyInteract, TEXT("救助")},
@@ -72,6 +73,7 @@ FString TB::FormatKey(const FKey& Key)
 		return TEXT("未割り当て");
 	}
 	if (Key == EKeys::LeftMouseButton) return TEXT("左クリック");
+	if (Key == EKeys::RightMouseButton) return TEXT("右クリック");
 	if (Key == EKeys::SpaceBar)
 	{
 		return TEXT("Space");

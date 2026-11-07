@@ -176,8 +176,11 @@ bool FTBRemapCheckTest::RunTest(const FString& Parameters)
 	                        EKeys::RightShift})
 	{
 		TestTrue(*FString::Printf(TEXT("%s is a usable key"), *Key.ToString()), TB::IsUsableKey(Key));
+		// 右クリックは凝視が使っているので、しゃがみに付けると重なる。
+		if (Key == EKeys::RightMouseButton) continue;
 		ExpectOK(FString::Printf(TEXT("%s is allowed for Human_Crouch"), *Key.ToString()), HumanCrouch, Key);
 	}
+	ExpectConflict(TEXT("Human vs Human gaze"), HumanCrouch, EKeys::RightMouseButton, HumanGaze);
 	return true;
 }
 

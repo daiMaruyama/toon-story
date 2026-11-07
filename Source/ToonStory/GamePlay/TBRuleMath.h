@@ -119,4 +119,84 @@ namespace TBRuleMath
 		const float Margin = EdgeMargin > 0.f ? EdgeMargin : 0.f;
 		return {HalfH > Margin ? HalfH - Margin : 0.f, HalfV > Margin ? HalfV - Margin : 0.f};
 	}
+
+	// 寄り具合Alpha（0〜1）を、Onなら1へ、そうでなければ0へ、Seconds秒で一定の速さで動かす。0秒なら即座に切り替える。
+	inline float AdvanceZoom(float Alpha, bool On, float DeltaSeconds, float Seconds)
+	{
+		const float Target = On ? 1.f : 0.f;
+		if (Seconds <= 0.f)
+		{
+			return Target;
+		}
+		const float Step = (DeltaSeconds > 0.f ? DeltaSeconds : 0.f) / Seconds;
+		const float Next = On ? Alpha + Step : Alpha - Step;
+		return Next > 1.f ? 1.f : (Next < 0.f ? 0.f : Next);
+	}
+
+	// 凝視の範囲。視線の奥行きDepthと、横・縦のずれから、中心からHalfAngle度の円の内側かを調べる。
+	inline bool InGazeCone(float Depth, float Side, float Up, float HalfAngle)
+	{
+		constexpr float DegToRad = 3.14159265f / 180.f;
+		if (Depth <= 0.f || HalfAngle <= 0.f)
+		{
+			return false;
+		}
+		const float Tan = std::tan((HalfAngle < 89.f ? HalfAngle : 89.f) * DegToRad);
+		return Side * Side + Up * Up <= Depth * Depth * Tan * Tan;
+	}
+
+	// おもちゃが見られている度合い。Seenは視界に入っているだけ、Gazedは凝視されて止まる前。
+	enum class EGazeState : unsigned char
+	{
+		None,
+		Seen,
+		Gazed,
+		Frozen
+	};
+
+	struct FGazeStep
+	{
+		EGazeState State = EGazeState::None;
+		// 凝視され続けている時間。Gazedの間だけ数える。
+		float GazedSeconds = 0.f;
+	};
+
+	// 1回分の評価で状態を進める。Seenは誰かの視界に入っている、Gazedは誰かに凝視されている。
+	// 凝視がFreezeDelaySeconds続くと止まる。途中で外れたら止めずに戻す。
+	// 止まったあとは、ReleaseWhenGazeEndsなら凝視が外れたら、そうでなければ視界から外れたら解く。
+	inline FGazeStep AdvanceGaze(FGazeStep Current, bool Seen, bool Gazed, float DeltaSeconds,
+	                             float FreezeDelaySeconds, bool ReleaseWhenGazeEnds)
+	{
+		const bool Visible = Seen || Gazed;
+		if (Current.State == EGazeState::Frozen && (ReleaseWhenGazeEnds ? Gazed : Visible))
+		{
+			return {EGazeState::Frozen, 0.f};
+		}
+		if (Gazed && Current.State != EGazeState::Frozen)
+		{
+			const float Elapsed = Current.GazedSeconds + (DeltaSeconds > 0.f ? DeltaSeconds : 0.f);
+			return Elapsed >= FreezeDelaySeconds ? FGazeStep{EGazeState::Frozen, 0.f}
+			                                     : FGazeStep{EGazeState::Gazed, Elapsed};
+		}
+		return {Visible ? EGazeState::Seen : EGazeState::None, 0.f};
+	}
+
+	// 演出の濃さ（0〜1）をTargetへ一定の速さで近づける。濃くするときはRiseSeconds、薄くするときはFallSeconds秒で全幅を動く。
+	inline float AdvanceShade(float Shade, float Target, float DeltaSeconds, float RiseSeconds, float FallSeconds)
+	{
+		const float Seconds = Target > Shade ? RiseSeconds : FallSeconds;
+		if (Seconds <= 0.f)
+		{
+			return Target;
+		}
+		const float Step = (DeltaSeconds > 0.f ? DeltaSeconds : 0.f) / Seconds;
+		return Target > Shade ? (Shade + Step < Target ? Shade + Step : Target)
+		                      : (Shade - Step > Target ? Shade - Step : Target);
+	}
+
+	// おもちゃの画面の端に寄せる紙の影の濃さ。視界に入っているだけなら薄く、凝視されたら寄りきる。
+	inline float GazeShadowTarget(EGazeState State)
+	{
+		return State == EGazeState::None ? 0.f : State == EGazeState::Seen ? .5f : 1.f;
+	}
 }

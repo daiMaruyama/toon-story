@@ -43,6 +43,8 @@ public:
 	TSoftObjectPtr<UInputAction> CrouchAction;
 	UPROPERTY(Config, EditAnywhere, Category = "入力", meta = (DisplayName = "ダッシュ"))
 	TSoftObjectPtr<UInputAction> SprintAction;
+	UPROPERTY(Config, EditAnywhere, Category = "入力", meta = (DisplayName = "凝視"))
+	TSoftObjectPtr<UInputAction> GazeAction;
 	UPROPERTY(Config, EditAnywhere, Category = "入力", meta = (DisplayName = "インタラクト"))
 	TSoftObjectPtr<UInputAction> InteractAction;
 	UPROPERTY(Config, EditAnywhere, Category = "入力", meta = (DisplayName = "置く"))

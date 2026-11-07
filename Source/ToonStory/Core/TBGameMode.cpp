@@ -745,6 +745,7 @@ void ATBGameMode::StartRound(APlayerController* PlayerController)
 		ToyPlayerInfo->Team = Entry.AssignedTeam;
 		ToyPlayerInfo->ToyState = ETBToyState::Free;
 		ToyPlayerInfo->bFrozen = false;
+		ToyPlayerInfo->SetGaze(ETBGazeState::None);
 		ToyPlayerInfo->Items = 0;
 		Entry.Body->ApplyState();
 	}
@@ -1033,6 +1034,7 @@ void ATBGameMode::ReturnFinishedMatchToLobby()
 			Info->Team = ETBTeam::None;
 			Info->ToyState = ETBToyState::Free;
 			Info->bFrozen = false;
+			Info->SetGaze(ETBGazeState::None);
 			Info->bReady = false;
 			Info->Items = 0;
 			Info->ForceNetUpdate();
@@ -1113,15 +1115,24 @@ void ATBGameMode::ResetStageInteractions()
 
 }
 
-// 頭・胴・足の3点について、視野の範囲と壁による遮蔽を確認する。
 bool ATBGameMode::Watched(ATBCharacter* Toy, ATBCharacter* Human) const
 {
+	bool bSeen = false, bGazed = false;
+	Observe(Toy, Human, bSeen, bGazed);
+	return bSeen;
+}
+
+// 頭・胴・足の3点について、視野の範囲と壁による遮蔽を確認する。凝視中なら、画面の中心の円に入っているかも見る。
+void ATBGameMode::Observe(ATBCharacter* Toy, ATBCharacter* Human, bool& bSeen, bool& bGazed) const
+{
+	bSeen = bGazed = false;
 	if (!Toy || !Human || !Human->GetController())
 	{
-		return false;
+		return;
 	}
 	// An NPC that has not noticed this toy must not freeze it just by facing it.
-	if (const auto* NPC = Cast<ATBNPCController>(Human->GetController()); NPC && !NPC->IsTracking(Toy)) return false;
+	const auto* NPC = Cast<ATBNPCController>(Human->GetController());
+	if (NPC && !NPC->IsTracking(Toy)) return;
 	const FVector Eye = Human->GetPawnViewLocation();
 	const FRotationMatrix Basis(Human->GetControlRotation());
 	const FVector View = Basis.GetUnitAxis(EAxis::X);
@@ -1132,32 +1143,50 @@ bool ATBGameMode::Watched(ATBCharacter* Toy, ATBCharacter* Human) const
 	// 画面が基準より狭い人は、映っている範囲まで判定を狭める。画面比は本人のPCから届いた値（届く前は基準の画面比）で、
 	// 嘘で得をできないよう基準より広げる方向には使わない。
 	const auto* HumanController = Cast<ATBController>(Human->GetController());
-	const auto Half = TBRuleMath::JudgeHalfAngles(Vision.FieldOfView, Vision.AspectWidth, Vision.AspectHeight,
+	// 凝視中はカメラが寄るので、寄った後の視野で判定する。寄るまでの短いずれは許す。
+	const auto& GazeRules = TB::Rules().Gaze;
+	const float FieldOfView = !NPC && Human->IsGazing() ? GazeRules.FieldOfView : Vision.FieldOfView;
+	const auto Half = TBRuleMath::JudgeHalfAngles(FieldOfView, Vision.AspectWidth, Vision.AspectHeight,
 	                                              Vision.EdgeMargin, HumanController ? HumanController->ViewAspect : 0.f);
 	const float TanH = FMath::Tan(FMath::DegreesToRadians(Half.Horizontal));
 	const float TanV = FMath::Tan(FMath::DegreesToRadians(Half.Vertical));
+	// NPCは見つめているおもちゃを凝視しているとみなすので、円は見ない。
+	const float GazeAngle = GazeRules.HalfAngle;
+	const bool bGazing = !NPC && Human->IsGazing() && GazeAngle > 0.f;
+	const float TanG = FMath::Tan(FMath::DegreesToRadians(FMath::Min(GazeAngle, 89.f)));
 	const float SampleHeight = Toy->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() * Vision.BodySampleRatio;
 	for (float HeightOffset : {SampleHeight, 0.f, -SampleHeight})
 	{
 		const FVector SamplePosition = Toy->GetActorLocation() + FVector(0, 0, HeightOffset);
 		const FVector Delta = SamplePosition - Eye;
 		const float Depth = FVector::DotProduct(View, Delta);
+		const float Side = FVector::DotProduct(Right, Delta);
+		const float Rise = FVector::DotProduct(Up, Delta);
 		// 画面外のおもちゃを凍結させないよう、縦横の視野を判定する。
-		if (Depth > 0 && FMath::Abs(FVector::DotProduct(Right, Delta)) <= Depth * TanH &&
-		    FMath::Abs(FVector::DotProduct(Up, Delta)) <= Depth * TanV &&
-		    TB::ClearPath(Human, Toy, Eye, SamplePosition))
+		const bool bOnScreen = Depth > 0 && FMath::Abs(Side) <= Depth * TanH && FMath::Abs(Rise) <= Depth * TanV;
+		// 凝視は画面に映っているときだけ。円を広げても画面の外は止めない。
+		const bool bInCone = bOnScreen && bGazing && TBRuleMath::InGazeCone(Depth, Side, Rise, GazeAngle);
+		if (((bOnScreen && !bSeen) || (bInCone && !bGazed)) && TB::ClearPath(Human, Toy, Eye, SamplePosition))
 		{
-			return true;
+			bSeen = true;
+			bGazed |= bInCone;
 		}
 		FVector MirrorHit;
-		if (ATBMirror::FindView(Human,Toy,Eye,Human->GetControlRotation(),SamplePosition,TanH,TanV,MirrorHit)) return true;
+		if (!bSeen && ATBMirror::FindView(Human,Toy,Eye,Human->GetControlRotation(),SamplePosition,TanH,TanV,MirrorHit)) bSeen = true;
+		// 鏡は凝視の範囲も四角で見る。画面からはみ出す分は削る。
+		if (bGazing && !bGazed && ATBMirror::FindView(Human,Toy,Eye,Human->GetControlRotation(),SamplePosition,
+		                                              FMath::Min(TanG,TanH),FMath::Min(TanG,TanV),MirrorHit))
+			bSeen = bGazed = true;
+		if (bSeen && (bGazed || !bGazing)) break;
 	}
-	return false;
+	if (NPC) bGazed = bSeen;
 }
 
-// 誰か1人に見られていれば凍結。全員の視線が外れた次の評価で解除する。
-void ATBGameMode::EvaluateGaze()
+// 視界に入るだけでは止めない。誰か1人にでも凝視され続けたら止める。
+void ATBGameMode::EvaluateGaze(float DeltaSeconds)
 {
+	using TBRuleMath::EGazeState;
+	static_assert(uint8(ETBGazeState::Frozen) == uint8(EGazeState::Frozen) && uint8(ETBGazeState::Gazed) == uint8(EGazeState::Gazed));
 	if (const auto* State = TB::GS(GetWorld()); State && State->IsPreparing()) return;
 	TArray<ATBCharacter*> Humans, Toys;
 	for (TActorIterator<ATBCharacter> It(GetWorld()); It; ++It)
@@ -1176,25 +1205,39 @@ void ATBGameMode::EvaluateGaze()
 		{
 			Toys.Add(*It);
 		}
+		else if (ToyPlayerInfo->Team == ETBTeam::Toy)
+		{
+			ToyPlayerInfo->SetGaze(ETBGazeState::None);
+		}
 	}
+	const auto& Gaze = TB::Rules().Gaze;
 	for (auto* Toy : Toys)
 	{
-		if (Toy->TBPS()->ToyState == ETBToyState::Boxed)
+		auto* Info = Toy->TBPS();
+		if (Info->ToyState == ETBToyState::Boxed)
 		{
 			const auto* State = TB::GS(GetWorld());
 			const auto* Course = State ? ATBBoxEscapeCourse::Find(GetWorld(), State->Box) : nullptr;
-			if (Course && Course->Protects(Toy)) { Toy->SetFrozen(false); continue; }
+			if (Course && Course->Protects(Toy)) { Toy->SetFrozen(false); Info->SetGaze(ETBGazeState::None); continue; }
 		}
-		bool Seen = false;
+		bool bSeen = false, bGazed = false;
 		for (auto* Human : Humans)
 		{
-			if (Toy->CanBeFrozenBy(Human) && Watched(Toy, Human))
-			{
-				Seen = true;
-				break;
-			}
+			if (!Toy->CanBeFrozenBy(Human)) continue;
+			bool bHumanSeen = false, bHumanGazed = false;
+			Observe(Toy, Human, bHumanSeen, bHumanGazed);
+			bSeen |= bHumanSeen;
+			bGazed |= bHumanGazed;
+			if (bGazed) break;
 		}
-		Toy->SetFrozen(Seen);
+		// 止まっているかはbFrozenに合わせる。運搬などで外から解かれたら数え直す。
+		TBRuleMath::FGazeStep Current{static_cast<EGazeState>(Info->GazeState), Info->GazedSeconds};
+		if (Info->bFrozen) Current = {EGazeState::Frozen, 0.f};
+		else if (Current.State == EGazeState::Frozen) Current = {};
+		const auto Next = TBRuleMath::AdvanceGaze(Current, bSeen, bGazed, DeltaSeconds, Gaze.FreezeDelaySeconds,
+		                                          Gaze.bReleaseWhenGazeEnds);
+		Info->SetGaze(static_cast<ETBGazeState>(Next.State), Next.GazedSeconds);
+		Toy->SetFrozen(Next.State == EGazeState::Frozen);
 	}
 }
 
@@ -1238,7 +1281,7 @@ void ATBGameMode::Tick(float DeltaSeconds)
 	if (AdvanceHidePreparation()) return;
 	for (TActorIterator<ATBMomArrivalZone> It(GetWorld());It;++It) It->Advance(DeltaSeconds);
 	if (!TB::Playing(GetWorld())) return;
-	EvaluateGaze();
+	EvaluateGaze(DeltaSeconds);
 	CheckWin();
 	EventDirector->Advance(DeltaSeconds);
 }

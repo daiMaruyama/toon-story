@@ -41,6 +41,65 @@ struct FTBVisionRules
 	float AspectRatio() const { return TBRuleMath::AspectRatio(AspectWidth, AspectHeight); }
 };
 
+/** 人間がボタンを押している間の凝視。凝視されたおもちゃだけが止まる */
+USTRUCT(BlueprintType)
+struct FTBGazeRules
+{
+	GENERATED_BODY()
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "凝視",
+	          meta = (DisplayName = "凝視中の歩く速さの倍率", ClampMin = "0.1", ClampMax = "1"))
+	float WalkSpeedRatio = .5f;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "凝視",
+	          meta = (DisplayName = "凝視中の視野角", Units = "Degrees", ClampMin = "30", ClampMax = "120"))
+	float FieldOfView = 70.f;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "凝視",
+	          meta = (DisplayName = "視野が変わりきるまで", Units = "s", ClampMin = "0", ClampMax = "1"))
+	float ZoomSeconds = .25f;
+	/** 画面の中心からこの角度の円の中にいるおもちゃだけを凝視できる */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "凝視",
+	          meta = (DisplayName = "凝視の範囲（中心から）", Units = "Degrees", ClampMin = "1", ClampMax = "45"))
+	float HalfAngle = 12.f;
+	/** 凝視されてから止まるまで。この間に凝視が外れたら止めずに戻す */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "凝視",
+	          meta = (DisplayName = "凝視されてから止まるまで", Units = "s", ClampMin = "0", ClampMax = "2"))
+	float FreezeDelaySeconds = .3f;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "凝視",
+	          meta = (DisplayName = "凝視されている間のおもちゃの速さの倍率", ClampMin = "0", ClampMax = "1"))
+	float GazedToySpeedRatio = .3f;
+	/** オフなら、止まったあとは誰かの視界に入っている間止まったまま。オンなら、凝視が外れたら解ける */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "凝視",
+	          meta = (DisplayName = "凝視が外れたら解く"))
+	bool bReleaseWhenGazeEnds = false;
+	/** おもちゃの画面の端に出る影。見られているだけのときの色 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "凝視|演出", meta = (DisplayName = "見られているときの影の色"))
+	FLinearColor SeenShadowColor = FLinearColor::FromSRGBColor(FColor(92, 64, 38));
+	/** 凝視されて影が寄りきったときの色。見られているときの色から移り変わる */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "凝視|演出", meta = (DisplayName = "凝視されたときの影の色"))
+	FLinearColor GazedShadowColor = FLinearColor::FromSRGBColor(FColor(92, 64, 38));
+	/** 影の濃さ。1で今の濃さ、0で影なし */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "凝視|演出",
+	          meta = (DisplayName = "おもちゃの影の濃さ", ClampMin = "0", ClampMax = "1.5"))
+	float ToyShadowStrength = 1.f;
+	/** 止まったおもちゃの画面にかける色。白なら色味を変えない */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "凝視|演出", meta = (DisplayName = "止まったときの色味"))
+	FLinearColor FrozenTint = FLinearColor(1.f, .78f, .5f);
+	/** 止まったおもちゃの画面の鮮やかさ。1でそのまま、0で白黒 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "凝視|演出",
+	          meta = (DisplayName = "止まったときの鮮やかさ", ClampMin = "0", ClampMax = "1"))
+	float FrozenSaturation = .15f;
+	/** 凝視中の人間の画面の端を暗くする色 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "凝視|演出", meta = (DisplayName = "凝視中の画面の端の色"))
+	FLinearColor HumanEdgeColor = FLinearColor(.02f, .02f, .03f);
+	/** 凝視中の人間の画面の端の暗さ。1で今の暗さ、0で暗くしない */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "凝視|演出",
+	          meta = (DisplayName = "凝視中の画面の端の暗さ", ClampMin = "0", ClampMax = "1.5"))
+	float HumanEdgeStrength = 1.f;
+	/** 凝視中の集中線の濃さ。0で線を出さない */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "凝視|演出",
+	          meta = (DisplayName = "集中線の濃さ", ClampMin = "0", ClampMax = "1"))
+	float SpeedLineOpacity = .16f;
+};
+
 USTRUCT(BlueprintType)
 struct FTBAimRules
 {
@@ -264,6 +323,8 @@ public:
 	FTBEventRules Events;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "視界", meta = (ShowOnlyInnerProperties))
 	FTBVisionRules Vision;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "凝視", meta = (ShowOnlyInnerProperties))
+	FTBGazeRules Gaze;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "狙う・つかむ", meta = (ShowOnlyInnerProperties))
 	FTBAimRules Aim;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "箱", meta = (ShowOnlyInnerProperties))

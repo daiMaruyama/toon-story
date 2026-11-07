@@ -22,6 +22,12 @@ public:
 	ETBToyState ToyState = ETBToyState::Free;
 	UPROPERTY(ReplicatedUsing = OnRep_State, BlueprintReadOnly)
 	bool bFrozen = false;
+	// 見られ方。本人にだけ送る。
+	UPROPERTY(Replicated, BlueprintReadOnly)
+	ETBGazeState GazeState = ETBGazeState::None;
+	// 凝視され続けている時間。サーバーだけで使う。
+	float GazedSeconds = 0.f;
+	void SetGaze(ETBGazeState State, float Seconds = 0.f);
 	UPROPERTY(Replicated, BlueprintReadOnly)
 	bool bReady = false;
 	UPROPERTY(Replicated, BlueprintReadOnly)
