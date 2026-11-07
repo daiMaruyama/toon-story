@@ -122,6 +122,16 @@ int main()
 	assert(AdvanceGaze(Frozen, true, true, .1f, .3f, true).State == G::Frozen);
 	assert(AdvanceGaze(Frozen, true, false, .1f, .3f, true).State == G::Seen);
 	assert(AdvanceGaze(Frozen, false, false, .1f, .3f, true).State == G::None);
+	// 演出の濃さ。凝視されたら速く、離れたらゆっくり。行き過ぎない。
+	assert(Near(AdvanceShade(0, 1, .05f, .1f, .5f), .5f));
+	assert(AdvanceShade(.9f, 1, .05f, .1f, .5f) == 1);
+	assert(Near(AdvanceShade(1, 0, .05f, .1f, .5f), .9f));
+	assert(AdvanceShade(.36f, .35f, .05f, .1f, .5f) == .35f);
+	assert(AdvanceShade(0, 1, .01f, 0, 0) == 1); // 0秒なら即座に切り替える
+	assert(AdvanceShade(.5f, 1, -1, .1f, .5f) == .5f);
+	assert(GazeShadowTarget(G::None) == 0);
+	assert(GazeShadowTarget(G::Seen) > 0 && GazeShadowTarget(G::Seen) < GazeShadowTarget(G::Gazed));
+	assert(GazeShadowTarget(G::Frozen) == 1);
 	std::cout << "PASS: freeze, step camera, contact, rescue, timeout priority and boxing victory\n";
-	std::cout << "PASS: gaze cone and gaze state\n";
+	std::cout << "PASS: gaze cone, gaze state and gaze shade\n";
 }

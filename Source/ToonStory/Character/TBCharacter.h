@@ -114,6 +114,8 @@ public:
 	void SetGazeRequested(bool bRequested);
 	// 人間がボタンを押して凝視しているか。サーバーには移動のフラグで届く。
 	bool IsGazing() const;
+	// 凝視の視野の寄り具合（0〜1）。画面の演出に使う。
+	float GetGazeZoom() const { return GazeZoom; }
 	UFUNCTION()
 	void OnRep_Carrier();
 	ATBPlayerState* TBPS() const;
@@ -269,6 +271,8 @@ private:
 	bool bLastViewCrouched = false;
 	// 凝視の視野の寄り具合。0で通常、1で寄りきった状態。
 	float GazeZoom = 0;
+	// 凝視で止まった画面のセピアの濃さ。0で通常、1でセピア。
+	float FrozenSepia = 0;
 
 protected:
 	// 親子で表示の切り替え状態を共有する。

@@ -180,4 +180,23 @@ namespace TBRuleMath
 		}
 		return {Visible ? EGazeState::Seen : EGazeState::None, 0.f};
 	}
+
+	// 演出の濃さ（0〜1）をTargetへ一定の速さで近づける。濃くするときはRiseSeconds、薄くするときはFallSeconds秒で全幅を動く。
+	inline float AdvanceShade(float Shade, float Target, float DeltaSeconds, float RiseSeconds, float FallSeconds)
+	{
+		const float Seconds = Target > Shade ? RiseSeconds : FallSeconds;
+		if (Seconds <= 0.f)
+		{
+			return Target;
+		}
+		const float Step = (DeltaSeconds > 0.f ? DeltaSeconds : 0.f) / Seconds;
+		return Target > Shade ? (Shade + Step < Target ? Shade + Step : Target)
+		                      : (Shade - Step > Target ? Shade - Step : Target);
+	}
+
+	// おもちゃの画面の端に寄せる紙の影の濃さ。視界に入っているだけなら薄く、凝視されたら寄りきる。
+	inline float GazeShadowTarget(EGazeState State)
+	{
+		return State == EGazeState::None ? 0.f : State == EGazeState::Seen ? .5f : 1.f;
+	}
 }

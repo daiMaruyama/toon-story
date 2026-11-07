@@ -369,6 +369,7 @@ void ATBHUD::DrawMatch(const ATBGameState& MatchState, ATBController& Controller
 		else DrawText(Wait, TBPaper::Cream, W * .5f - 220 * S, H * .5f, PaperFont, 1.3f * S);
 		return;
 	}
+	DrawGazeEffects(Controller);
 	if (MatchState.IsPreparing())
 		DrawText(FString::Printf(TEXT("隠れよう！ あと%d秒"), FMath::CeilToInt(MatchState.HideRemaining())),
 		         TBPaper::Accent, W * .5f - 145 * S, 115 * S, PaperFont, 1.3f * S);
@@ -451,7 +452,8 @@ void ATBHUD::DrawMatch(const ATBGameState& MatchState, ATBController& Controller
 	DrawText(TB::MatchHintText(PC, Child), Ink, 40 * S, H - 51 * S, PaperFont, .95f * S);
 	if (Player && Player->bFrozen)
 	{
-		DrawRect(FLinearColor(.28f, .045f, .035f, .9f), W * .5f - 165 * S, H * .7f, 330 * S, 44 * S);
+		// 赤で怖がらせず、紙の札で知らせる。止まった間の色はセピアの画面が伝える。
+		PaperPanel(TBPaper::Cream, W * .5f - 165 * S, H * .7f, 330 * S, 44 * S);
 		DrawText(TEXT("見られている！ 動けない…"), Ink, W * .5f - 146 * S, H * .7f + 12 * S, PaperFont, 1.15f * S);
 	}
 	if (auto* Character = Cast<ATBCharacter>(Controller.GetPawn()); Character && Character->ContactItem)

@@ -37,7 +37,7 @@ bool FTBRuleDataTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Base screen aspect is 16:9"), Defaults->Vision.AspectRatio(), 16.f / 9.f);
 	// 凝視の初期値。止まったあとは視界に入っている間止まったまま。
 	TestEqual(TEXT("Gaze walk speed ratio"), Defaults->Gaze.WalkSpeedRatio, .5f);
-	TestEqual(TEXT("Gaze field of view"), Defaults->Gaze.FieldOfView, 80.f);
+	TestEqual(TEXT("Gaze field of view"), Defaults->Gaze.FieldOfView, 70.f);
 	TestEqual(TEXT("Gaze zoom seconds"), Defaults->Gaze.ZoomSeconds, .25f);
 	TestEqual(TEXT("Gaze half angle"), Defaults->Gaze.HalfAngle, 12.f);
 	TestEqual(TEXT("Gaze freeze delay"), Defaults->Gaze.FreezeDelaySeconds, .3f);

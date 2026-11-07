@@ -51,7 +51,7 @@ struct FTBGazeRules
 	float WalkSpeedRatio = .5f;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "凝視",
 	          meta = (DisplayName = "凝視中の視野角", Units = "Degrees", ClampMin = "30", ClampMax = "120"))
-	float FieldOfView = 80.f;
+	float FieldOfView = 70.f;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "凝視",
 	          meta = (DisplayName = "視野が変わりきるまで", Units = "s", ClampMin = "0", ClampMax = "1"))
 	float ZoomSeconds = .25f;

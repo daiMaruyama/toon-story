@@ -127,7 +127,7 @@ bool FTBAudioSelectedCatalogTest::RunTest(const FString& Parameters)
 {
 	const auto* Settings = GetDefault<UTBAudioSettings>();
 	TestEqual(TEXT("Five music states registered"), Settings->Music.Num(), 5);
-	TestEqual(TEXT("All selected SE registered"), Settings->Sounds.Num(), int32(ETBSoundEvent::GlassDropHeavy) + 1);
+	TestEqual(TEXT("All selected SE registered"), Settings->Sounds.Num(), int32(ETBSoundEvent::GazeAlert) + 1);
 	TestFalse(TEXT("Resting contact stays silent"), UTBAudioEvents::PropDropSound(5.99).IsSet());
 	TestTrue(TEXT("Six centimeter fall has a light impact"), UTBAudioEvents::PropDropSound(6.) == ETBSoundEvent::PropDropLight);
 	TestTrue(TEXT("Thirty centimeter fall has a medium impact"), UTBAudioEvents::PropDropSound(30.) == ETBSoundEvent::PropDropMedium);

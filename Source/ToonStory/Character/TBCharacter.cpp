@@ -793,6 +793,17 @@ void ATBCharacter::CalcCamera(float DeltaTime, FMinimalViewInfo& OutResult)
 	{
 		OutResult.FOV = FMath::Lerp(OutResult.FOV, Gaze.FieldOfView, FMath::SmoothStep(0.f, 1.f, GazeZoom));
 	}
+	// 凝視で止まったおもちゃの画面は、古い写真のようなセピアにする。止まった本人の視点だけが変わる。
+	FrozenSepia = TBRuleMath::AdvanceShade(FrozenSepia, IsGazeFrozen() ? 1.f : 0.f, DeltaTime, .2f, .4f);
+	if (FrozenSepia > 0.f)
+	{
+		const float Saturation = 1.f - .85f * FrozenSepia;
+		OutResult.PostProcessSettings.bOverride_ColorSaturation = true;
+		OutResult.PostProcessSettings.ColorSaturation = FVector4(Saturation, Saturation, Saturation, 1.f);
+		OutResult.PostProcessSettings.bOverride_SceneColorTint = true;
+		OutResult.PostProcessSettings.SceneColorTint =
+		    FMath::Lerp(FLinearColor::White, FLinearColor(1.f, .78f, .5f), FrozenSepia);
+	}
 	// 箱への収納など瞬間移動を伴う切替はつながず、壁越しに視点が流れるのを防ぐ。降ろす位置は1m程度。
 	const FVector ActorLocation = GetActorLocation();
 	const bool bTeleported =
