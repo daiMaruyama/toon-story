@@ -5,6 +5,7 @@
 #include "Core/TBGameState.h"
 #include "Core/TBPlayerState.h"
 #include "GamePlay/Items/TBEscapeVehicle.h"
+#include "GamePlay/Items/TBEscapeVehicleMovement.h"
 #include "GamePlay/Items/TBEscapeExit.h"
 #include "Tests/TBTestMatch.h"
 #include "Components/BoxComponent.h"
@@ -93,6 +94,59 @@ bool FTBEscapeVehicleTest::RunTest(const FString&)
 	TestFalse(TEXT("Toy left behind is not recorded as escaped"), Info->bEscapedInVehicle);
 	TestTrue(TEXT("Vehicle escape result is recorded"), Match->bVehicleEscapeResult);
 	TestEqual(TEXT("Reaching exit ends the match for toys"), Match->Winner, ETBWinner::Toys);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBEscapeVehicleGroundTest, "ToonStory.Items.EscapeVehicleGround",
+	EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+bool FTBEscapeVehicleGroundTest::RunTest(const FString&)
+{
+	UWorld* World = nullptr;
+	for (const auto& Context : GEngine->GetWorldContexts())
+		if (Context.WorldType == EWorldType::Game && Context.World()) { World = Context.World(); break; }
+	if (!World || World->GetNetMode() != NM_Standalone) return false;
+	FActorSpawnParameters Params; Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	const FVector Base(20000, 20000, 10000);
+	TArray<AActor*> Fixtures;
+	ON_SCOPE_EXIT { for (AActor* Actor : Fixtures) if (IsValid(Actor)) Actor->Destroy(); };
+	auto MakeBox = [&](const FVector& Center, const FVector& Extent)
+	{
+		auto* Actor = World->SpawnActor<AActor>(Center, FRotator::ZeroRotator, Params);
+		if (!Actor) return static_cast<AActor*>(nullptr);
+		Fixtures.Add(Actor);
+		auto* Box = NewObject<UBoxComponent>(Actor); Actor->SetRootComponent(Box);
+		Box->SetBoxExtent(Extent); Box->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+		Box->SetCollisionObjectType(ECC_WorldStatic); Box->SetCollisionResponseToAllChannels(ECR_Block);
+		Box->RegisterComponent(); Actor->SetActorLocation(Center);
+		return Actor;
+	};
+	if (!TestNotNull(TEXT("Floor"), MakeBox(Base + FVector(0,0,-5), FVector(400,200,5)))) return false;
+	if (!TestNotNull(TEXT("Carpet"), MakeBox(Base + FVector(150,0,2), FVector(30,150,2)))) return false;
+	if (!TestNotNull(TEXT("Wall"), MakeBox(Base + FVector(300,0,60), FVector(5,150,60)))) return false;
+	if (!TestNotNull(TEXT("Lower floor"), MakeBox(Base + FVector(700,0,-110), FVector(250,200,10)))) return false;
+	auto* Car = World->SpawnActor<ATBEscapeVehicle>(Base + FVector(0,0,19.5), FRotator::ZeroRotator, Params);
+	if (!TestNotNull(TEXT("Vehicle"), Car)) return false;
+	Fixtures.Add(Car);
+	for (int32 I=0; I<30; ++I) Car->VehicleMovement->Advance(FVector::ZeroVector, FRotator::ZeroRotator, .016f);
+	TestTrue(TEXT("Overlapping floor resolves with clearance"), Car->GetActorLocation().Z > Base.Z + 20.f);
+	TestTrue(TEXT("Ground contact is retained at 60fps"), Car->VehicleMovement->IsGrounded());
+	TestTrue(TEXT("Floor clearance remains close to character walking clearance"), Car->GetActorLocation().Z < Base.Z + 24.f);
+	const float Before = Car->GetActorLocation().X;
+	for (int32 I=0; I<45; ++I) Car->VehicleMovement->Advance(FVector(5,0,0), FRotator::ZeroRotator, .016f);
+	TestTrue(TEXT("Vehicle continues after landing and climbs a small step"), Car->GetActorLocation().X > Before + 150.f);
+	for (int32 I=0; I<40; ++I) Car->VehicleMovement->Advance(FVector(5,0,0), FRotator::ZeroRotator, .016f);
+	TestTrue(TEXT("Vehicle does not climb through a high wall"), Car->GetActorLocation().X < Base.X + 245.f);
+	const float BeforeSlide = Car->GetActorLocation().Y;
+	for (int32 I=0; I<20; ++I) Car->VehicleMovement->Advance(FVector(5,2,0), FRotator::ZeroRotator, .016f);
+	TestTrue(TEXT("Vehicle slides along a wall"), Car->GetActorLocation().Y > BeforeSlide + 20.f);
+	Car->SetActorLocation(Base + FVector(460,0,22), false, nullptr, ETeleportType::TeleportPhysics);
+	const float EdgeHeight = Car->GetActorLocation().Z;
+	for (int32 I=0; I<45; ++I) Car->VehicleMovement->Advance(FVector(5,0,0), FRotator::ZeroRotator, .016f);
+	TestTrue(TEXT("Vehicle falls after leaving a ledge"), Car->GetActorLocation().Z < EdgeHeight - 10.f);
+	TestTrue(TEXT("Vehicle lands on the lower floor"), Car->VehicleMovement->IsGrounded());
+	const float LandedX = Car->GetActorLocation().X;
+	for (int32 I=0; I<8; ++I) Car->VehicleMovement->Advance(FVector(5,0,0), FRotator::ZeroRotator, .016f);
+	TestTrue(TEXT("Vehicle keeps moving after landing"), Car->GetActorLocation().X > LandedX + 30.f);
 	return true;
 }
 #endif

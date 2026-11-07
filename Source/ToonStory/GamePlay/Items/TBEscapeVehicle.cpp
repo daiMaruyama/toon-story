@@ -1,4 +1,5 @@
 #include "GamePlay/Items/TBEscapeVehicle.h"
+#include "GamePlay/Items/TBEscapeVehicleMovement.h"
 #include "Character/TBCharacter.h"
 #include "Core/TBGameHelpers.h"
 #include "Core/TBGameState.h"
@@ -28,6 +29,8 @@ ATBEscapeVehicle::ATBEscapeVehicle()
 	BoardingArea->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 	BoardingArea->SetCollisionResponseToAllChannels(ECR_Overlap);
 	SetRootComponent(Collision);
+	VehicleMovement = CreateDefaultSubobject<UTBEscapeVehicleMovement>(TEXT("VehicleMovement"));
+	VehicleMovement->SetUpdatedComponent(Collision);
 	Root->SetupAttachment(Collision);
 	Mesh->SetupAttachment(Collision);
 	InteractionPoint->SetupAttachment(Collision);
@@ -163,12 +166,9 @@ void ATBEscapeVehicle::Tick(float DeltaSeconds)
 	if (!TB::Playing(GetWorld()) || Passengers.IsEmpty() || GetWorld()->GetTimeSeconds() - LastInputAt > .3)
 		DriveInput = FVector2D::ZeroVector;
 	const float Dt = FMath::Min(DeltaSeconds, .1f);
-	AddActorWorldRotation(FRotator(0, DriveInput.X * FMath::Max(0.f, Data().TurnSpeed) * Dt, 0), true);
-	AddActorWorldOffset(GetActorForwardVector() * DriveInput.Y * FMath::Max(0.f, Data().DriveSpeed) * Dt, true);
-	VerticalVelocity = FMath::Max(VerticalVelocity + GetWorld()->GetGravityZ() * Dt, -4000.f);
-	FHitResult GroundHit;
-	AddActorWorldOffset(FVector(0, 0, VerticalVelocity * Dt), true, &GroundHit);
-	if (GroundHit.bBlockingHit) VerticalVelocity = 0.f;
+	const FRotator Rotation = GetActorRotation() + FRotator(0, DriveInput.X * FMath::Max(0.f, Data().TurnSpeed) * Dt, 0);
+	const FVector Delta = Rotation.Vector() * DriveInput.Y * FMath::Max(0.f, Data().DriveSpeed) * Dt;
+	VehicleMovement->Advance(Delta, Rotation, Dt);
 }
 
 void ATBEscapeVehicle::EndPlay(const EEndPlayReason::Type Reason)

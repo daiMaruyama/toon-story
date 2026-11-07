@@ -7,6 +7,7 @@
 class ATBCharacter;
 class UBoxComponent;
 class UTBEscapeVehicleData;
+class UTBEscapeVehicleMovement;
 
 /** 仮の脱出車両。状態の決定と移動はサーバーのみで行う。 */
 UCLASS(Blueprintable)
@@ -28,6 +29,8 @@ public:
 	TObjectPtr<UBoxComponent> Collision;
 	UPROPERTY(VisibleAnywhere, Category="脱出車両")
 	TObjectPtr<UBoxComponent> BoardingArea;
+	UPROPERTY(VisibleAnywhere, Category="脱出車両")
+	TObjectPtr<UTBEscapeVehicleMovement> VehicleMovement;
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="脱出車両")
 	TArray<TObjectPtr<ATBCharacter>> Passengers;
 	UPROPERTY(EditAnywhere, Category="脱出車両")
@@ -40,7 +43,6 @@ private:
 	TObjectPtr<UTBEscapeVehicleData> LoadedData;
 	FVector2D DriveInput = FVector2D::ZeroVector;
 	double LastInputAt = 0;
-	float VerticalVelocity = 0.f;
 	UFUNCTION()
 	void OnBoardingOverlap(UPrimitiveComponent* Component, AActor* Other, UPrimitiveComponent* OtherComponent,
 	                       int32 BodyIndex, bool bFromSweep, const FHitResult& Sweep);
