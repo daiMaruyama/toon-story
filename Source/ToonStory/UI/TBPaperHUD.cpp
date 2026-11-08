@@ -322,7 +322,10 @@ void ATBHUD::DrawResults(const ATBGameState& MatchState)
 	const float X = Canvas->ClipX * .5f - 300 * S;
 	const bool ShowError = !MatchState.bTravelPending && !MatchState.LobbyReturnError.IsEmpty();
 	PaperPanel(FLinearColor::White, X, 24 * S, 600 * S, (ShowError ? 150 : 100) * S);
+	const auto* ResultPlayer = GetOwningPlayerController()->GetPlayerState<ATBPlayerState>();
 	const FString Title = MatchState.Phase == ETBPhase::Aborted ? TEXT("あそびはおしまい") :
+	    MatchState.bVehicleEscapeResult && ResultPlayer && ResultPlayer->Team == ETBTeam::Toy ?
+	        (MatchState.EscapedInVehicle(ResultPlayer) ? TEXT("脱出成功！") : TEXT("脱出できなかった")) :
 	    MatchState.Winner == ETBWinner::Toys ? TEXT("おもちゃの勝ち！") : TEXT("にんげんの勝ち！");
 	DrawText(Title, TBPaper::Accent, X + 24 * S, 36 * S, PaperFont, 1.8f * S);
 	const int32 Seconds = FMath::CeilToInt(FMath::Max(0., MatchState.EndTime - MatchState.GetServerWorldTimeSeconds()));
@@ -356,6 +359,9 @@ void ATBHUD::DrawMatch(const ATBGameState& MatchState, ATBController& Controller
 	const float W = Canvas->ClipX, H = Canvas->ClipY;
 	const FLinearColor Ink = TBPaper::Ink, Accent = TBPaper::Accent, Panel = FLinearColor::White;
 	const auto* Player = Controller.GetPlayerState<ATBPlayerState>();
+	if (MatchState.bEscapePhase && !Controller.ShouldHidePreparationView())
+		DrawText(Player && Player->Team == ETBTeam::Human ? TEXT("電池が集まった！脱出を阻止しよう！") :
+		    TEXT("電池が集まった！車で出口へ脱出しよう！"), TBPaper::Accent, 300 * S, 110 * S, PaperFont, 1.2f * S);
 	if (Controller.ShouldHidePreparationView())
 	{
 		if (!Controller.IsShowingEntranceApproach()) DrawRect(FLinearColor::Black, 0, 0, W, H);

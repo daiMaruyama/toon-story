@@ -50,7 +50,7 @@ FTBInteractionTarget TB::FindInteractionTarget(ATBCharacter* Character)
 			if (auto* Toy = Cast<ATBCharacter>(Actor))
 			{
 				const auto* Player = Toy->TBPS();
-				if (!Player || Player->Team != ETBTeam::Toy || Player->ToyState != ETBToyState::Free || Toy->Carrier) continue;
+				if (!Player || Player->Team != ETBTeam::Toy || Player->ToyState != ETBToyState::Free || Toy->Carrier || Toy->EscapeVehicle) continue;
 				Location = Toy->GetActorLocation();
 			}
 			else if (auto* Dummy = Cast<ATBDummyToy>(Actor))

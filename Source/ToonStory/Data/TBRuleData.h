@@ -170,6 +170,9 @@ USTRUCT(BlueprintType)
 struct FTBMatchRules
 {
 	GENERATED_BODY()
+	/** 電池達成後に保証する残り時間。 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "試合", meta = (DisplayName = "脱出開始時の最低残り時間", Units = "s", ClampMin = "0"))
+	float EscapeMinimumRemainingSeconds = 30.f;
 	/** おもちゃが先に隠れる時間。開始・終了時刻をまとめて同期する */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "試合", meta = (Units = "s", ClampMin = "0.1"))
 	float HidePreparationSeconds = 10.f;

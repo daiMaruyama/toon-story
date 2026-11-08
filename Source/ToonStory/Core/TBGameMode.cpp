@@ -2,6 +2,8 @@
 
 #include "TBGameMode.h"
 #include "GamePlay/Items/TBMirror.h"
+#include "GamePlay/Items/TBEscapeVehicle.h"
+#include "GamePlay/Items/TBEscapeExit.h"
 #include "GamePlay/Events/TBEventDirector.h"
 #include "GamePlay/Events/TBMomArrivalZone.h"
 #include "GamePlay/Items/TBItemSpawnDirector.h"
@@ -328,6 +330,11 @@ void ATBGameMode::BuildArena()
 	Block(FVector(-600, 900, 160), FVector(2, 6, 3.2));
 	Block(FVector(1000, -1100, 160), FVector(8, 2, 3.2));
 	GetWorld()->SpawnActor<ATBBox>(BoxClass, FVector(1300, 1000, 0), FRotator::ZeroRotator);
+	// 検証用アリーナはコード生成なので、共有マップを保存せず脱出を試せる。
+	if (!TActorIterator<ATBEscapeVehicle>(GetWorld()))
+		GetWorld()->SpawnActor<ATBEscapeVehicle>(FVector(-1500, -1000, 20), FRotator::ZeroRotator);
+	if (!TActorIterator<ATBEscapeExit>(GetWorld()))
+		GetWorld()->SpawnActor<ATBEscapeExit>(FVector(2100, 1900, 100), FRotator::ZeroRotator);
 	// マップに置かれたPlayerStartがあればそれを使い、なければ定員分を生成する。
 	const bool NeedsStarts = SpawnPoints.IsEmpty();
 	for (int32 Index = 0; NeedsStarts && GameSession && Index < GameSession->MaxPlayers; ++Index)
@@ -860,6 +867,9 @@ void ATBGameMode::StartRound(APlayerController* PlayerController)
 	DrawLooks(Placements);
 	DrawLooks(NPCPlacements);
 	MatchInfo->Collected = 0;
+	MatchInfo->bEscapePhase = false;
+	MatchInfo->bVehicleEscapeResult = false;
+	MatchInfo->EscapedPlayers.Reset();
 	MatchInfo->BoxedCount = 0;
 	MatchInfo->Winner = ETBWinner::None;
 	MatchInfo->Reason.Reset();
@@ -1042,6 +1052,9 @@ void ATBGameMode::ReturnFinishedMatchToLobby()
 	}
 	ResetStageInteractions();
 	State->Collected = 0;
+	State->bEscapePhase = false;
+	State->bVehicleEscapeResult = false;
+	State->EscapedPlayers.Reset();
 	State->BoxedCount = 0;
 	State->EndTime = 0;
 	State->Winner = ETBWinner::None;
@@ -1112,7 +1125,11 @@ void ATBGameMode::ResetStageInteractions()
 		It->Rescuers = 0;
 		It->ForceNetUpdate();
 	}
-
+	// 同じマップで次の試合をするとき、車が出口に残っていると乗るだけで脱出になる。
+	for (TActorIterator<ATBEscapeVehicle> It(GetWorld()); It; ++It)
+	{
+		It->ResetRound();
+	}
 }
 
 bool ATBGameMode::Watched(ATBCharacter* Toy, ATBCharacter* Human) const
@@ -1214,6 +1231,7 @@ void ATBGameMode::EvaluateGaze(float DeltaSeconds)
 	for (auto* Toy : Toys)
 	{
 		auto* Info = Toy->TBPS();
+		if (Toy->EscapeVehicle) { Toy->SetFrozen(false); Info->SetGaze(ETBGazeState::None); continue; }
 		if (Info->ToyState == ETBToyState::Boxed)
 		{
 			const auto* State = TB::GS(GetWorld());
@@ -1328,6 +1346,19 @@ bool ATBGameMode::AdvanceHidePreparation()
 	return true;
 }
 
+bool ATBGameMode::StartEscapePhase()
+{
+	auto* Match = TB::GS(GetWorld());
+	if (!Match || Match->Phase != ETBPhase::Playing || Match->IsPreparing() || Match->bEscapePhase || Match->Remaining() <= 0.f)
+		return false;
+	const float Configured = TB::Rules().Match.EscapeMinimumRemainingSeconds;
+	const float Minimum = FMath::IsFinite(Configured) ? FMath::Max(0.f, Configured) : 30.f;
+	Match->EndTime = FMath::Max(Match->EndTime, Match->GetServerWorldTimeSeconds() + Minimum);
+	Match->bEscapePhase = true;
+	Match->ForceNetUpdate();
+	return true;
+}
+
 // この呼び出しでは時間切れ → アイテム達成 → 全員収納の順で判定する。
 void ATBGameMode::CheckWin()
 {
@@ -1352,14 +1383,18 @@ void ATBGameMode::CheckWin()
 		}
 	}
 	MatchInfo->BoxedCount = Boxed;
-	switch (TBRuleMath::EvaluateWin(MatchInfo->Remaining(), MatchInfo->Collected, MatchInfo->Settings.RequiredItems,
+	switch (TBRuleMath::EvaluateWin(MatchInfo->Remaining(), MatchInfo->bEscapePhase ? 0 : MatchInfo->Collected, MatchInfo->bEscapePhase ? 1 : MatchInfo->Settings.RequiredItems,
 	                                Toys, Boxed))
 	{
 		case TBRuleMath::EWinReason::TimeExpired:
 			Finish(ETBWinner::Humans, TEXT("Time expired"));
 			break;
 		case TBRuleMath::EWinReason::ItemsCollected:
-			Finish(ETBWinner::Toys, TEXT("All required items collected"));
+			// 既存マップに未配置の間は従来どおり終了し、出口のない試合を作らない。
+			if (TActorIterator<ATBEscapeVehicle>(GetWorld()) && TActorIterator<ATBEscapeExit>(GetWorld()))
+				StartEscapePhase();
+			else
+				Finish(ETBWinner::Toys, TEXT("All required items collected (escape route not placed)"));
 			break;
 		case TBRuleMath::EWinReason::AllToysBoxed:
 			Finish(ETBWinner::Humans, TEXT("All toys boxed"));

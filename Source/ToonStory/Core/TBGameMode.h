@@ -44,6 +44,7 @@ public:
 	void ReturnToLobby(APlayerController* PlayerController);
 	void LobbyReturnFailed(const FString& Reason);
 	void CheckWin();
+	bool StartEscapePhase();
 	void Finish(ETBWinner Winner, const FString& Why, bool bAbort = false);
 	bool Watched(ATBCharacter* Toy, ATBCharacter* Human) const;
 	// Seenは視界に入っている、Gazedは凝視の範囲に入っている。
