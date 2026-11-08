@@ -869,8 +869,7 @@ void ATBGameMode::StartRound(APlayerController* PlayerController)
 	MatchInfo->Collected = 0;
 	MatchInfo->bEscapePhase = false;
 	MatchInfo->bVehicleEscapeResult = false;
-	for (APlayerState* Player : MatchInfo->PlayerArray)
-		if (auto* Info = Cast<ATBPlayerState>(Player)) Info->bEscapedInVehicle = false;
+	MatchInfo->EscapedPlayers.Reset();
 	MatchInfo->BoxedCount = 0;
 	MatchInfo->Winner = ETBWinner::None;
 	MatchInfo->Reason.Reset();
@@ -1048,7 +1047,6 @@ void ATBGameMode::ReturnFinishedMatchToLobby()
 			Info->SetGaze(ETBGazeState::None);
 			Info->bReady = false;
 			Info->Items = 0;
-			Info->bEscapedInVehicle = false;
 			Info->ForceNetUpdate();
 		}
 	}
@@ -1056,6 +1054,7 @@ void ATBGameMode::ReturnFinishedMatchToLobby()
 	State->Collected = 0;
 	State->bEscapePhase = false;
 	State->bVehicleEscapeResult = false;
+	State->EscapedPlayers.Reset();
 	State->BoxedCount = 0;
 	State->EndTime = 0;
 	State->Winner = ETBWinner::None;
@@ -1126,7 +1125,11 @@ void ATBGameMode::ResetStageInteractions()
 		It->Rescuers = 0;
 		It->ForceNetUpdate();
 	}
-
+	// 同じマップで次の試合をするとき、車が出口に残っていると乗るだけで脱出になる。
+	for (TActorIterator<ATBEscapeVehicle> It(GetWorld()); It; ++It)
+	{
+		It->ResetRound();
+	}
 }
 
 bool ATBGameMode::Watched(ATBCharacter* Toy, ATBCharacter* Human) const

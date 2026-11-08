@@ -15,7 +15,6 @@ void ATBPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 	DOREPLIFETIME(ATBPlayerState, bReady);
 	DOREPLIFETIME(ATBPlayerState, Preference);
 	DOREPLIFETIME(ATBPlayerState, Items);
-	DOREPLIFETIME(ATBPlayerState, bEscapedInVehicle);
 }
 
 void ATBPlayerState::SetGaze(ETBGazeState State, float Seconds)

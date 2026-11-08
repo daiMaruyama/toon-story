@@ -57,6 +57,7 @@ void ATBEscapeVehicle::BeginPlay()
 {
 	Super::BeginPlay();
 	LoadedData = VehicleData.LoadSynchronous();
+	StartTransform = GetActorTransform();
 	BoardingArea->OnComponentBeginOverlap.AddDynamic(this, &ATBEscapeVehicle::OnBoardingOverlap);
 	for (FTBItemAction& Action : Actions) Action.MaxDistance = FMath::Max(1.f, Data().InteractionDistance);
 }
@@ -88,6 +89,8 @@ bool ATBEscapeVehicle::Board(ATBCharacter* Toy)
 	if (!HasAuthority() || !IsValid(Toy) || !Match || Match->Phase != ETBPhase::Playing ||
 	    Match->IsPreparing() || !Match->bEscapePhase || !Toy->TBPS() || Toy->TBPS()->Team != ETBTeam::Toy ||
 	    Toy->TBPS()->ToyState != ETBToyState::Free || Toy->Carrier || Toy->EscapeVehicle) return false;
+	// NPC は運転も降車もしない。最初に乗ると運転手の席がふさがり、誰も動かせなくなる。
+	if (!Toy->IsPlayerControlled()) return false;
 	Toy->ClearHeldInteraction();
 	Toy->SetFrozen(false);
 	Toy->TBPS()->SetGaze(ETBGazeState::None);
@@ -171,9 +174,26 @@ void ATBEscapeVehicle::Tick(float DeltaSeconds)
 	VehicleMovement->Advance(Delta, Rotation, Dt);
 }
 
+void ATBEscapeVehicle::ResetRound()
+{
+	if (!HasAuthority()) return;
+	ReleasePassengers();
+	SetActorTransform(StartTransform, false, nullptr, ETeleportType::TeleportPhysics);
+	DriveInput = FVector2D::ZeroVector;
+	LastInputAt = 0;
+	VehicleMovement->ResetMotion();
+	ForceNetUpdate();
+}
+
 void ATBEscapeVehicle::EndPlay(const EEndPlayReason::Type Reason)
 {
-	if (HasAuthority()) while (!Passengers.IsEmpty())
+	if (HasAuthority()) ReleasePassengers();
+	Super::EndPlay(Reason);
+}
+
+void ATBEscapeVehicle::ReleasePassengers()
+{
+	while (!Passengers.IsEmpty())
 	{
 		if (ATBCharacter* Toy = Passengers.Last(); IsValid(Toy))
 		{
@@ -191,7 +211,6 @@ void ATBEscapeVehicle::EndPlay(const EEndPlayReason::Type Reason)
 		}
 		else Passengers.Pop();
 	}
-	Super::EndPlay(Reason);
 }
 
 void ATBEscapeVehicle::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const

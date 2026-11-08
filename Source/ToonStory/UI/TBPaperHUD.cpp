@@ -325,7 +325,7 @@ void ATBHUD::DrawResults(const ATBGameState& MatchState)
 	const auto* ResultPlayer = GetOwningPlayerController()->GetPlayerState<ATBPlayerState>();
 	const FString Title = MatchState.Phase == ETBPhase::Aborted ? TEXT("あそびはおしまい") :
 	    MatchState.bVehicleEscapeResult && ResultPlayer && ResultPlayer->Team == ETBTeam::Toy ?
-	        (ResultPlayer->bEscapedInVehicle ? TEXT("脱出成功！") : TEXT("脱出できなかった")) :
+	        (MatchState.EscapedInVehicle(ResultPlayer) ? TEXT("脱出成功！") : TEXT("脱出できなかった")) :
 	    MatchState.Winner == ETBWinner::Toys ? TEXT("おもちゃの勝ち！") : TEXT("にんげんの勝ち！");
 	DrawText(Title, TBPaper::Accent, X + 24 * S, 36 * S, PaperFont, 1.8f * S);
 	const int32 Seconds = FMath::CeilToInt(FMath::Max(0., MatchState.EndTime - MatchState.GetServerWorldTimeSeconds()));

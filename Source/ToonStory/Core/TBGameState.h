@@ -74,6 +74,10 @@ public:
 	bool bEscapePhase = false;
 	UPROPERTY(Replicated, BlueprintReadOnly)
 	bool bVehicleEscapeResult = false;
+	// 車で脱出できた人。勝敗と同じ GameState で送り、結果の画面や音と同時に届くようにする。
+	UPROPERTY(Replicated, BlueprintReadOnly)
+	TArray<TObjectPtr<APlayerState>> EscapedPlayers;
+	bool EscapedInVehicle(const APlayerState* Player) const;
 	UPROPERTY(Replicated, BlueprintReadOnly)
 	int32 BoxedCount = 0;
 	UPROPERTY(Replicated, BlueprintReadOnly)

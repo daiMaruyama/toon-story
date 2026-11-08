@@ -526,7 +526,7 @@ bool ATBCharacter::IsCelebrating() const
 	return State && Info && State->Phase == ETBPhase::Results &&
 	    ((State->Winner == ETBWinner::Humans && Info->Team == ETBTeam::Human) ||
 	     (State->Winner == ETBWinner::Toys && Info->Team == ETBTeam::Toy &&
-	      (!State->bVehicleEscapeResult || Info->bEscapedInVehicle)));
+	      (!State->bVehicleEscapeResult || State->EscapedInVehicle(Info))));
 }
 
 bool ATBCharacter::IsGazeFrozen() const

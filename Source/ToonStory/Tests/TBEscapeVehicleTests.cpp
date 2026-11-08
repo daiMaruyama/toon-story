@@ -8,6 +8,7 @@
 #include "GamePlay/Items/TBEscapeVehicleMovement.h"
 #include "GamePlay/Items/TBEscapeExit.h"
 #include "Tests/TBTestMatch.h"
+#include "AIController.h"
 #include "Components/BoxComponent.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
@@ -39,7 +40,8 @@ bool FTBEscapeVehicleTest::RunTest(const FString&)
 	const auto OldTeam = Info->Team;
 	const auto OldToyState = Info->ToyState;
 	const bool OldFrozen = Info->bFrozen, OldEscape = Match->bEscapePhase;
-	const bool OldResult = Match->bVehicleEscapeResult, OldEscaped = Info->bEscapedInVehicle;
+	const bool OldResult = Match->bVehicleEscapeResult;
+	const auto OldEscaped = Match->EscapedPlayers;
 	const ETBWinner OldWinner = Match->Winner;
 	const FString OldReason = Match->Reason;
 	const FVector OldLocation = Toy->GetActorLocation();
@@ -55,7 +57,7 @@ bool FTBEscapeVehicleTest::RunTest(const FString&)
 		if (IsValid(Car)) Car->Destroy();
 		if (IsValid(Guest)) UGameplayStatics::RemovePlayer(Guest, true);
 		Info->Team = OldTeam; Info->ToyState = OldToyState; Info->bFrozen = OldFrozen;
-		Info->bEscapedInVehicle = OldEscaped;
+		Match->EscapedPlayers = OldEscaped;
 		Match->bEscapePhase = OldEscape; Match->bVehicleEscapeResult = OldResult;
 		Match->Winner = OldWinner; Match->Reason = OldReason;
 		Toy->SetActorLocation(OldLocation, false, nullptr, ETeleportType::TeleportPhysics);
@@ -77,6 +79,19 @@ bool FTBEscapeVehicleTest::RunTest(const FString&)
 	Passenger->TBPS()->bFrozen = false;
 	TestTrue(TEXT("Second toy boards"), Car->Board(Passenger));
 	TestFalse(TEXT("Second passenger is not the driver"), Car->IsDriver(Passenger));
+	// NPC は運転も降車もしないので、乗せると席をふさいでしまう。
+	auto* Bot = World->SpawnActorDeferred<AAIController>(AAIController::StaticClass(), FTransform::Identity);
+	if (!TestNotNull(TEXT("Bot controller"), Bot)) return false;
+	Bot->bWantsPlayerState = true;
+	Bot->FinishSpawning(FTransform::Identity);
+	auto* BotToy = World->SpawnActor<ATBCharacter>(Toy->GetClass(), FVector(10000, 10300, 10000), FRotator::ZeroRotator, Params);
+	ON_SCOPE_EXIT { if (IsValid(BotToy)) BotToy->Destroy(); if (IsValid(Bot)) Bot->Destroy(); };
+	if (!TestNotNull(TEXT("Bot toy"), BotToy)) return false;
+	Bot->Possess(BotToy);
+	if (!TestNotNull(TEXT("Bot player state"), BotToy->TBPS())) return false;
+	BotToy->TBPS()->Team = ETBTeam::Toy;
+	BotToy->TBPS()->ToyState = ETBToyState::Free;
+	TestFalse(TEXT("NPC toys do not board"), Car->Board(BotToy));
 	const FVector Before = Car->GetActorLocation();
 	Car->SetDrivingInput(Toy, FVector2D(0, 1));
 	Car->Tick(.1f);
@@ -90,10 +105,15 @@ bool FTBEscapeVehicleTest::RunTest(const FString&)
 	Exit->ExitArea->UpdateOverlaps();
 	TestTrue(TEXT("Vehicle overlaps exit"), Exit->ExitArea->IsOverlappingActor(Car));
 	Exit->Tick(.01f);
-	TestTrue(TEXT("Passenger is recorded as escaped"), Passenger->TBPS()->bEscapedInVehicle);
-	TestFalse(TEXT("Toy left behind is not recorded as escaped"), Info->bEscapedInVehicle);
+	TestTrue(TEXT("Passenger is recorded as escaped"), Match->EscapedInVehicle(Passenger->TBPS()));
+	TestFalse(TEXT("Toy left behind is not recorded as escaped"), Match->EscapedInVehicle(Info));
 	TestTrue(TEXT("Vehicle escape result is recorded"), Match->bVehicleEscapeResult);
 	TestEqual(TEXT("Reaching exit ends the match for toys"), Match->Winner, ETBWinner::Toys);
+	// 同じマップで次の試合をするときは、置いた位置に戻って空になる。
+	Car->ResetRound();
+	TestTrue(TEXT("Vehicle returns to where it was placed"), Car->GetActorLocation().Equals(FVector(10000, 10000, 10000), 1.f));
+	TestTrue(TEXT("Vehicle is empty after a reset"), Car->Passengers.IsEmpty());
+	TestNull(TEXT("Reset releases the passenger"), Passenger->EscapeVehicle.Get());
 	return true;
 }
 

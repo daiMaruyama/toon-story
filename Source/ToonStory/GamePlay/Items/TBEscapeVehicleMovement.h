@@ -12,6 +12,7 @@ public:
 	UTBEscapeVehicleMovement();
 	void Advance(const FVector& HorizontalDelta, const FRotator& Rotation, float DeltaSeconds);
 	bool IsGrounded() const { return bGrounded; }
+	void ResetMotion() { bGrounded = false; VerticalSpeed = 0.f; }
 private:
 	bool TryStep(const FVector& Delta, float StepHeight, const FQuat& Rotation);
 	bool bGrounded = false;

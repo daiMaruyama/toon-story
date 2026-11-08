@@ -186,7 +186,7 @@ void UTBAudioSubsystem::Tick(float DeltaTime)
 		{
 			const bool Won = (Player->Team == ETBTeam::Human && State->Winner == ETBWinner::Humans) ||
 			                 (Player->Team == ETBTeam::Toy && State->Winner == ETBWinner::Toys &&
-			                  (!State->bVehicleEscapeResult || Player->bEscapedInVehicle));
+			                  (!State->bVehicleEscapeResult || State->EscapedInVehicle(Player)));
 			const ETBSoundEvent ResultEvent = Won ? ETBSoundEvent::Victory : ETBSoundEvent::Defeat;
 			PlaySoundEvent(ResultEvent);
 			const FTBAudioClip* ResultClip = SoundClips.Find(ResultEvent);

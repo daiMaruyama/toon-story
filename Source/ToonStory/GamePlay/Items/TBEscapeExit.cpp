@@ -38,7 +38,7 @@ void ATBEscapeExit::Tick(float DeltaSeconds)
 	{
 		if (It->Passengers.IsEmpty() || !ExitArea->IsOverlappingActor(*It)) continue;
 		for (ATBCharacter* Toy : It->Passengers)
-			if (IsValid(Toy) && Toy->TBPS()) { Toy->TBPS()->bEscapedInVehicle = true; Toy->TBPS()->ForceNetUpdate(); }
+			if (IsValid(Toy) && Toy->TBPS()) Match->EscapedPlayers.AddUnique(Toy->TBPS());
 		Match->bVehicleEscapeResult = true;
 		if (auto* Mode = GetWorld()->GetAuthGameMode<ATBGameMode>()) Mode->Finish(ETBWinner::Toys, TEXT("乗り物で脱出！"));
 		return;

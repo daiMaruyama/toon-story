@@ -6,6 +6,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "Engine/World.h"
 #include "Engine/Level.h"
+#include "GameFramework/PlayerState.h"
 #include "GamePlay/TBBox.h"
 #include "GamePlay/TBPushableProps.h"
 #include "Net/UnrealNetwork.h"
@@ -100,6 +101,7 @@ void ATBGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
 	DOREPLIFETIME(ATBGameState, Collected);
 	DOREPLIFETIME(ATBGameState, bEscapePhase);
 	DOREPLIFETIME(ATBGameState, bVehicleEscapeResult);
+	DOREPLIFETIME(ATBGameState, EscapedPlayers);
 	DOREPLIFETIME(ATBGameState, BoxedCount);
 	DOREPLIFETIME(ATBGameState, Box);
 	DOREPLIFETIME(ATBGameState, HidePreparation);
@@ -110,6 +112,11 @@ float ATBGameState::HideProgress() const
 	const double Duration = HidePreparation.EndsAt - HidePreparation.StartsAt;
 	return HidePreparation.bValid && Duration > 0
 	    ? FMath::Clamp((GetServerWorldTimeSeconds() - HidePreparation.StartsAt) / Duration, 0.0, 1.0) : 0.f;
+}
+
+bool ATBGameState::EscapedInVehicle(const APlayerState* Player) const
+{
+	return Player && EscapedPlayers.Contains(Player);
 }
 
 bool ATBGameState::IsPreparing() const

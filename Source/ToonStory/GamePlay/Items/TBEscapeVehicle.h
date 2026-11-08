@@ -22,6 +22,8 @@ public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	bool Board(ATBCharacter* Toy);
 	bool Leave(ATBCharacter* Toy);
+	// 同じマップで次の試合を始めるとき、置いた位置に戻して空にする。
+	void ResetRound();
 	void SetDrivingInput(ATBCharacter* Toy, FVector2D Input);
 	const UTBEscapeVehicleData& Data() const;
 	bool IsDriver(const ATBCharacter* Toy) const;
@@ -43,6 +45,8 @@ private:
 	TObjectPtr<UTBEscapeVehicleData> LoadedData;
 	FVector2D DriveInput = FVector2D::ZeroVector;
 	double LastInputAt = 0;
+	FTransform StartTransform;
+	void ReleasePassengers();
 	UFUNCTION()
 	void OnBoardingOverlap(UPrimitiveComponent* Component, AActor* Other, UPrimitiveComponent* OtherComponent,
 	                       int32 BodyIndex, bool bFromSweep, const FHitResult& Sweep);
