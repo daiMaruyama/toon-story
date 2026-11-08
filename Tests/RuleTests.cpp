@@ -132,6 +132,12 @@ int main()
 	assert(GazeShadowTarget(G::None) == 0);
 	assert(GazeShadowTarget(G::Seen) > 0 && GazeShadowTarget(G::Seen) < GazeShadowTarget(G::Gazed));
 	assert(GazeShadowTarget(G::Frozen) == 1);
+	assert(ResultsViewBefore(false, false, 9, true, true, 1)); // 箱の外の子が、箱の中の自分より先
+	assert(!ResultsViewBefore(true, true, 1, false, false, 9));
+	assert(ResultsViewBefore(false, true, 9, false, false, 1)); // 箱の外どうしなら自分が先
+	assert(ResultsViewBefore(true, false, 1, true, false, 2)); // あとは番号の小さい順
+	assert(!ResultsViewBefore(true, false, 2, true, false, 2));
+	std::cout << "PASS: results view order\n";
 	std::cout << "PASS: freeze, step camera, contact, rescue, timeout priority and boxing victory\n";
 	std::cout << "PASS: gaze cone, gaze state and gaze shade\n";
 }

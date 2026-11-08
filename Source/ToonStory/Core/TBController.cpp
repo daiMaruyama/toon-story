@@ -10,6 +10,7 @@
 #include "Core/TBGameMode.h"
 #include "Core/TBLobbySettings.h"
 #include "GamePlay/TBHumanEntrance.h"
+#include "GamePlay/TBRuleMath.h"
 #include "Core/TBSession.h"
 #include "Core/TBChat.h"
 #include "Core/TBGameHelpers.h"
@@ -106,13 +107,15 @@ void ATBController::PlayerTick(float DeltaTime)
 	UpdateScreenTransition();
 	if (State && State->Phase == ETBPhase::Results)
 	{
-		ATBCharacter* Winner = GetPawn<ATBCharacter>();
-		if (!Winner || !Winner->IsCelebrating())
+		// 箱にしまわれたおもちゃは箱の中にいる。箱の外の勝者がいれば、そちらを映す。
+		auto Before = [this](const ATBCharacter* A, const ATBCharacter* B)
 		{
-			Winner = nullptr;
-			for (TActorIterator<ATBCharacter> It(GetWorld()); It; ++It)
-				if (It->IsCelebrating() && (!Winner || It->TBPS()->GetPlayerId() < Winner->TBPS()->GetPlayerId())) Winner = *It;
-		}
+			return TBRuleMath::ResultsViewBefore(A->TBPS()->ToyState == ETBToyState::Boxed, A == GetPawn(), A->TBPS()->GetPlayerId(),
+			                                     B->TBPS()->ToyState == ETBToyState::Boxed, B == GetPawn(), B->TBPS()->GetPlayerId());
+		};
+		ATBCharacter* Winner = nullptr;
+		for (TActorIterator<ATBCharacter> It(GetWorld()); It; ++It)
+			if (It->IsCelebrating() && (!Winner || Before(*It, Winner))) Winner = *It;
 		if (Winner && GetViewTarget() != Winner) SetViewTargetWithBlend(Winner, .4f);
 	}
 	UpdateViewAspect();
