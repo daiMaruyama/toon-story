@@ -199,4 +199,12 @@ namespace TBRuleMath
 	{
 		return State == EGazeState::None ? 0.f : State == EGazeState::Seen ? .5f : 1.f;
 	}
+
+	// リザルトで映す勝者を選ぶ順。箱にしまわれた子は箱の中にいるので後に回す。次に自分、次に番号の小さい順。
+	inline bool ResultsViewBefore(bool BoxedA, bool MineA, int IdA, bool BoxedB, bool MineB, int IdB)
+	{
+		if (BoxedA != BoxedB) return !BoxedA;
+		if (MineA != MineB) return MineA;
+		return IdA < IdB;
+	}
 }
