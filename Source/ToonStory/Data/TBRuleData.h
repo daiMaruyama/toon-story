@@ -256,9 +256,7 @@ struct FTBToyRules
 	int32 DefaultToyWeight = 4;
 	/** 見た目ごとの選ばれやすさ。重み 1 なら、ふつう（4）の 1/4 の確率で出る */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "人形の見た目", meta = (DisplayName = "見た目ごとの重み"))
-	TMap<TSoftClassPtr<AActor>, int32> ToyWeights = {
-	    {TSoftClassPtr<AActor>(FSoftObjectPath(TEXT("/Game/Characters/Toys/BP_SpaceRanger_Realistic.BP_SpaceRanger_Realistic_C"))),
-	     1}};
+	TMap<TSoftClassPtr<AActor>, int32> ToyWeights;
 };
 
 /** ロビーと結果画面のチャット */

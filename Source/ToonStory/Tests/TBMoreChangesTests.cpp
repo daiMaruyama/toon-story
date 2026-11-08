@@ -28,8 +28,6 @@
 #include "Core/TBSession.h"
 #include "Core/TBLobbySettings.h"
 #include "Engine/GameInstance.h"
-#include "Components/SkeletalMeshComponent.h"
-#include "Materials/Material.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTBRescueEligibilityTest, "ToonStory.MoreChanges.RescueEligibility",
                                  EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
@@ -148,19 +146,15 @@ bool FTBToyWeightsTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	const auto& Catalogue = Class->GetDefaultObject<ATBToyCharacter>()->ToyCatalogue;
-	bool FoundRanger = false;
+	TestTrue(TEXT("Toy catalogue is not empty"), !Catalogue.IsEmpty());
 	for (auto Visual : Catalogue)
 	{
-		if (!Visual)
+		if (!TestNotNull(TEXT("Catalogue entry resolves"), Visual.Get()))
 		{
 			continue;
 		}
-		const bool Ranger = Visual->GetName().Contains(TEXT("SpaceRanger"));
-		FoundRanger |= Ranger;
-		TestEqual(TEXT("Ranger has one quarter the normal weight"), TBToyPresentation::SelectionWeight(Visual.Get()),
-		          Ranger ? 1 : 4);
+		TestFalse(TEXT("Retired ranger is absent from the catalogue"), Visual->GetName().Contains(TEXT("SpaceRanger")));
 	}
-	TestTrue(TEXT("Ranger exists in actual catalogue"), FoundRanger);
 	UWorld* World = nullptr;
 	for (const auto& Context : GEngine->GetWorldContexts())
 	{
@@ -181,33 +175,6 @@ bool FTBToyWeightsTest::RunTest(const FString& Parameters)
 			for (int32 I = 0; I < 32; ++I) Dummy->ResetPlacement();
 			TestTrue(TEXT("Cleanup preserves decoy identity"), Dummy->VisualClass == OriginalVisual);
 			Dummy->Destroy();
-		}
-		for (auto VisualClass : Catalogue)
-		{
-			if (!VisualClass || !VisualClass->GetName().Contains(TEXT("SpaceRanger")))
-			{
-				continue;
-			}
-			auto* Visual = World->SpawnActor<AActor>(VisualClass);
-			TBToyPresentation::Initialize(Visual);
-			int32 Tinted = 0;
-			TInlineComponentArray<USkeletalMeshComponent*> Parts(Visual);
-			for (auto* Part : Parts)
-			{
-				for (int32 Slot = 0; Slot < Part->GetNumMaterials(); ++Slot)
-				{
-					auto* Material = Part->GetMaterial(Slot);
-					if (!Material || Material->GetName() != TEXT("M_plastic_base")) continue;
-					++Tinted;
-					TestTrue(TEXT("Authored armor supports skeletal meshes before runtime"), Material->GetMaterial()->GetUsageByFlag(MATUSAGE_SkeletalMesh));
-					FLinearColor Color;
-					TestTrue(TEXT("Armor tint is saved in the referenced material"),
-					         Material->GetVectorParameterValue(FMaterialParameterInfo(TEXT("ArmorTint")), Color));
-					TestTrue(TEXT("Authored armor tint matches intended color"), Color.Equals(FLinearColor(.30f, .42f, .37f)));
-				}
-			}
-			TestTrue(TEXT("Ranger uses the cookable authored armor material"), Tinted > 0);
-			Visual->Destroy();
 		}
 	}
 	TArray<TSubclassOf<AActor>> Empty;

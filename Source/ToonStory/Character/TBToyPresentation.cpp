@@ -208,14 +208,6 @@ void TBToyPresentation::BuildEmotePose(const USkeletalMeshComponent* Mesh, const
 		else { Add(Torso, Forward, (Wild ? 18 : 10) * Swing); Add(Head, Forward, -6 * Swing); Add(UpperR, Forward, 16 + 10 * Swing); Add(UpperL, Forward, -16 + 10 * Swing); }
 		return;
 	}
-	if (Name == TEXT("SK_SpaceRanger"))
-	{
-		// The suit has single-piece arms. Reach forward rather than folding the pauldron over the helmet.
-		if (Wave) { Add(UpperR, Right, -46); Add(UpperR, Forward, 17 + 13 * Swing); Add(Head, Up, 9); }
-		else if (Cheer) { Add(UpperR, Right, -52 - 16 * Swing); Add(UpperL, Forward, -30); Add(Torso, Right, -8); }
-		else { Add(Torso, Up, (Wild ? 24 : 12) * Swing); Add(UpperR, Right, -24 + 23 * Swing); Add(UpperL, Right, -24 - 23 * Swing); }
-		return;
-	}
 	if (Sample.Kind == ETBEmoteKind::Wave)
 	{
 		if (Arms)

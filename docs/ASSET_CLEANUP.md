@@ -11,6 +11,12 @@
 
 インポート前の FBX・Blender・ZIP 等は Content サブモジュールの `_Sources` に保管します。今回削除したのは、現行の Play90 版に置き換え済みで、他のアセットから参照されていなかった旧 Poly Haven 宝箱の UE アセット5点です。再利用する場合は `_Sources/PolyHavenChest` にローカルの原本があります。共有用ライセンスは Content の `ThirdPartyNotices/PolyHavenChest` にも残しています。
 
+## おもちゃを追加するとき
+
+見た目用 Blueprint は既存の `/Game/Characters/Toys/BP_Duck_Realistic` などを参考にし、`BP_ToyCharacter` の `ToyCatalogue` へ追加します。プレイヤーとダミーは同じ一覧から抽選します。種類数は固定していません。
+
+抽選の既定重みは `DA_TBRules` の `Toys.DefaultToyWeight`、個別の重みは `Toys.ToyWeights` で設定します。新しい候補に個別指定がなければ既定重みが使われます。素材の参照と Cook 対象を確認し、`ToonStory.MoreChanges.ToyWeights` と `ToonStory.Appearance.RandomRound` を Arena で実行してください。
+
 ## 人間を追加・変更したとき
 
 `DefaultGame.ini` の `HumanAppearances` はゲーム側の抽選リストです。設定ファイルから選ぶモデルも配布されるよう、名簿を変えたら次のコマンドをプロジェクト直下で実行し、更新された `/Game/CookLabels/PAL_PlayableHumans` を Content 側の変更に含めてください。既に一致している場合は保存しません。衣装や髪を既存の Blueprint 内で交換するだけなら、追加手順は不要です。
