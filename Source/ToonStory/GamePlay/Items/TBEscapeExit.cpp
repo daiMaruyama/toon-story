@@ -23,9 +23,22 @@ ATBEscapeExit::ATBEscapeExit()
 	Marker = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Marker"));
 	Marker->SetupAttachment(ExitArea);
 	Marker->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	static ConstructorHelpers::FObjectFinder<UStaticMesh> Cube(TEXT("/Engine/BasicShapes/Cube.Cube"));
-	Marker->SetStaticMesh(Cube.Object);
-	Marker->SetRelativeScale3D(FVector(.2f, .2f, 1.f));
+	Marker->SetGenerateOverlapEvents(false);
+	Marker->SetCanEverAffectNavigation(false);
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> Gate(TEXT("/Game/ToyWorld/Meshes/SM_Central_Gates.SM_Central_Gates"));
+	if (Gate.Succeeded())
+	{
+		Marker->SetStaticMesh(Gate.Object);
+		// 門の通過方向を +X に向け、出口範囲の幅と底面に揃える。
+		const FBox Bounds = Gate.Object->GetBoundingBox();
+		const FVector Extent = ExitArea->GetUnscaledBoxExtent();
+		const float Scale = Extent.Y * 2.f / FMath::Max(1.f, float(Bounds.GetSize().X));
+		const FRotator Rotation(0, 90, 0);
+		const FVector Center = Rotation.RotateVector(Bounds.GetCenter() * Scale);
+		Marker->SetRelativeRotation(Rotation);
+		Marker->SetRelativeScale3D(FVector(Scale));
+		Marker->SetRelativeLocation(FVector(-Center.X, -Center.Y, -Extent.Z - Bounds.Min.Z * Scale));
+	}
 }
 
 void ATBEscapeExit::Tick(float DeltaSeconds)

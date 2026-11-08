@@ -35,9 +35,22 @@ ATBEscapeVehicle::ATBEscapeVehicle()
 	Mesh->SetupAttachment(Collision);
 	InteractionPoint->SetupAttachment(Collision);
 	Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	static ConstructorHelpers::FObjectFinder<UStaticMesh> Cube(TEXT("/Engine/BasicShapes/Cube.Cube"));
-	Mesh->SetStaticMesh(Cube.Object);
-	Mesh->SetRelativeScale3D(FVector(1.1f, .8f, .4f));
+	Mesh->SetGenerateOverlapEvents(false);
+	Mesh->SetCanEverAffectNavigation(false);
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> CarModel(TEXT("/Game/ToyWorld/Meshes/SM_ToyCar_01.SM_ToyCar_01"));
+	if (CarModel.Succeeded())
+	{
+		Mesh->SetStaticMesh(CarModel.Object);
+		// 玩具モデルの前方を +X に合わせ、走行判定の長さと底面に揃える。
+		const FBox Bounds = CarModel.Object->GetBoundingBox();
+		const FVector Extent = Collision->GetUnscaledBoxExtent();
+		const float Scale = Extent.X * 2.f / FMath::Max(1.f, float(Bounds.GetSize().Y));
+		const FRotator Rotation(0, -90, 0);
+		const FVector Center = Rotation.RotateVector(Bounds.GetCenter() * Scale);
+		Mesh->SetRelativeRotation(Rotation);
+		Mesh->SetRelativeScale3D(FVector(Scale));
+		Mesh->SetRelativeLocation(FVector(-Center.X, -Center.Y, -Extent.Z - Bounds.Min.Z * Scale));
+	}
 	DisplayName = NSLOCTEXT("TBItems", "EscapeVehicle", "脱出用の車");
 	Actions.Reset();
 	FTBItemAction Action;

@@ -19,6 +19,7 @@ class TOONSTORY_API ATBPickup : public AActor
 	GENERATED_BODY()
 public:
 	ATBPickup();
+	virtual void OnConstruction(const FTransform& Transform) override;
 	virtual void BeginPlay() override;
 	// 保存済みマップと検証用Arenaで同じ収集物を使用する。
 	UPROPERTY(Config, EditDefaultsOnly, Category = "Appearance")
@@ -35,4 +36,7 @@ public:
 	void OnRep_Taken();
 	bool Take(ATBCharacter* Who);
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
+private:
+	void RefreshAppearance();
 };

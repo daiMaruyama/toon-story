@@ -37,9 +37,20 @@ ATBPickup::ATBPickup()
 	Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 }
 
+void ATBPickup::OnConstruction(const FTransform& Transform)
+{
+	Super::OnConstruction(Transform);
+	RefreshAppearance();
+}
+
 void ATBPickup::BeginPlay()
 {
 	Super::BeginPlay();
+	RefreshAppearance();
+}
+
+void ATBPickup::RefreshAppearance()
+{
 	if (auto* Visual = PickupMesh.LoadSynchronous())
 	{
 		Mesh->SetStaticMesh(Visual);
