@@ -38,7 +38,8 @@ bool STBLoadingScreen::IsToyHidden() const
 	const auto* Settings = GetDefault<UTBLoadingScreenSettings>();
 	const double Period = Settings->PeekSeconds + Settings->RunSeconds + Settings->HiddenSeconds;
 	const double T = FMath::Fmod(FPlatformTime::Seconds() - Started, Period);
-	return Brushes.IsEmpty() || T >= Settings->PeekSeconds + Settings->RunSeconds;
+	// 隠れたあとの間が0なら、隠れきる瞬間がないので待たない。
+	return Brushes.IsEmpty() || Settings->HiddenSeconds <= 0.f || T >= Settings->PeekSeconds + Settings->RunSeconds;
 }
 
 int32 STBLoadingScreen::OnPaint(const FPaintArgs&, const FGeometry& Geometry, const FSlateRect&,
