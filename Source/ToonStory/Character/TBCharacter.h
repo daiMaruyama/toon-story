@@ -127,6 +127,8 @@ public:
 	ATBPlayerState* TBPS() const;
 	bool IsHuman() const;
 	bool IsCelebrating() const;
+	// チームが届き、人間かおもちゃの見た目になったかどうか。
+	bool HasAppearance() const { return bAppearanceInitialized; }
 	// Game-thread read for animation. Simulated peers must have a matching resolved snapshot.
 	bool GetHumanLook(FTBHumanLookSnapshot& Out) const;
 	bool CanRequestEmote() const;

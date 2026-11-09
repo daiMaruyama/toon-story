@@ -3,6 +3,7 @@
 #include "TBLoadingScreenSubsystem.h"
 #include "STBLoadingScreen.h"
 #include "TBLoadingScreenSettings.h"
+#include "Character/TBCharacter.h"
 #include "Core/TBController.h"
 #include "Core/TBGameState.h"
 #include "Core/TBPlayerState.h"
@@ -13,6 +14,7 @@
 #include "Engine/GameViewportClient.h"
 #include "Engine/Texture2D.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
 #include "GameMapsSettings.h"
 #include "Misc/PackageName.h"
 #include "MoviePlayer.h"
@@ -151,6 +153,15 @@ bool UTBLoadingScreenSubsystem::ShouldCoverSeamless() const
 	return !bCountdown;
 }
 
+// 通信では体が先に届き、チームは少し遅れて届く。届くまでは見た目が決まらない。
+bool UTBLoadingScreenSubsystem::AppearancesReady(UWorld* World)
+{
+	if (!World) return true;
+	for (TActorIterator<ATBCharacter> It(World); It; ++It)
+		if (!It->HasAppearance()) return false;
+	return true;
+}
+
 void UTBLoadingScreenSubsystem::Tick(float DeltaTime)
 {
 	const auto* Settings = GetDefault<UTBLoadingScreenSettings>();
@@ -186,6 +197,17 @@ void UTBLoadingScreenSubsystem::Tick(float DeltaTime)
 		const bool bReady = bTimedOut || (Controller && (Controller->GetPawn() || !Controller->IsA<ATBController>()));
 		if (bReady) bHardLoad = false;
 		else bCover = true;
+	}
+	// みんなの見た目が決まり、走っているおもちゃが箱に隠れきるまでは出しておく。
+	// 試合中は隠れる時間や入口の演出が進んでいるので、待たずに明ける。
+	const auto* Match = World ? World->GetGameState<ATBGameState>() : nullptr;
+	const bool bPlaying = Match && Match->Phase == ETBPhase::Playing;
+	if (bCover || bPlaying || !Overlay || !Screen || Screen->GetExit() > 0.f) SettleFrom = 0;
+	else
+	{
+		const double Now = FPlatformTime::Seconds();
+		if (SettleFrom <= 0) SettleFrom = Now;
+		if (Now - SettleFrom < Settings->SettleWaitSeconds && (!AppearancesReady(World) || !Screen->IsToyHidden())) bCover = true;
 	}
 	if (bCover)
 	{

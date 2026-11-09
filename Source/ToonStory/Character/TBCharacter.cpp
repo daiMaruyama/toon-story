@@ -92,6 +92,8 @@ ATBCharacter::ATBCharacter(const FObjectInitializer& Init)
 		Body->SetStaticMesh(Cube.Object);
 	}
 	Body->SetRelativeScale3D(FVector(.55, .55, 1.6));
+	// 最初の箱の時は非表示に。
+	Body->SetVisibility(false);
 	CarryAnchor = CreateDefaultSubobject<USceneComponent>(TEXT("CarryAnchor"));
 	// ルートはネット更新で飛び飛びに動くので、補間されるメッシュに付ける。
 	CarryAnchor->SetupAttachment(GetMesh());
