@@ -1,4 +1,6 @@
-# toon-story
+# Toy or Not?
+
+開発名は ToonStory。プロジェクトファイルやコードの名前はこのまま。
 
 UE5 / C++ で開発中の対戦アクション（PvP）。
 
@@ -36,7 +38,7 @@ docs/       開発ドキュメント
 Unreal Engine 5.8 が必要。エディタは Windows / macOS どちらでも動く。
 
 ```bash
-git clone --recurse-submodules https://github.com/daiMaruyama/toon-story.git
+git clone --recurse-submodules https://github.com/daiMaruyama/toy-or-not.git
 ```
 
 **Windows**（Visual Studio 2022）

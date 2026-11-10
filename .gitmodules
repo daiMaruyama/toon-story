@@ -1,4 +1,4 @@
 [submodule "Content"]
 	path = Content
-	url = https://github.com/daiMaruyama/toon-story-content.git
+	url = https://github.com/daiMaruyama/toy-or-not-content.git
 	branch = main
