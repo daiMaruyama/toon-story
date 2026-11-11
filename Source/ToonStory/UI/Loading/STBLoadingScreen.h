@@ -34,6 +34,8 @@ public:
 	// 消え具合。0で出ている、0.5で真っ黒、1で消えきる（下のゲーム画面が明けて見える）。
 	void SetExit(float Value) { Exit = FMath::Clamp(Value, 0.f, 1.f); }
 	float GetExit() const { return Exit; }
+	// おもちゃが箱の陰に隠れきって、次が顔を出す前の間か。ここで消せば、走る途中で切れない。
+	bool IsToyHidden() const;
 
 	virtual int32 OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect,
 	                      FSlateWindowElementList& OutDrawElements, int32 LayerId, const FWidgetStyle& InWidgetStyle,

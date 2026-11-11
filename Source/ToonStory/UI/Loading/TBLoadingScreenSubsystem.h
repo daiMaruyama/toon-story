@@ -43,6 +43,8 @@ private:
 	void RemoveOverlay();
 	// 裏で切り替える移動の間、かぶせておくか。
 	bool ShouldCoverSeamless() const;
+	// 画面にいるキャラが、みんな人間かおもちゃの見た目になったか。
+	static bool AppearancesReady(UWorld* World);
 
 	// MoviePlayer に渡す絵と、ゲーム画面にかぶせる絵。同じ部品を2か所に付けないよう分ける。
 	TSharedPtr<STBLoadingScreen> MovieScreen;
@@ -58,6 +60,8 @@ private:
 	// マップを読み直していて、読み終わったあと自分のキャラを待っているか。
 	bool bHardLoad = false;
 	double LoadedAt = 0;
+	// かぶせる理由がなくなってから、見た目とおもちゃを待ちはじめた時刻。0は待っていない。
+	double SettleFrom = 0;
 	// ロビーと試合の切り替わりを見るための、前のフレームの状態。ワールドが替わったら数え直す。
 	TWeakObjectPtr<UWorld> PhaseWorld;
 	uint8 LastPhase = 0;

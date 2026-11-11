@@ -57,6 +57,10 @@ public:
 	UPROPERTY(Config, EditAnywhere, Category = "切り替え",
 	          meta = (DisplayName = "キャラを待つ上限", Units = "s", ClampMin = "0"))
 	float PawnWaitSeconds = 1.f;
+	/** みんなの見た目が決まり、走っているおもちゃが箱に隠れきるまでは出しておく。その待ちの上限 */
+	UPROPERTY(Config, EditAnywhere, Category = "切り替え",
+	          meta = (DisplayName = "見た目とおもちゃを待つ上限", Units = "s", ClampMin = "0"))
+	float SettleWaitSeconds = 5.f;
 
 	UPROPERTY(Config, EditAnywhere, Category = "色", meta = (DisplayName = "壁"))
 	FLinearColor WallColor = FLinearColor::FromSRGBColor(FColor(38, 34, 48));

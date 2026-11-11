@@ -50,6 +50,9 @@ bool FTBHumanAppearanceGCTest::RunTest(const FString&)
 	Character->FinishSpawning(SpawnTransform);
 	TestNull(TEXT("No player state has arrived yet"), Character->GetPlayerState());
 	TestNull(TEXT("Child mesh is not yet held by the display component"), Character->GetMesh()->GetSkeletalMeshAsset());
+	// Until the team arrives, no placeholder cube is shown; the loading screen waits on HasAppearance.
+	TestFalse(TEXT("Fallback cube is hidden before team assignment"), Character->Body->IsVisible());
+	TestFalse(TEXT("Appearance is pending before team assignment"), Character->HasAppearance());
 	CollectGarbage(RF_NoFlags);
 	TestFalse(TEXT("Control mesh without a strong reference is collected"), UnretainedMesh.IsValid());
 	if (!TestTrue(TEXT("Loaded child mesh survives GC before team assignment"), WeakMesh.IsValid())) return false;
@@ -65,6 +68,7 @@ bool FTBHumanAppearanceGCTest::RunTest(const FString&)
 	Character->ApplyState();
 	TestTrue(TEXT("Late human assignment displays the retained mesh"), Character->GetMesh()->GetSkeletalMeshAsset() == WeakMesh.Get());
 	TestFalse(TEXT("Human does not use the fallback cube"), Character->Body->IsVisible());
+	TestTrue(TEXT("Appearance is settled after team assignment"), Character->HasAppearance());
 	TestNotNull(TEXT("Human animation is initialized"), Character->GetMesh()->GetAnimInstance());
 
 	Info->Team = ETBTeam::Toy;
